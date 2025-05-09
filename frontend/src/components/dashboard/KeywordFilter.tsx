@@ -24,7 +24,7 @@ const KeywordFilter: React.FC<KeywordFilterProps> = ({
       onFilter(keyword.trim());
     }
   };
-
+  
   return (
     <div className="card mb-6">
       <h3 className="text-lg font-medium text-gray-800 mb-4">关键词筛选</h3>
@@ -64,59 +64,54 @@ const KeywordFilter: React.FC<KeywordFilterProps> = ({
               未找到匹配的关键词数据
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4">
               <div className="text-sm text-gray-600 mb-2">
-                共找到 {results.results.length} 个品牌下的"{keyword}"关键词数据
+                共找到 {results.results.length} 条"{keyword}"关键词数据
               </div>
               
-              {results.results.map((brandData) => (
-                <div key={brandData.brand} className="border rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 p-3 border-b font-medium">
-                    品牌: {brandData.brand}
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full divide-y divide-gray-200">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">关键词</th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">排名位置</th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL</th>
-                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">流量</th>
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-gray-200">
-                        {brandData.data.map((item, index) => (
-                          <tr key={index}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.keyword}</td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {item.position !== undefined && item.position !== null 
-                                ? item.position 
-                                : '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {item.url ? (
-                                <a 
-                                  href={item.url.startsWith('http') ? item.url : `https://${item.url}`} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="text-primary-600 hover:underline truncate block max-w-xs"
-                                >
-                                  {item.url}
-                                </a>
-                              ) : '-'}
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                              {item.traffic !== undefined && item.traffic !== null 
-                                ? item.traffic.toLocaleString() 
-                                : '-'}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
+              <div className="overflow-x-auto border rounded-lg">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">品牌</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">关键词</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">排名位置</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">搜索量</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {results.results.map((item, index) => (
+                      <tr key={index} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{item.brand}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{item.keyword}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {item.position !== undefined && item.position !== null 
+                            ? item.position 
+                            : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {item.url ? (
+                            <a 
+                              href={item.url.startsWith('http') ? item.url : `https://${item.url}`} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-primary-600 hover:underline truncate block max-w-xs"
+                            >
+                              {item.url}
+                            </a>
+                          ) : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {item.traffic !== undefined && item.traffic !== null 
+                            ? item.traffic.toLocaleString() 
+                            : '-'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

@@ -64,6 +64,7 @@ export interface ApiError {
 // Keyword filter result
 export interface KeywordFilterItem {
   keyword: string;
+  brand: string;
   position?: number;
   url?: string;
   traffic?: number;
@@ -75,5 +76,5 @@ export interface BrandKeywordData {
 }
 
 export interface KeywordFilterResponse {
-  results: BrandKeywordData[];
+  results: KeywordFilterItem[];
 }
