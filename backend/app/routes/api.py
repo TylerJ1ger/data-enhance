@@ -19,6 +19,9 @@ class FilterRanges(BaseModel):
     cpc_range: Optional[List[float]] = None
     keyword_frequency_range: Optional[List[float]] = None  # 新增参数
 
+class KeywordFilterRequest(BaseModel):
+    keyword: str
+
 @router.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
     """
@@ -52,6 +55,18 @@ async def apply_filters(filter_ranges: FilterRanges):
         cpc_range,
         keyword_frequency_range  # 新增参数
     )
+    
+    return result
+
+@router.post("/keyword-filter")
+async def filter_by_keyword(request: KeywordFilterRequest):
+    """
+    Filter data by a specific keyword and return its position, URL, and traffic across different brands.
+    """
+    if not request.keyword:
+        raise HTTPException(status_code=400, detail="No keyword provided")
+    
+    result = csv_processor.filter_by_keyword(request.keyword)
     
     return result
 

@@ -2,12 +2,9 @@ python3 model/ref/combined-tree-formatter.py "." "model/ref/structure/file-struc
 
 api.py
 csv_processor.py
+types/index.ts
 api.ts
 useApi.ts
+KeywordFilter.tsx
 index.tsx
-helpers.py
-index.ts 
 
-
-FilterPanel.tsx
-KeywordChart.tsx

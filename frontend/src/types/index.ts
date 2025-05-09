@@ -60,3 +60,20 @@ export interface FilterRangeValues {
 export interface ApiError {
   detail: string;
 }
+
+// Keyword filter result
+export interface KeywordFilterItem {
+  keyword: string;
+  position?: number;
+  url?: string;
+  traffic?: number;
+}
+
+export interface BrandKeywordData {
+  brand: string;
+  data: KeywordFilterItem[];
+}
+
+export interface KeywordFilterResponse {
+  results: BrandKeywordData[];
+}
