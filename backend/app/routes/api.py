@@ -6,21 +6,28 @@ import json
 from pydantic import BaseModel
 
 from app.services.csv_processor import CSVProcessor
+from app.services.sitemap_processor import SitemapProcessor
 
 router = APIRouter()
 
-# Singleton instance of CSVProcessor
+# Singleton instances
 csv_processor = CSVProcessor()
+sitemap_processor = SitemapProcessor()
 
 class FilterRanges(BaseModel):
     position_range: Optional[List[float]] = None
     search_volume_range: Optional[List[float]] = None
     keyword_difficulty_range: Optional[List[float]] = None
     cpc_range: Optional[List[float]] = None
-    keyword_frequency_range: Optional[List[float]] = None  # 新增参数
+    keyword_frequency_range: Optional[List[float]] = None
 
 class KeywordFilterRequest(BaseModel):
     keyword: str
+
+class SitemapFilterRequest(BaseModel):
+    domain: Optional[str] = None
+    path: Optional[str] = None
+    depth: Optional[int] = None
 
 @router.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
@@ -45,7 +52,7 @@ async def apply_filters(filter_ranges: FilterRanges):
     search_volume_range = tuple(filter_ranges.search_volume_range) if filter_ranges.search_volume_range else None
     keyword_difficulty_range = tuple(filter_ranges.keyword_difficulty_range) if filter_ranges.keyword_difficulty_range else None
     cpc_range = tuple(filter_ranges.cpc_range) if filter_ranges.cpc_range else None
-    keyword_frequency_range = tuple(filter_ranges.keyword_frequency_range) if filter_ranges.keyword_frequency_range else None  # 新增参数
+    keyword_frequency_range = tuple(filter_ranges.keyword_frequency_range) if filter_ranges.keyword_frequency_range else None
     
     # Apply filters
     result = csv_processor.apply_filters(
@@ -53,7 +60,7 @@ async def apply_filters(filter_ranges: FilterRanges):
         search_volume_range,
         keyword_difficulty_range,
         cpc_range,
-        keyword_frequency_range  # 新增参数
+        keyword_frequency_range
     )
     
     return result
@@ -112,9 +119,71 @@ async def get_filter_ranges():
     """
     return csv_processor.get_filter_ranges()
 
+# 以下是新增的Sitemap相关API端点
+
+@router.post("/sitemap/upload")
+async def upload_sitemap_files(files: List[UploadFile] = File(...)):
+    """
+    Upload and process Sitemap XML files.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    # Process sitemap files
+    result = await sitemap_processor.process_files(files)
+    
+    return result
+
+@router.get("/sitemap/visualization")
+async def get_sitemap_visualization(visualization_type: str = "tree"):
+    """
+    Get sitemap visualization data in the specified format.
+    """
+    result = sitemap_processor.get_visualization_data(visualization_type)
+    
+    return result
+
+@router.post("/sitemap/filter")
+async def filter_sitemap(filters: SitemapFilterRequest):
+    """
+    Filter sitemap URLs based on specified criteria.
+    """
+    result = sitemap_processor.filter_urls({
+        "domain": filters.domain,
+        "path": filters.path,
+        "depth": filters.depth
+    })
+    
+    return result
+
+@router.get("/sitemap/analyze")
+async def analyze_sitemap(detailed: bool = False):
+    """
+    Analyze sitemap structure and characteristics.
+    """
+    result = sitemap_processor.analyze_url_structure(detailed)
+    
+    return result
+
+@router.get("/sitemap/export")
+async def export_merged_sitemap(format: str = "xml"):
+    """
+    Export merged sitemap as XML or CSV file.
+    """
+    data = sitemap_processor.generate_merged_sitemap(format)
+    
+    filename = f"merged_sitemap.{format}"
+    media_type = "application/xml" if format.lower() == "xml" else "text/csv"
+    
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
 @router.get("/health")
 async def health_check():
     """
     API health check endpoint.
     """
-    return {"status": "healthy", "service": "CSV Processor API"}
+    return {"status": "healthy", "service": "CSV & Sitemap Processor API"}

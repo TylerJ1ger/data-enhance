@@ -1,10 +1,13 @@
 python3 model/ref/combined-tree-formatter.py "." "model/ref/structure/file-structure.txt" "model/ref/structure/formatted-tree.txt"
 
-api.py
-csv_processor.py
-types/index.ts
-api.ts
-useApi.ts
-KeywordFilter.tsx
-index.tsx
+backend/app/routes/api.py
+backend/app/config.py
+backend/requirements.txt
+
+frontend/src/types/index.ts
+frontend/src/components/common/Layout.tsx
+frontend/package.json
+
+
+
 

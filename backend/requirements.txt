@@ -6,3 +6,5 @@ openpyxl
 python-multipart
 pydantic
 numpy
+lxml
+requests

@@ -10,13 +10,13 @@ load_dotenv(ROOT_DIR / ".env")
 
 # Environment configuration
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-APP_NAME = os.getenv("APP_NAME", "CSV Processor Tool")
+APP_NAME = os.getenv("APP_NAME", "CSV & Sitemap Processor Tool")
 API_VERSION = os.getenv("API_VERSION", "v1")
 PORT = int(os.getenv("PORT", 8000))
 HOST = os.getenv("HOST", "0.0.0.0")
 
 # Constants
-ALLOWED_EXTENSIONS = {"csv", "xlsx"}
+ALLOWED_EXTENSIONS = {"csv", "xlsx", "xml"}  # 新增 XML 格式
 
 # Configuration dictionary for easy access
 config = {
