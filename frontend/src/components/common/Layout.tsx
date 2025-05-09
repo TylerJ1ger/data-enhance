@@ -41,28 +41,30 @@ const Layout: React.FC<LayoutProps> = ({
                   </span>
                 </div>
                 
-                {/* 导航链接 */}
+                {/* 导航链接 - 修改后的Link组件用法 */}
                 <nav className="ml-8 flex space-x-4">
-                  <Link href="/" legacyBehavior>
-                    <a className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
+                  <Link 
+                    href="/" 
+                    className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
                       isHome
                         ? 'border-primary-500 text-primary-600'
                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                    }`}>
-                      <FiBarChart2 className="mr-1 h-4 w-4" />
-                      关键词分析
-                    </a>
+                    }`}
+                  >
+                    <FiBarChart2 className="mr-1 h-4 w-4" />
+                    关键词分析
                   </Link>
                   
-                  <Link href="/sitemap" legacyBehavior>
-                    <a className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
+                  <Link 
+                    href="/sitemap" 
+                    className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
                       isSitemap
                         ? 'border-primary-500 text-primary-600'
                         : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
-                    }`}>
-                      <FiMap className="mr-1 h-4 w-4" />
-                      Sitemap分析
-                    </a>
+                    }`}
+                  >
+                    <FiMap className="mr-1 h-4 w-4" />
+                    Sitemap分析
                   </Link>
                 </nav>
               </div>

@@ -17,13 +17,22 @@ app = FastAPI(
     openapi_url="/api/openapi.json"
 )
 
-# Add CORS middleware
+# 显式设置允许的源
+origins = [
+    "http://localhost:3000",     # 开发环境前端
+    "http://localhost:8000",     # 开发环境后端
+    "http://127.0.0.1:3000",     # 替代本地地址
+    "http://127.0.0.1:8000",     # 替代本地地址
+]
+
+# 添加 CORS 中间件 - 明确指定允许的源
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, you should restrict this
+    allow_origins=origins,       # 明确指定允许的源
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Disposition"],  # 允许前端访问响应头信息，用于文件下载
 )
 
 # Include API routes

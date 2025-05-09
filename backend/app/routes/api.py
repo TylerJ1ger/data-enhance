@@ -3,6 +3,7 @@ from typing import List, Optional, Dict, Any
 from fastapi.responses import StreamingResponse
 import io
 import json
+import xml.etree.ElementTree as ET
 from pydantic import BaseModel
 
 from app.services.csv_processor import CSVProcessor
@@ -27,7 +28,8 @@ class KeywordFilterRequest(BaseModel):
 class SitemapFilterRequest(BaseModel):
     domain: Optional[str] = None
     path: Optional[str] = None
-    path_filter_type: Optional[str] = "contains"  # 新增路径筛选类型
+    paths: Optional[List[str]] = None  # 新增的多路径支持
+    path_filter_type: Optional[str] = "contains"  # 路径筛选类型
     depth: Optional[int] = None
 
 class FilteredVisualizationRequest(BaseModel):
@@ -168,7 +170,8 @@ async def filter_sitemap(filters: SitemapFilterRequest):
     result = sitemap_processor.filter_urls({
         "domain": filters.domain,
         "path": filters.path,
-        "path_filter_type": filters.path_filter_type,  # 新增路径筛选类型
+        "paths": filters.paths,  # 新增多路径筛选
+        "path_filter_type": filters.path_filter_type,  # 路径筛选类型
         "depth": filters.depth
     })
     
@@ -192,6 +195,55 @@ async def export_merged_sitemap(format: str = "xml"):
     
     filename = f"merged_sitemap.{format}"
     media_type = "application/xml" if format.lower() == "xml" else "text/csv"
+    
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@router.get("/sitemap/export-filtered")
+async def export_filtered_urls(format: str = "csv"):
+    """
+    导出筛选后的URLs列表
+    """
+    if not sitemap_processor.filtered_urls:
+        return StreamingResponse(
+            io.BytesIO(b"No filtered URLs to export"),
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename=no_urls.txt"}
+        )
+    
+    filename = f"filtered_urls.{format}"
+    
+    if format.lower() == "csv":
+        # 创建CSV格式
+        csv_data = "URL\n"
+        for url in sorted(sitemap_processor.filtered_urls):
+            csv_data += f"{url}\n"
+        data = csv_data.encode('utf-8')
+        media_type = "text/csv"
+    elif format.lower() == "txt":
+        # 创建纯文本格式，每行一个URL
+        txt_data = "\n".join(sorted(sitemap_processor.filtered_urls))
+        data = txt_data.encode('utf-8')
+        media_type = "text/plain"
+    elif format.lower() == "xml":
+        # 创建XML格式的sitemap
+        root = ET.Element("{http://www.sitemaps.org/schemas/sitemap/0.9}urlset")
+        root.set("xmlns", "http://www.sitemaps.org/schemas/sitemap/0.9")
+        
+        for url in sorted(sitemap_processor.filtered_urls):
+            url_elem = ET.SubElement(root, "url")
+            loc = ET.SubElement(url_elem, "loc")
+            loc.text = url
+        
+        xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding='utf-8').decode('utf-8')
+        data = xml_str.encode('utf-8')
+        media_type = "application/xml"
+    else:
+        data = b"Unsupported format"
+        media_type = "text/plain"
     
     return StreamingResponse(
         io.BytesIO(data),

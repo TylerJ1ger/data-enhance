@@ -107,9 +107,14 @@ export const useSitemapApi = () => {
     }
   }, []);
 
-  // Get export URL
+  // Get export URL for merged sitemap
   const getExportUrl = useCallback((format: string = 'xml') => {
     return sitemapApi.exportMergedSitemap(format);
+  }, []);
+
+  // Get export URL for filtered URLs (新增)
+  const getExportFilteredUrl = useCallback((format: string = 'csv') => {
+    return sitemapApi.exportFilteredUrls(format);
   }, []);
 
   // Reset data
@@ -139,6 +144,7 @@ export const useSitemapApi = () => {
     filterSitemap,
     analyzeSitemap,
     getExportUrl,
+    getExportFilteredUrl, // 新增
     resetData,
   };
 };

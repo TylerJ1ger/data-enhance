@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FiFilter, FiChevronDown, FiChevronUp, FiX } from 'react-icons/fi';
+import { FiFilter, FiChevronDown, FiChevronUp, FiPlus, FiX } from 'react-icons/fi';
 import Button from '../common/Button';
 import { SitemapFilterRequest } from '../../types/sitemap';
 
@@ -10,44 +10,51 @@ interface SitemapFilterProps {
   disabled?: boolean;
 }
 
-// 路径筛选类型枚举
-enum PathFilterType {
-  CONTAINS = 'contains',
-  NOT_CONTAINS = 'not_contains'
-}
-
 const SitemapFilter: React.FC<SitemapFilterProps> = ({
   onApplyFilter,
-  domains = [],
+  domains,
   isLoading = false,
   disabled = false,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
   const [domain, setDomain] = useState<string>('');
-  const [pathFilterType, setPathFilterType] = useState<PathFilterType>(PathFilterType.CONTAINS);
-  const [path, setPath] = useState<string>('');
+  const [paths, setPaths] = useState<string[]>(['']); // 初始提供一个空路径输入框
+  const [pathFilterType, setPathFilterType] = useState<string>('contains');
   const [depth, setDepth] = useState<string>('');
 
+  const handleAddPath = () => {
+    setPaths([...paths, '']);
+  };
+
+  const handleRemovePath = (index: number) => {
+    const newPaths = [...paths];
+    newPaths.splice(index, 1);
+    setPaths(newPaths);
+  };
+
+  const handlePathChange = (index: number, value: string) => {
+    const newPaths = [...paths];
+    newPaths[index] = value;
+    setPaths(newPaths);
+  };
+
   const handleApplyFilter = () => {
-    const filters: SitemapFilterRequest = {
-      domain: domain || undefined,
-      path: path || undefined,
-      path_filter_type: pathFilterType, // 新增路径筛选类型
-      depth: depth ? parseInt(depth, 10) : undefined,
-    };
+    // 过滤掉空路径
+    const filteredPaths = paths.filter(path => path.trim() !== '');
     
-    onApplyFilter(filters);
+    onApplyFilter({
+      domain: domain || undefined,
+      paths: filteredPaths.length > 0 ? filteredPaths : undefined,
+      path_filter_type: pathFilterType,
+      depth: depth ? parseInt(depth, 10) : undefined,
+    });
   };
 
   const handleReset = () => {
     setDomain('');
-    setPathFilterType(PathFilterType.CONTAINS);
-    setPath('');
+    setPaths(['']);
+    setPathFilterType('contains');
     setDepth('');
-  };
-
-  const handlePathTypeChange = (type: PathFilterType) => {
-    setPathFilterType(type);
   };
 
   return (
@@ -58,7 +65,7 @@ const SitemapFilter: React.FC<SitemapFilterProps> = ({
       >
         <div className="flex items-center">
           <FiFilter className="mr-2 text-primary-600" />
-          <h3 className="text-lg font-medium text-gray-800">筛选选项</h3>
+          <h3 className="text-lg font-medium text-gray-800">URL筛选</h3>
         </div>
         <div>
           {isOpen ? <FiChevronUp /> : <FiChevronDown />}
@@ -79,71 +86,68 @@ const SitemapFilter: React.FC<SitemapFilterProps> = ({
               disabled={disabled || isLoading}
             >
               <option value="">所有域名</option>
-              {domains.map((d) => (
-                <option key={d} value={d}>{d}</option>
+              {domains.map((domain) => (
+                <option key={domain} value={domain}>
+                  {domain}
+                </option>
               ))}
             </select>
           </div>
           
-          {/* 路径筛选类型 */}
+          {/* 路径筛选 - 支持多路径 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              路径筛选类型
-            </label>
-            <div className="flex space-x-4">
-              <label className="inline-flex items-center">
-                <input
-                  type="radio"
-                  className="form-radio h-4 w-4 text-primary-600"
-                  checked={pathFilterType === PathFilterType.CONTAINS}
-                  onChange={() => handlePathTypeChange(PathFilterType.CONTAINS)}
-                  disabled={disabled || isLoading}
-                />
-                <span className="ml-2 text-sm text-gray-700">包含</span>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-sm font-medium text-gray-700">
+                路径筛选（支持多个）
               </label>
-              <label className="inline-flex items-center">
-                <input
-                  type="radio"
-                  className="form-radio h-4 w-4 text-primary-600"
-                  checked={pathFilterType === PathFilterType.NOT_CONTAINS}
-                  onChange={() => handlePathTypeChange(PathFilterType.NOT_CONTAINS)}
-                  disabled={disabled || isLoading}
-                />
-                <span className="ml-2 text-sm text-gray-700">不包含</span>
-              </label>
+              <button 
+                type="button"
+                onClick={handleAddPath}
+                className="text-primary-600 hover:text-primary-800 text-sm flex items-center"
+                disabled={disabled || isLoading}
+              >
+                <FiPlus size={14} className="mr-1" />
+                添加路径
+              </button>
             </div>
-          </div>
-          
-          {/* 路径筛选 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              路径{pathFilterType === PathFilterType.CONTAINS ? '包含' : '不包含'}
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={path}
-                onChange={(e) => setPath(e.target.value)}
-                placeholder={pathFilterType === PathFilterType.CONTAINS ? "输入路径匹配..." : "输入要排除的路径..."}
+            
+            {paths.map((path, index) => (
+              <div key={index} className="flex items-center mb-2">
+                <input
+                  type="text"
+                  value={path}
+                  onChange={(e) => handlePathChange(index, e.target.value)}
+                  placeholder="/blog, /products, 等"
+                  className="flex-grow p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  disabled={disabled || isLoading}
+                />
+                {paths.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemovePath(index)}
+                    className="ml-2 text-gray-500 hover:text-red-600"
+                    disabled={disabled || isLoading}
+                  >
+                    <FiX />
+                  </button>
+                )}
+              </div>
+            ))}
+            
+            <div className="mt-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                路径筛选类型
+              </label>
+              <select
+                value={pathFilterType}
+                onChange={(e) => setPathFilterType(e.target.value)}
                 className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                 disabled={disabled || isLoading}
-              />
-              {path && (
-                <button
-                  type="button"
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                  onClick={() => setPath('')}
-                  disabled={disabled || isLoading}
-                >
-                  <FiX />
-                </button>
-              )}
+              >
+                <option value="contains">包含路径</option>
+                <option value="not_contains">不包含路径</option>
+              </select>
             </div>
-            <p className="mt-1 text-xs text-gray-500">
-              {pathFilterType === PathFilterType.CONTAINS ? 
-                "例如: product, blog/2023" : 
-                "例如: admin, temp"}
-            </p>
           </div>
           
           {/* 深度筛选 */}
@@ -155,17 +159,13 @@ const SitemapFilter: React.FC<SitemapFilterProps> = ({
               type="number"
               value={depth}
               onChange={(e) => setDepth(e.target.value)}
-              placeholder="输入URL深度..."
+              placeholder="例如：2代表二级目录"
               className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               min="0"
               disabled={disabled || isLoading}
             />
-            <p className="mt-1 text-xs text-gray-500">
-              如: example.com/blog/post = 深度2
-            </p>
           </div>
           
-          {/* 操作按钮 */}
           <div className="flex space-x-4 pt-4">
             <Button
               variant="primary"

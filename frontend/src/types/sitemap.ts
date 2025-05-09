@@ -23,8 +23,9 @@ export enum PathFilterType {
 // Sitemap filter request
 export interface SitemapFilterRequest {
   domain?: string;
-  path?: string;
-  path_filter_type?: string; // 新增路径筛选类型
+  paths?: string[]; // 新增：支持多路径筛选
+  path?: string;    // 保留原来的path以保持向后兼容
+  path_filter_type?: string;
   depth?: number;
 }
 

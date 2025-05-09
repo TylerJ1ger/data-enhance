@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Head from 'next/head';
-import { FiUpload, FiDownload, FiRefreshCw, FiActivity, FiList } from 'react-icons/fi';
+import { FiUpload, FiDownload, FiRefreshCw, FiActivity, FiList, FiExternalLink } from 'react-icons/fi';
 import Layout from '../components/common/Layout';
 import Button from '../components/common/Button';
 import SitemapUploader from '../components/sitemap/SitemapUploader';
@@ -15,6 +15,7 @@ export default function SitemapPage() {
   const [showUpload, setShowUpload] = useState(true);
   const [activeTab, setActiveTab] = useState<string>('visualization');
   const [visualizationType, setVisualizationType] = useState<string>('tree');
+  const [exportFormat, setExportFormat] = useState<string>('csv');
   const {
     isUploading,
     isFiltering,
@@ -29,6 +30,7 @@ export default function SitemapPage() {
     filterSitemap,
     analyzeSitemap,
     getExportUrl,
+    getExportFilteredUrl,
     resetData,
   } = useSitemapApi();
 
@@ -66,10 +68,11 @@ export default function SitemapPage() {
   };
 
   const handleExportUrls = () => {
-    window.open(getExportUrl('csv'), '_blank');
+    window.open(getExportFilteredUrl(exportFormat), '_blank');
   };
 
   const hasData = uploadResponse !== null;
+  const hasFilteredUrls = filterResponse && filterResponse.filtered_urls.length > 0;
 
   // 切换选项卡内容
   const renderTabContent = () => {
@@ -135,6 +138,28 @@ export default function SitemapPage() {
               >
                 导出合并后的Sitemap
               </Button>
+              
+              {/* 新增：导出筛选后的URLs按钮 - 使用div包装添加title */}
+              <div className="inline-block" title={!hasFilteredUrls ? "请先应用筛选" : ""}>
+                <Button
+                  variant="secondary"
+                  icon={<FiExternalLink />}
+                  onClick={handleExportUrls}
+                  disabled={isUploading || isFiltering || !hasFilteredUrls}
+                >
+                  导出筛选后URLs
+                  <select 
+                    className="ml-1 py-0 px-1 border-none bg-transparent focus:ring-0 text-sm"
+                    value={exportFormat}
+                    onChange={(e) => setExportFormat(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="csv">CSV</option>
+                    <option value="txt">TXT</option>
+                    <option value="xml">XML</option>
+                  </select>
+                </Button>
+              </div>
               
               <Button
                 variant="secondary"

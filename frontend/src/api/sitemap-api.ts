@@ -64,3 +64,8 @@ export const analyzeSitemap = async (detailed: boolean = false): Promise<Sitemap
 export const exportMergedSitemap = (format: string = 'xml'): string => {
   return `${API_BASE_URL}/sitemap/export?format=${format}`;
 };
+
+// 导出筛选后的URLs
+export const exportFilteredUrls = (format: string = 'csv'): string => {
+  return `${API_BASE_URL}/sitemap/export-filtered?format=${format}`;
+};
