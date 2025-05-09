@@ -5,6 +5,7 @@ import {
   FilterResponse,
   BrandOverlapResponse,
   FilterRangeValues,
+  KeywordFilterResponse,
 } from '../types';
 
 // API base URL
@@ -58,6 +59,12 @@ export const exportData = (): string => {
 // Export unique keywords data
 export const exportUniqueData = (): string => {
   return `${API_BASE_URL}/export-unique`;
+};
+
+// Filter by keyword
+export const filterByKeyword = async (keyword: string): Promise<KeywordFilterResponse> => {
+  const response = await api.post<KeywordFilterResponse>('/keyword-filter', { keyword });
+  return response.data;
 };
 
 // Check API health

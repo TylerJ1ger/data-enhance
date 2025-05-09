@@ -174,3 +174,63 @@ class CSVProcessor:
                 keyword_frequency_max
             ]
         }
+        
+    def filter_by_keyword(self, keyword: str) -> Dict[str, Any]:
+        """Filter data by a specific keyword and return its position, URL, and traffic across different brands."""
+        if self.filtered_data.empty:
+            return {"results": []}
+        
+        # Filter for the specific keyword (case insensitive)
+        keyword_data = self.filtered_data[self.filtered_data['Keyword'].str.lower() == keyword.lower()]
+        
+        if keyword_data.empty:
+            return {"results": []}
+        
+        # Check both possible column names for traffic data
+        traffic_column = None
+        if 'Traffic' in keyword_data.columns:
+            traffic_column = 'Traffic'
+        elif 'Search Volume' in keyword_data.columns:
+            traffic_column = 'Search Volume'
+        
+        # Extract relevant columns
+        required_columns = ['Brand', 'Position', 'URL']
+        if traffic_column:
+            required_columns.append(traffic_column)
+        
+        # 确保只使用存在的列
+        available_columns = [col for col in required_columns if col in keyword_data.columns]
+        
+        # 如果缺少必要的列，返回空结果
+        if 'Brand' not in available_columns or len(available_columns) < 2:
+            return {"results": []}
+        
+        # 准备所有数据项
+        results = []
+        for _, row in keyword_data.iterrows():
+            brand = row['Brand'] if pd.notna(row['Brand']) else "未知品牌"
+            if brand == '':
+                brand = "未知品牌"
+                
+            item = {
+                "keyword": keyword,
+                "brand": brand
+            }
+            
+            # 添加可用的列
+            if 'Position' in available_columns:
+                item["position"] = float(row['Position']) if pd.notna(row['Position']) else None
+            
+            if 'URL' in available_columns:
+                item["url"] = row['URL'] if pd.notna(row['URL']) else None
+            
+            # 处理流量数据，优先使用找到的流量列
+            if traffic_column and traffic_column in available_columns:
+                item["traffic"] = float(row[traffic_column]) if pd.notna(row[traffic_column]) else None
+            
+            results.append(item)
+        
+        # 按照品牌名称排序结果
+        results.sort(key=lambda x: x.get("brand", ""))
+        
+        return {"results": results}

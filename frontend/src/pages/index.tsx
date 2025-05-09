@@ -9,6 +9,7 @@ import FileStats from '../components/dashboard/FileStats';
 import FilterPanel from '../components/dashboard/FilterPanel';
 import BrandOverlap from '../components/dashboard/BrandOverlap';
 import KeywordChart from '../components/visualizations/KeywordChart';
+import KeywordFilter from '../components/dashboard/KeywordFilter';
 import { useApi } from '../hooks/useApi';
 
 export default function Home() {
@@ -18,16 +19,19 @@ export default function Home() {
     isFiltering,
     isLoadingOverlap,
     isLoadingRanges,
+    isLoadingKeywordFilter,
     fileStats,
     mergedStats,
     filteredStats,
     keywordCounts,
     brandOverlapData,
+    keywordFilterResults,
     filterRanges,
     uploadFiles,
     applyFilters,
+    filterByKeyword,
     getExportUrl,
-    getExportUniqueUrl, // 新增导出唯一数据URL方法
+    getExportUniqueUrl,
     resetData,
   } = useApi();
 
@@ -153,6 +157,14 @@ export default function Home() {
                 <h3 className="text-lg font-medium text-gray-800 mb-4">Keyword Distribution</h3>
                 <KeywordChart keywordCounts={keywordCounts} />
               </div>
+
+              {/* 新增的关键词筛选组件 */}
+              <KeywordFilter
+                onFilter={filterByKeyword}
+                results={keywordFilterResults}
+                isLoading={isLoadingKeywordFilter}
+                disabled={isUploading || !hasData}
+              />
 
               <BrandOverlap
                 brandOverlapData={brandOverlapData}

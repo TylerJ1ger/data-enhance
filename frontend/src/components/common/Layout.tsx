@@ -1,6 +1,8 @@
 import React, { ReactNode } from 'react';
-import { FiFileText, FiFilter, FiBarChart2, FiDownload } from 'react-icons/fi';
+import { FiFileText, FiFilter, FiBarChart2, FiDownload, FiMap } from 'react-icons/fi';
 import Head from 'next/head';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 interface LayoutProps {
   children: ReactNode;
@@ -11,11 +13,17 @@ const Layout: React.FC<LayoutProps> = ({
   children, 
   title = 'CSV Processor Tool' 
 }) => {
+  const router = useRouter();
+  
+  // 添加路由判断，确定当前页面
+  const isHome = router.pathname === '/';
+  const isSitemap = router.pathname === '/sitemap';
+  
   return (
     <>
       <Head>
         <title>{title}</title>
-        <meta name="description" content="CSV Processing Tool" />
+        <meta name="description" content="CSV & Sitemap Processing Tool" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
@@ -29,9 +37,36 @@ const Layout: React.FC<LayoutProps> = ({
                 <div className="flex-shrink-0 flex items-center">
                   <FiFileText className="h-8 w-8 text-primary-600" />
                   <span className="ml-2 text-xl font-bold text-gray-800">
-                    CSV Processor Tool
+                    数据分析工具
                   </span>
                 </div>
+                
+                {/* 导航链接 - 修改后的Link组件用法 */}
+                <nav className="ml-8 flex space-x-4">
+                  <Link 
+                    href="/" 
+                    className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
+                      isHome
+                        ? 'border-primary-500 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                  >
+                    <FiBarChart2 className="mr-1 h-4 w-4" />
+                    关键词分析
+                  </Link>
+                  
+                  <Link 
+                    href="/sitemap" 
+                    className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
+                      isSitemap
+                        ? 'border-primary-500 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                  >
+                    <FiMap className="mr-1 h-4 w-4" />
+                    Sitemap分析
+                  </Link>
+                </nav>
               </div>
             </div>
           </div>
@@ -48,7 +83,7 @@ const Layout: React.FC<LayoutProps> = ({
         <footer className="bg-white border-t border-gray-200">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="py-4 text-center text-sm text-gray-500">
-              &copy; {new Date().getFullYear()} CSV Processor Tool
+              &copy; {new Date().getFullYear()} CSV & Sitemap Processor Tool
             </div>
           </div>
         </footer>

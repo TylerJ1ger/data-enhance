@@ -9,6 +9,7 @@ import {
   FilterRangeValues,
   FileStats,
   DataStats,
+  KeywordFilterResponse,
 } from '../types';
 
 export const useApi = () => {
@@ -17,6 +18,7 @@ export const useApi = () => {
   const [isFiltering, setIsFiltering] = useState(false);
   const [isLoadingOverlap, setIsLoadingOverlap] = useState(false);
   const [isLoadingRanges, setIsLoadingRanges] = useState(false);
+  const [isLoadingKeywordFilter, setIsLoadingKeywordFilter] = useState(false);
 
   // State for response data
   const [fileStats, setFileStats] = useState<FileStats[]>([]);
@@ -24,12 +26,13 @@ export const useApi = () => {
   const [filteredStats, setFilteredStats] = useState<DataStats | null>(null);
   const [keywordCounts, setKeywordCounts] = useState<Record<string, number>>({});
   const [brandOverlapData, setBrandOverlapData] = useState<BrandOverlapResponse | null>(null);
+  const [keywordFilterResults, setKeywordFilterResults] = useState<KeywordFilterResponse | null>(null);
   const [filterRanges, setFilterRanges] = useState<FilterRangeValues>({
     position: [0, 100],
     search_volume: [0, 1000000],
     keyword_difficulty: [0, 100],
     cpc: [0, 10],
-    keyword_frequency: [1, 100], // 新增关键词重复次数筛选范围
+    keyword_frequency: [1, 100], // 关键词重复次数筛选范围
   });
 
   // Check API health on mount
@@ -118,7 +121,7 @@ export const useApi = () => {
       const data = await api.getFilterRanges();
       setFilterRanges({
         ...data,
-        keyword_frequency: [1, 100], // 确保有关键词频率范围，即使API没有返回
+        keyword_frequency: data.keyword_frequency || [1, 100], // 确保有关键词频率范围，即使API没有返回
       });
       return data;
     } catch (error) {
@@ -130,12 +133,35 @@ export const useApi = () => {
     }
   }, []);
 
+  // Filter by keyword - 新增函数
+  const filterByKeyword = useCallback(async (keyword: string) => {
+    setIsLoadingKeywordFilter(true);
+    try {
+      const data = await api.filterByKeyword(keyword);
+      setKeywordFilterResults(data);
+      
+      if (data.results.length === 0) {
+        toast.info(`未找到匹配关键词 "${keyword}" 的数据`);
+      } else {
+        toast.success(`找到 ${data.results.length} 个品牌下的关键词 "${keyword}" 数据`);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error('Error filtering by keyword:', error);
+      toast.error('筛选关键词失败，请重试');
+      return null;
+    } finally {
+      setIsLoadingKeywordFilter(false);
+    }
+  }, []);
+
   // Get export URL
   const getExportUrl = useCallback(() => {
     return api.exportData();
   }, []);
 
-  // Get export unique URL - 新增函数
+  // Get export unique URL
   const getExportUniqueUrl = useCallback(() => {
     return api.exportUniqueData();
   }, []);
@@ -147,12 +173,13 @@ export const useApi = () => {
     setFilteredStats(null);
     setKeywordCounts({});
     setBrandOverlapData(null);
+    setKeywordFilterResults(null); // 重置关键词筛选结果
     setFilterRanges({
       position: [0, 100],
       search_volume: [0, 1000000],
       keyword_difficulty: [0, 100],
       cpc: [0, 10],
-      keyword_frequency: [1, 100], // 新增关键词重复次数筛选范围重置
+      keyword_frequency: [1, 100],
     });
   }, []);
 
@@ -162,11 +189,13 @@ export const useApi = () => {
     isFiltering,
     isLoadingOverlap,
     isLoadingRanges,
+    isLoadingKeywordFilter, // 新增状态
     fileStats,
     mergedStats,
     filteredStats,
     keywordCounts,
     brandOverlapData,
+    keywordFilterResults, // 新增状态
     filterRanges,
     
     // Actions
@@ -174,8 +203,9 @@ export const useApi = () => {
     applyFilters,
     fetchBrandOverlap,
     fetchFilterRanges,
+    filterByKeyword, // 新增函数
     getExportUrl,
-    getExportUniqueUrl, // 新增导出唯一数据URL函数
+    getExportUniqueUrl,
     resetData,
   };
 };
