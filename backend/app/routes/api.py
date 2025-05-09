@@ -27,7 +27,12 @@ class KeywordFilterRequest(BaseModel):
 class SitemapFilterRequest(BaseModel):
     domain: Optional[str] = None
     path: Optional[str] = None
+    path_filter_type: Optional[str] = "contains"  # 新增路径筛选类型
     depth: Optional[int] = None
+
+class FilteredVisualizationRequest(BaseModel):
+    visualization_type: str = "tree"
+    urls: List[str] = []
 
 @router.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
@@ -119,7 +124,7 @@ async def get_filter_ranges():
     """
     return csv_processor.get_filter_ranges()
 
-# 以下是新增的Sitemap相关API端点
+# 以下是Sitemap相关API端点
 
 @router.post("/sitemap/upload")
 async def upload_sitemap_files(files: List[UploadFile] = File(...)):
@@ -143,6 +148,18 @@ async def get_sitemap_visualization(visualization_type: str = "tree"):
     
     return result
 
+@router.post("/sitemap/filtered-visualization")
+async def get_filtered_visualization(request: FilteredVisualizationRequest):
+    """
+    Get visualization data for a filtered set of URLs.
+    """
+    result = sitemap_processor.get_filtered_visualization_data(
+        request.visualization_type,
+        request.urls
+    )
+    
+    return result
+
 @router.post("/sitemap/filter")
 async def filter_sitemap(filters: SitemapFilterRequest):
     """
@@ -151,6 +168,7 @@ async def filter_sitemap(filters: SitemapFilterRequest):
     result = sitemap_processor.filter_urls({
         "domain": filters.domain,
         "path": filters.path,
+        "path_filter_type": filters.path_filter_type,  # 新增路径筛选类型
         "depth": filters.depth
     })
     

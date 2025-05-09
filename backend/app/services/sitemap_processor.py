@@ -162,6 +162,22 @@ class SitemapProcessor:
         else:
             return {"error": "Unsupported visualization type"}
     
+    def get_filtered_visualization_data(self, visualization_type: str = "tree", urls: List[str] = None) -> Dict[str, Any]:
+        """获取筛选后的URL的可视化数据"""
+        if not urls or len(urls) == 0:
+            # 如果没有提供URLs，返回所有URL的可视化
+            return self.get_visualization_data(visualization_type)
+        
+        # 将URL列表转换为集合以进行可视化处理
+        url_set = set(urls)
+        
+        if visualization_type == "tree":
+            return self._get_filtered_tree_visualization_data(url_set)
+        elif visualization_type == "graph":
+            return self._get_filtered_graph_visualization_data(url_set)
+        else:
+            return {"error": "Unsupported visualization type"}
+    
     def _get_tree_visualization_data(self) -> Dict[str, Any]:
         """获取树形结构的可视化数据"""
         # 递归构建树
@@ -233,6 +249,92 @@ class SitemapProcessor:
                     current_level.append(new_node)
                     current_level = new_node["children"] if new_node["children"] is not None else []
         
+        # 特殊处理：如果只有一个域名，直接返回该域名节点，不显示root
+        if len(domains) == 1:
+            domain_node = list(domains.values())[0]
+            return domain_node
+        
+        # 将所有域名添加为根节点的子节点
+        tree_data["children"] = list(domains.values())
+        
+        return tree_data
+    
+    def _get_filtered_tree_visualization_data(self, urls: Set[str]) -> Dict[str, Any]:
+        """获取筛选后URL的树形结构可视化数据"""
+        # 递归构建树
+        def build_tree(url_dict, parent_name=""):
+            result = []
+            for name, value in url_dict.items():
+                current_name = f"{parent_name}/{name}" if parent_name else name
+                if isinstance(value, dict):
+                    # 这是一个目录
+                    node = {
+                        "name": name,
+                        "path": current_name,
+                        "children": build_tree(value, current_name)
+                    }
+                else:
+                    # 这是一个叶子节点（URL）
+                    node = {
+                        "name": name,
+                        "path": current_name,
+                        "value": value,  # URL访问次数或其他指标
+                        "isLeaf": True
+                    }
+                result.append(node)
+            return result
+        
+        # 从URL层次结构构建树
+        tree_data = {
+            "name": "root",
+            "children": []
+        }
+        
+        # 按照域名分组
+        domains = {}
+        for url in urls:
+            parsed = urllib.parse.urlparse(url)
+            domain = parsed.netloc
+            if domain not in domains:
+                domains[domain] = {
+                    "name": domain,
+                    "children": []
+                }
+            
+            # 分解路径
+            path_parts = [p for p in parsed.path.split('/') if p]
+            
+            # 将此URL添加到相应的域名中
+            current_level = domains[domain]["children"]
+            current_path = ""
+            
+            # 构建目录结构
+            for i, part in enumerate(path_parts):
+                current_path += f"/{part}"
+                
+                # 检查这个路径是否已经存在
+                exists = False
+                for node in current_level:
+                    if node["name"] == part:
+                        exists = True
+                        current_level = node["children"]
+                        break
+                
+                if not exists:
+                    new_node = {
+                        "name": part,
+                        "path": f"{domain}{current_path}",
+                        "children": [] if i < len(path_parts) - 1 else None,
+                        "isLeaf": i == len(path_parts) - 1
+                    }
+                    current_level.append(new_node)
+                    current_level = new_node["children"] if new_node["children"] is not None else []
+        
+        # 特殊处理：如果只有一个域名，直接返回该域名节点，不显示root
+        if len(domains) == 1:
+            domain_node = list(domains.values())[0]
+            return domain_node
+        
         # 将所有域名添加为根节点的子节点
         tree_data["children"] = list(domains.values())
         
@@ -248,6 +350,64 @@ class SitemapProcessor:
         id_counter = 0
         
         for url in self.merged_urls:
+            parsed = urllib.parse.urlparse(url)
+            domain = parsed.netloc
+            path = parsed.path
+            
+            # 域名节点
+            if domain not in url_to_id:
+                url_to_id[domain] = id_counter
+                nodes.append({
+                    "id": id_counter,
+                    "name": domain,
+                    "category": 0,  # 域名类别
+                    "symbolSize": 30  # 较大的节点
+                })
+                id_counter += 1
+            
+            # 分解路径并创建每个部分的节点
+            current_path = ""
+            parent_id = url_to_id[domain]
+            
+            path_parts = [p for p in path.split('/') if p]
+            for i, part in enumerate(path_parts):
+                current_path += f"/{part}"
+                full_path = f"{domain}{current_path}"
+                
+                if full_path not in url_to_id:
+                    url_to_id[full_path] = id_counter
+                    nodes.append({
+                        "id": id_counter,
+                        "name": part,
+                        "category": 1,  # 路径类别
+                        "symbolSize": 20 if i == len(path_parts) - 1 else 15  # 页面节点大一些
+                    })
+                    
+                    # 创建与父节点的连接
+                    links.append({
+                        "source": parent_id,
+                        "target": id_counter
+                    })
+                    
+                    id_counter += 1
+                
+                parent_id = url_to_id[full_path]
+        
+        return {
+            "nodes": nodes,
+            "links": links
+        }
+    
+    def _get_filtered_graph_visualization_data(self, urls: Set[str]) -> Dict[str, Any]:
+        """获取筛选后URL的图形结构可视化数据"""
+        nodes = []
+        links = []
+        
+        # 为每个URL创建节点
+        url_to_id = {}
+        id_counter = 0
+        
+        for url in urls:
             parsed = urllib.parse.urlparse(url)
             domain = parsed.netloc
             path = parsed.path
@@ -331,6 +491,7 @@ class SitemapProcessor:
         
         domain_filter = filters.get("domain")
         path_filter = filters.get("path")
+        path_filter_type = filters.get("path_filter_type", "contains")  # 新增路径筛选类型
         depth_filter = filters.get("depth")
         
         for url in self.merged_urls:
@@ -340,9 +501,12 @@ class SitemapProcessor:
             if domain_filter and domain_filter not in parsed.netloc:
                 continue
             
-            # 路径筛选
-            if path_filter and path_filter not in parsed.path:
-                continue
+            # 路径筛选 - 支持包含和不包含两种模式
+            if path_filter:
+                if path_filter_type == "contains" and path_filter not in parsed.path:
+                    continue
+                elif path_filter_type == "not_contains" and path_filter in parsed.path:
+                    continue
             
             # 深度筛选
             if depth_filter is not None:

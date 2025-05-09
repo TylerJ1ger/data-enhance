@@ -21,6 +21,7 @@ export const useSitemapApi = () => {
   const [visualizationData, setVisualizationData] = useState<SitemapVisualizationData | null>(null);
   const [filterResponse, setFilterResponse] = useState<SitemapFilterResponse | null>(null);
   const [analysisResponse, setAnalysisResponse] = useState<SitemapAnalysisResponse | null>(null);
+  const [currentVisualizationType, setCurrentVisualizationType] = useState<string>('tree');
 
   // Upload sitemap files
   const uploadSitemaps = useCallback(async (files: File[]) => {
@@ -47,8 +48,15 @@ export const useSitemapApi = () => {
   // Fetch visualization data
   const fetchVisualizationData = useCallback(async (visualizationType: string = 'tree') => {
     setIsLoadingVisualization(true);
+    setCurrentVisualizationType(visualizationType);
     try {
-      const data = await sitemapApi.getSitemapVisualization(visualizationType);
+      // 如果有筛选结果，使用筛选后的URL获取可视化数据
+      let data;
+      if (filterResponse && filterResponse.filtered_urls.length > 0) {
+        data = await sitemapApi.getFilteredVisualization(visualizationType, filterResponse.filtered_urls);
+      } else {
+        data = await sitemapApi.getSitemapVisualization(visualizationType);
+      }
       setVisualizationData(data);
       return data;
     } catch (error) {
@@ -58,7 +66,7 @@ export const useSitemapApi = () => {
     } finally {
       setIsLoadingVisualization(false);
     }
-  }, []);
+  }, [filterResponse]);
 
   // Filter sitemap URLs
   const filterSitemap = useCallback(async (filters: SitemapFilterRequest) => {
@@ -69,6 +77,9 @@ export const useSitemapApi = () => {
       
       toast.success(`筛选出 ${data.total_filtered} 个URL`);
       
+      // 重新获取可视化数据，应用筛选结果
+      await fetchVisualizationData(currentVisualizationType);
+      
       return data;
     } catch (error) {
       console.error('Error filtering sitemap:', error);
@@ -77,7 +88,7 @@ export const useSitemapApi = () => {
     } finally {
       setIsFiltering(false);
     }
-  }, []);
+  }, [fetchVisualizationData, currentVisualizationType]);
 
   // Analyze sitemap structure
   const analyzeSitemap = useCallback(async (detailed: boolean = false) => {
@@ -107,6 +118,7 @@ export const useSitemapApi = () => {
     setVisualizationData(null);
     setFilterResponse(null);
     setAnalysisResponse(null);
+    setCurrentVisualizationType('tree');
   }, []);
 
   return {
@@ -119,6 +131,7 @@ export const useSitemapApi = () => {
     visualizationData,
     filterResponse,
     analysisResponse,
+    currentVisualizationType,
     
     // Actions
     uploadSitemaps,

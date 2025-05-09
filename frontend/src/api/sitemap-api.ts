@@ -38,6 +38,16 @@ export const getSitemapVisualization = async (visualizationType: string = 'tree'
   return response.data;
 };
 
+// Get filtered visualization data
+export const getFilteredVisualization = async (visualizationType: string = 'tree', urls: string[] = []): Promise<SitemapVisualizationData> => {
+  // 发送可视化数据请求，附带筛选后的URL列表
+  const response = await api.post<SitemapVisualizationData>(`/sitemap/filtered-visualization`, {
+    visualization_type: visualizationType,
+    urls: urls
+  });
+  return response.data;
+};
+
 // Filter sitemap URLs
 export const filterSitemap = async (filters: SitemapFilterRequest): Promise<SitemapFilterResponse> => {
   const response = await api.post<SitemapFilterResponse>('/sitemap/filter', filters);
