@@ -76,8 +76,8 @@ const KeywordFilter: React.FC<KeywordFilterProps> = ({
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">品牌</th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">关键词</th>
                       <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">排名位置</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">URL</th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">搜索量</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">流量</th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">链接</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -91,21 +91,21 @@ const KeywordFilter: React.FC<KeywordFilterProps> = ({
                             : '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                          {item.traffic !== undefined && item.traffic !== null 
+                            ? item.traffic.toLocaleString() 
+                            : '-'}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-primary-600">
                           {item.url ? (
                             <a 
                               href={item.url.startsWith('http') ? item.url : `https://${item.url}`} 
                               target="_blank" 
                               rel="noopener noreferrer"
-                              className="text-primary-600 hover:underline truncate block max-w-xs"
+                              className="hover:underline"
                             >
-                              {item.url}
+                              查看链接
                             </a>
                           ) : '-'}
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {item.traffic !== undefined && item.traffic !== null 
-                            ? item.traffic.toLocaleString() 
-                            : '-'}
                         </td>
                       </tr>
                     ))}
