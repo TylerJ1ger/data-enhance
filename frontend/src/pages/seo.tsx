@@ -117,6 +117,7 @@ export default function SEOPage() {
                         <FiFileText className="text-primary-600 mr-2" />
                         <span className="text-sm font-medium">分析的文件</span>
                       </div>
+                      <br/>
                       <span className="text-sm">
                         {analysisResults?.file_name}
                       </span>

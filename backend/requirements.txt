@@ -10,3 +10,5 @@ lxml
 requests
 beautifulsoup4
 validators
+language-tool-python
+textstat

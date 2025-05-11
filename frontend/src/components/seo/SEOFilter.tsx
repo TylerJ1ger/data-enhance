@@ -66,7 +66,7 @@ const SEOFilter: React.FC<SEOFilterProps> = ({
             <ul className="list-disc list-inside">
               <li>高优先级: 严重影响网站SEO表现，建议立即修复</li>
               <li>中优先级: 对SEO有一定影响，建议尽快处理</li>
-              <li>低优先级: 可能影响SEO效果，可以在有时间时处理</li>
+              <li>低优先级: 会影响SEO效果，在有时间时处理</li>
             </ul>
           </div>
           

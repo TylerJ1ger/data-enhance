@@ -302,7 +302,8 @@ async def get_seo_categories():
         {"id": "links", "name": "Links", "description": "链接相关问题，如内部链接、锚文本等"},
         {"id": "structured_data", "name": "Structured Data", "description": "结构化数据相关问题"},
         {"id": "mobile", "name": "Mobile", "description": "移动端优化相关问题"},
-        {"id": "accessibility", "name": "Accessibility", "description": "无障碍访问相关问题"}
+        {"id": "accessibility", "name": "Accessibility", "description": "无障碍访问相关问题"},
+        {"id": "robots_directives", "name": "Robots Directives", "description": "机器人指令相关问题，包括meta robots标签和X-Robots-Tag设置"}
     ]
     return {"categories": categories}
 

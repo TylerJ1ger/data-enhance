@@ -24,6 +24,8 @@ yarn-error.log*
 .pnpm-debug.log*
 logs/
 *.log
+file-structure.txt
+formatted-tree.txt
 
 # Local environment files
 .env*.local
