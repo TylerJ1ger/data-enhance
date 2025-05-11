@@ -31,7 +31,7 @@ export const useSitemapApi = () => {
       setUploadResponse(data);
       
       // After upload, fetch visualization data
-      await fetchVisualizationData();
+      await fetchVisualizationData('tree'); // 使用默认的树形图
       
       toast.success(`成功处理 ${files.length} 个文件，包含 ${data.total_urls} 个URL`);
       
@@ -50,18 +50,29 @@ export const useSitemapApi = () => {
     setIsLoadingVisualization(true);
     setCurrentVisualizationType(visualizationType);
     try {
+      console.log('Fetching visualization data for type:', visualizationType);
+      
       // 如果有筛选结果，使用筛选后的URL获取可视化数据
       let data;
       if (filterResponse && filterResponse.filtered_urls.length > 0) {
-        data = await sitemapApi.getFilteredVisualization(visualizationType, filterResponse.filtered_urls);
+        data = await sitemapApi.getFilteredVisualization('tree', filterResponse.filtered_urls);
       } else {
-        data = await sitemapApi.getSitemapVisualization(visualizationType);
+        data = await sitemapApi.getSitemapVisualization('tree');
       }
+      
+      // 检查数据是否有效
+      if (!data) {
+        console.error('Received null visualization data');
+        toast.error('获取可视化数据失败：数据为空');
+        return null;
+      }
+      
+      console.log('Received visualization data:', data);
       setVisualizationData(data);
       return data;
     } catch (error) {
       console.error('Error fetching visualization data:', error);
-      toast.error('获取可视化数据失败');
+      toast.error('获取可视化数据失败：' + (error.message || '未知错误'));
       return null;
     } finally {
       setIsLoadingVisualization(false);
@@ -112,7 +123,7 @@ export const useSitemapApi = () => {
     return sitemapApi.exportMergedSitemap(format);
   }, []);
 
-  // Get export URL for filtered URLs (新增)
+  // Get export URL for filtered URLs
   const getExportFilteredUrl = useCallback((format: string = 'csv') => {
     return sitemapApi.exportFilteredUrls(format);
   }, []);
@@ -144,7 +155,7 @@ export const useSitemapApi = () => {
     filterSitemap,
     analyzeSitemap,
     getExportUrl,
-    getExportFilteredUrl, // 新增
+    getExportFilteredUrl,
     resetData,
   };
 };

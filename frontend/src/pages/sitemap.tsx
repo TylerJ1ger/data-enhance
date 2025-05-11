@@ -83,6 +83,7 @@ export default function SitemapPage() {
             <h3 className="text-lg font-medium text-gray-800 mb-4">网站结构可视化</h3>
             <SitemapChart
               visualizationData={visualizationData as any}
+              visualizationType={visualizationType}
               isLoading={isLoadingVisualization}
               height={700}
             />
@@ -139,7 +140,7 @@ export default function SitemapPage() {
                 导出合并后的Sitemap
               </Button>
               
-              {/* 新增：导出筛选后的URLs按钮 - 使用div包装添加title */}
+              {/* 导出筛选后的URLs按钮 - 使用div包装添加title */}
               <div className="inline-block" title={!hasFilteredUrls ? "请先应用筛选" : ""}>
                 <Button
                   variant="secondary"
@@ -227,9 +228,47 @@ export default function SitemapPage() {
                       className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
                       disabled={isLoadingVisualization || !hasData}
                     >
-                      <option value="tree">树形图</option>
-                      <option value="graph">关系图</option>
+                      <option value="tree">标准树形图 - 传统层级结构</option>
+                      <option value="tree-radial">径向树形图 - 放射状结构</option>
+                      <option value="graph-label-overlap">标签网络图 - 连接关系</option>
+                      <option value="graph-circular-layout">环形布局图 - 均匀分布</option>
+                      <option value="graph-webkit-dep">依赖关系图 - 复杂结构</option>
+                      <option value="graph-npm">箭头流向图 - 方向指示</option>
                     </select>
+                  </div>
+                  
+                  {isLoadingVisualization && (
+                    <div className="bg-blue-50 p-3 rounded-md text-sm text-blue-700 flex items-center">
+                      <div className="animate-spin h-4 w-4 border-2 border-blue-700 border-t-transparent rounded-full mr-2"></div>
+                      正在加载{visualizationType === 'tree' ? '树形图' : 
+                              visualizationType === 'tree-radial' ? '径向树形图' : 
+                              visualizationType === 'graph-label-overlap' ? '标签网络图' : 
+                              visualizationType === 'graph-circular-layout' ? '环形布局图' : 
+                              visualizationType === 'graph-webkit-dep' ? '依赖关系图' : 
+                              visualizationType === 'graph-npm' ? '箭头流向图' : 
+                              ''}可视化...
+                    </div>
+                  )}
+                  
+                  <div className="bg-gray-50 p-3 rounded-md text-sm text-gray-600">
+                    <p className="font-medium text-gray-700 mb-1">当前图表: {
+                      visualizationType === 'tree' ? '标准树形图' : 
+                      visualizationType === 'tree-radial' ? '径向树形图' : 
+                      visualizationType === 'graph-label-overlap' ? '标签网络图' : 
+                      visualizationType === 'graph-circular-layout' ? '环形布局图' : 
+                      visualizationType === 'graph-webkit-dep' ? '依赖关系图' : 
+                      visualizationType === 'graph-npm' ? '箭头流向图' : 
+                      '未知图表类型'
+                    }</p>
+                    <p>{
+                      visualizationType === 'tree' ? '展示标准的网站层级结构，清晰直观' : 
+                      visualizationType === 'tree-radial' ? '以放射状展示树形结构，适合大型站点' : 
+                      visualizationType === 'graph-label-overlap' ? '显示节点之间的连接关系，自动避免标签重叠' : 
+                      visualizationType === 'graph-circular-layout' ? '将节点均匀分布在圆周上，突出整体结构' : 
+                      visualizationType === 'graph-webkit-dep' ? '复杂网站结构的依赖关系可视化' : 
+                      visualizationType === 'graph-npm' ? '带有方向指示的网络图，展示页面间导航关系' : 
+                      '请选择图表类型'
+                    }</p>
                   </div>
                 </div>
               </div>
