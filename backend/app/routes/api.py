@@ -177,6 +177,14 @@ async def filter_sitemap(filters: SitemapFilterRequest):
     
     return result
 
+@router.get("/sitemap/common-paths")
+async def get_common_paths(min_count: int = 5):
+    """
+    获取常见URL路径(出现频率>=min_count)
+    """
+    common_paths = sitemap_processor.get_common_paths(min_count)
+    return {"common_paths": common_paths}
+
 @router.get("/sitemap/analyze")
 async def analyze_sitemap(detailed: bool = False):
     """

@@ -21,14 +21,17 @@ export default function SitemapPage() {
     isFiltering,
     isLoadingVisualization,
     isAnalyzing,
+    isLoadingCommonPaths,
     uploadResponse,
     visualizationData,
     filterResponse,
     analysisResponse,
+    commonPaths,
     uploadSitemaps,
     fetchVisualizationData,
     filterSitemap,
     analyzeSitemap,
+    fetchCommonPaths,
     getExportUrl,
     getExportFilteredUrl,
     resetData,
@@ -43,6 +46,9 @@ export default function SitemapPage() {
       
       // 获取详细分析
       await analyzeSitemap(true);
+      
+      // 获取常用路径
+      await fetchCommonPaths(5);
     } catch (error) {
       console.error('Error processing sitemap files:', error);
     }
@@ -210,7 +216,9 @@ export default function SitemapPage() {
               <SitemapFilter
                 onApplyFilter={handleApplyFilter}
                 domains={uploadResponse?.top_level_domains || []}
+                commonPaths={commonPaths || []}
                 isLoading={isFiltering}
+                isLoadingCommonPaths={isLoadingCommonPaths}
                 disabled={isUploading}
               />
               

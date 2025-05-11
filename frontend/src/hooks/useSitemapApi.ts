@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import * as sitemapApi from '../api/sitemap-api';
 import {
@@ -15,6 +15,7 @@ export const useSitemapApi = () => {
   const [isFiltering, setIsFiltering] = useState(false);
   const [isLoadingVisualization, setIsLoadingVisualization] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isLoadingCommonPaths, setIsLoadingCommonPaths] = useState(false);
 
   // State for response data
   const [uploadResponse, setUploadResponse] = useState<SitemapUploadResponse | null>(null);
@@ -22,6 +23,29 @@ export const useSitemapApi = () => {
   const [filterResponse, setFilterResponse] = useState<SitemapFilterResponse | null>(null);
   const [analysisResponse, setAnalysisResponse] = useState<SitemapAnalysisResponse | null>(null);
   const [currentVisualizationType, setCurrentVisualizationType] = useState<string>('tree');
+  const [commonPaths, setCommonPaths] = useState<string[]>([]);
+
+  // 获取常用路径
+  const fetchCommonPaths = useCallback(async (minCount: number = 5) => {
+    setIsLoadingCommonPaths(true);
+    try {
+      const paths = await sitemapApi.getCommonPaths(minCount);
+      setCommonPaths(paths);
+      return paths;
+    } catch (error) {
+      console.error('Error fetching common paths:', error);
+      return [];
+    } finally {
+      setIsLoadingCommonPaths(false);
+    }
+  }, []);
+
+  // 在上传Sitemap后自动获取常用路径
+  useEffect(() => {
+    if (uploadResponse && uploadResponse.total_urls > 0) {
+      fetchCommonPaths();
+    }
+  }, [uploadResponse, fetchCommonPaths]);
 
   // Upload sitemap files
   const uploadSitemaps = useCallback(async (files: File[]) => {
@@ -55,9 +79,9 @@ export const useSitemapApi = () => {
       // 如果有筛选结果，使用筛选后的URL获取可视化数据
       let data;
       if (filterResponse && filterResponse.filtered_urls.length > 0) {
-        data = await sitemapApi.getFilteredVisualization('tree', filterResponse.filtered_urls);
+        data = await sitemapApi.getFilteredVisualization(visualizationType, filterResponse.filtered_urls);
       } else {
-        data = await sitemapApi.getSitemapVisualization('tree');
+        data = await sitemapApi.getSitemapVisualization(visualizationType);
       }
       
       // 检查数据是否有效
@@ -79,18 +103,42 @@ export const useSitemapApi = () => {
     }
   }, [filterResponse]);
 
-  // Filter sitemap URLs
+  // Filter sitemap URLs - 修复后的版本
   const filterSitemap = useCallback(async (filters: SitemapFilterRequest) => {
     setIsFiltering(true);
     try {
-      const data = await sitemapApi.filterSitemap(filters);
+      // 预处理筛选条件，确保paths是有效数组
+      const processedFilters = {
+        ...filters,
+        paths: filters.paths?.filter(p => p && p.trim() !== '') || []
+      };
+      
+      if (filters.path && filters.path.trim() !== '' && 
+          !processedFilters.paths.includes(filters.path)) {
+        processedFilters.paths.push(filters.path);
+      }
+      
+      const data = await sitemapApi.filterSitemap(processedFilters);
       setFilterResponse(data);
       
+      // 直接使用筛选后的URLs获取可视化数据
+      if (data && data.filtered_urls && data.filtered_urls.length > 0) {
+        try {
+          const vizData = await sitemapApi.getFilteredVisualization(
+            currentVisualizationType,
+            data.filtered_urls
+          );
+          
+          if (vizData) {
+            setVisualizationData(vizData);
+          }
+        } catch (vizError) {
+          console.error('Error updating visualization after filtering:', vizError);
+          // 继续执行，不影响主流程
+        }
+      }
+      
       toast.success(`筛选出 ${data.total_filtered} 个URL`);
-      
-      // 重新获取可视化数据，应用筛选结果
-      await fetchVisualizationData(currentVisualizationType);
-      
       return data;
     } catch (error) {
       console.error('Error filtering sitemap:', error);
@@ -99,7 +147,7 @@ export const useSitemapApi = () => {
     } finally {
       setIsFiltering(false);
     }
-  }, [fetchVisualizationData, currentVisualizationType]);
+  }, [currentVisualizationType]);
 
   // Analyze sitemap structure
   const analyzeSitemap = useCallback(async (detailed: boolean = false) => {
@@ -134,6 +182,7 @@ export const useSitemapApi = () => {
     setVisualizationData(null);
     setFilterResponse(null);
     setAnalysisResponse(null);
+    setCommonPaths([]);
     setCurrentVisualizationType('tree');
   }, []);
 
@@ -143,17 +192,20 @@ export const useSitemapApi = () => {
     isFiltering,
     isLoadingVisualization,
     isAnalyzing,
+    isLoadingCommonPaths,
     uploadResponse,
     visualizationData,
     filterResponse,
     analysisResponse,
     currentVisualizationType,
+    commonPaths,
     
     // Actions
     uploadSitemaps,
     fetchVisualizationData,
     filterSitemap,
     analyzeSitemap,
+    fetchCommonPaths,
     getExportUrl,
     getExportFilteredUrl,
     resetData,

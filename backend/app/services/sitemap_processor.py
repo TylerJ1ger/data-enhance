@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Tuple
 import xml.etree.ElementTree as ET
 import urllib.parse
 import re
@@ -480,6 +480,24 @@ class SitemapProcessor:
         if path_filter and path_filter not in paths_filter:
             paths_filter.append(path_filter)
         
+        # 确保paths_filter是一个列表，即使是空的
+        if paths_filter is None:
+            paths_filter = []
+        
+        # 预处理路径，过滤空路径
+        paths_filter = [p for p in paths_filter if p and p.strip()]
+        
+        # 如果没有有效的筛选条件，返回所有URL
+        if not domain_filter and not paths_filter and depth_filter is None:
+            filtered_urls = self.merged_urls.copy()
+            self.filtered_urls = filtered_urls
+            filtered_hierarchy = create_url_hierarchy(filtered_urls)
+            return {
+                "filtered_urls": list(filtered_urls),
+                "total_filtered": len(filtered_urls),
+                "url_hierarchy": filtered_hierarchy
+            }
+        
         for url in self.merged_urls:
             parsed = urllib.parse.urlparse(url)
             
@@ -498,20 +516,30 @@ class SitemapProcessor:
                 # 默认不匹配任何路径
                 path_matched = False
                 
-                for path_filter in paths_filter:
-                    if not path_filter:  # 跳过空路径
+                for path in paths_filter:
+                    if not path:  # 跳过空路径
                         continue
                     
+                    # 确保路径以斜杠开头，便于更精确的匹配
+                    if not path.startswith('/'):
+                        path = '/' + path
+                    
                     # 根据筛选类型进行匹配
-                    if path_filter_type == "contains" and path_filter in parsed.path:
-                        path_matched = True
-                        break
-                    elif path_filter_type == "not_contains" and path_filter not in parsed.path:
-                        path_matched = True
-                        break
+                    if path_filter_type == "contains":
+                        # 使用更精确的匹配方式
+                        if path in parsed.path:
+                            path_matched = True
+                            break  # 只需匹配任一路径即可
+                    elif path_filter_type == "not_contains":
+                        # 对于not_contains类型，一旦有一个路径包含在URL中，就不匹配
+                        if path in parsed.path:
+                            path_matched = False
+                            break  # 出现一个包含的路径就排除
+                        else:
+                            path_matched = True  # 至少有一个路径不包含
                 
                 # 如果没有匹配到任何路径，则跳过该URL
-                if not path_matched and paths_filter:
+                if not path_matched:
                     continue
             
             filtered_urls.add(url)
@@ -527,6 +555,36 @@ class SitemapProcessor:
             "total_filtered": len(filtered_urls),
             "url_hierarchy": filtered_hierarchy
         }
+    
+    def get_common_paths(self, min_count: int = 5) -> List[str]:
+        """提取常见路径，至少出现min_count次的路径"""
+        if not self.merged_urls:
+            return []
+        
+        path_counts = {}
+        
+        for url in self.merged_urls:
+            parsed = urllib.parse.urlparse(url)
+            path = parsed.path
+            
+            # 分割路径并逐级构建
+            parts = [p for p in path.split('/') if p]
+            current_path = ""
+            
+            for part in parts:
+                current_path += f"/{part}"
+                path_counts[current_path] = path_counts.get(current_path, 0) + 1
+        
+        # 筛选常见路径
+        common_paths = [
+            path for path, count in path_counts.items() 
+            if count >= min_count
+        ]
+        
+        # 按出现频率排序
+        common_paths.sort(key=lambda p: path_counts[p], reverse=True)
+        
+        return common_paths[:50]  # 限制返回数量
     
     def analyze_sitemap(self) -> Dict[str, Any]:
         """分析Sitemap的结构和特性"""
