@@ -60,7 +60,7 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
     try {
       console.log('Updating chart with visualization type:', visualizationType);
       console.log('Visualization data:', visualizationData);
-      
+
       let option;
 
       // 根据可视化类型选择不同的配置
@@ -349,7 +349,7 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
             ]
           };
           break;
-          
+
         case 'graph-npm':
           // NPM依赖关系图
           const npmData = prepareGraphData(visualizationData);
@@ -464,7 +464,7 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
 
       chart.setOption(option, true);
       chart.resize();
-      
+
       // 数据加载成功后清除错误状态
       if (error) {
         setError(null);
@@ -475,28 +475,34 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
     }
   }, [chart, visualizationData, visualizationType]);
 
-  // 将树形结构数据转换为图结构数据
+  // 修改 SitemapChart.tsx 中的 prepareGraphData 函数
   const prepareGraphData = (data: any) => {
     console.log('Preparing graph data from:', data);
-    
+
+    // 检测数据是否已经是图形结构
+    if (data && data.nodes && data.links && Array.isArray(data.nodes) && Array.isArray(data.links)) {
+      console.log('Data is already in graph format, returning as is');
+      return data; // 数据已经是图结构，直接返回
+    }
+
     const nodes: any[] = [];
     const links: any[] = [];
     let nodeId = 0;
-    
+
     // 用于跟踪节点ID的映射
     const nodeMap = new Map();
-    
+
     // 递归处理节点
     const processNode = (node: any, parentId: number | null = null, category: number = 0) => {
       if (!node || typeof node !== 'object') {
         console.error('Invalid node:', node);
         return;
       }
-      
+
       const currentId = nodeId++;
       const nodeName = node.name || 'Unnamed';
       nodeMap.set(nodeName + (node.path || ''), currentId);
-      
+
       // 添加节点
       nodes.push({
         id: currentId,
@@ -509,7 +515,7 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
           color: category === 0 ? '#0ea5e9' : '#22c55e'
         }
       });
-      
+
       // 如果有父节点，添加连接
       if (parentId !== null) {
         links.push({
@@ -517,7 +523,7 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
           target: currentId
         });
       }
-      
+
       // 处理子节点
       if (node.children && Array.isArray(node.children) && node.children.length > 0) {
         node.children.forEach((child: any) => {
@@ -525,13 +531,13 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
         });
       }
     };
-    
+
     // 处理根节点 - 注意处理不同的数据结构
     if (data) {
       // 如果是数组并且只有一个元素，直接处理该元素
       if (Array.isArray(data) && data.length === 1) {
         processNode(data[0], null, 0);
-      } 
+      }
       // 如果是单个对象，直接处理
       else if (!Array.isArray(data) && typeof data === 'object') {
         // 如果是包含children属性的对象
@@ -540,7 +546,7 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
         } else {
           processNode(data, null, 0);
         }
-      } 
+      }
       // 多个根节点的情况
       else if (Array.isArray(data) && data.length > 1) {
         // 创建一个虚拟根节点
@@ -554,14 +560,14 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
             color: '#0ea5e9'
           }
         });
-        
+
         // 将所有节点连接到虚拟根节点
         data.forEach(node => {
           processNode(node, rootId, 1);
         });
       }
     }
-    
+
     console.log('Processed nodes:', nodes.length, 'links:', links.length);
     return { nodes, links };
   };
@@ -625,7 +631,7 @@ const SitemapChart: React.FC<SitemapChartProps> = ({
         className="w-full bg-white rounded-lg border border-gray-200"
         style={{ height }}
       ></div>
-      
+
       <div className="mt-4 px-4 py-3 bg-blue-50 text-blue-800 rounded-md text-sm">
         <div className="font-medium">使用提示</div>
         <ul className="mt-1 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 list-disc list-inside">

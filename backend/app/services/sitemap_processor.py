@@ -159,16 +159,38 @@ class SitemapProcessor:
         return depth_counts
     
     def get_visualization_data(self, visualization_type: str = "tree") -> Dict[str, Any]:
-        """获取用于可视化的数据结构"""
-        if visualization_type == "tree":
+        """获取用于可视化的数据结构
+        
+        支持的可视化类型:
+        - tree: 标准树形图
+        - tree-radial: 径向树形图
+        - graph-label-overlap: 标签网络图
+        - graph-circular-layout: 环形布局图
+        - graph-webkit-dep: 依赖关系图
+        - graph-npm: 箭头流向图
+        """
+        # 判断可视化类型，将前端支持的所有类型映射到后端处理函数
+        if visualization_type.startswith("tree"):
+            # 所有树形图类型都使用相同的数据结构，前端会处理不同的布局
             return self._get_tree_visualization_data()
-        elif visualization_type == "graph":
+        elif visualization_type.startswith("graph"):
+            # 所有图形图表类型都使用相同的数据结构，前端会处理不同的布局
             return self._get_graph_visualization_data()
         else:
-            return {"error": "Unsupported visualization type"}
+            # 默认返回树形图数据
+            return self._get_tree_visualization_data()
     
     def get_filtered_visualization_data(self, visualization_type: str = "tree", urls: List[str] = None) -> Dict[str, Any]:
-        """获取筛选后的URL的可视化数据"""
+        """获取筛选后的URL的可视化数据
+        
+        支持的可视化类型:
+        - tree: 标准树形图
+        - tree-radial: 径向树形图
+        - graph-label-overlap: 标签网络图
+        - graph-circular-layout: 环形布局图
+        - graph-webkit-dep: 依赖关系图
+        - graph-npm: 箭头流向图
+        """
         if not urls or len(urls) == 0:
             # 如果没有提供URLs，返回所有URL的可视化
             return self.get_visualization_data(visualization_type)
@@ -176,12 +198,16 @@ class SitemapProcessor:
         # 将URL列表转换为集合以进行可视化处理
         url_set = set(urls)
         
-        if visualization_type == "tree":
+        # 判断可视化类型，将前端支持的所有类型映射到后端处理函数
+        if visualization_type.startswith("tree"):
+            # 所有树形图类型都使用相同的数据结构，前端会处理不同的布局
             return self._get_filtered_tree_visualization_data(url_set)
-        elif visualization_type == "graph":
+        elif visualization_type.startswith("graph"):
+            # 所有图形图表类型都使用相同的数据结构，前端会处理不同的布局
             return self._get_filtered_graph_visualization_data(url_set)
         else:
-            return {"error": "Unsupported visualization type"}
+            # 默认返回树形图数据
+            return self._get_filtered_tree_visualization_data(url_set)
     
     def _get_tree_visualization_data(self) -> Dict[str, Any]:
         """获取树形结构的可视化数据"""
