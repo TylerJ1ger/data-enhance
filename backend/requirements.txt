@@ -8,3 +8,5 @@ pydantic
 numpy
 lxml
 requests
+beautifulsoup4
+validators

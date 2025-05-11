@@ -1,5 +1,5 @@
 import React, { ReactNode } from 'react';
-import { FiFileText, FiFilter, FiBarChart2, FiDownload, FiMap } from 'react-icons/fi';
+import { FiFileText, FiFilter, FiBarChart2, FiDownload, FiMap, FiSearch } from 'react-icons/fi';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
@@ -18,6 +18,7 @@ const Layout: React.FC<LayoutProps> = ({
   // 添加路由判断，确定当前页面
   const isHome = router.pathname === '/';
   const isSitemap = router.pathname === '/sitemap';
+  const isSeo = router.pathname === '/seo';
   
   return (
     <>
@@ -65,6 +66,18 @@ const Layout: React.FC<LayoutProps> = ({
                   >
                     <FiMap className="mr-1 h-4 w-4" />
                     Sitemap分析
+                  </Link>
+                  
+                  <Link 
+                    href="/seo" 
+                    className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
+                      isSeo
+                        ? 'border-primary-500 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                  >
+                    <FiSearch className="mr-1 h-4 w-4" />
+                    单页SEO分析
                   </Link>
                 </nav>
               </div>

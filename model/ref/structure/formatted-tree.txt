@@ -10,6 +10,7 @@
 │   │   ├── services/
 │   │   │   ├── __init__.py
 │   │   │   ├── csv_processor.py
+│   │   │   ├── seo_processor.py
 │   │   │   └── sitemap_processor.py
 │   │   └── utils/
 │   │       ├── __init__.py
@@ -30,6 +31,7 @@
 │   ├── src/
 │   │   ├── api/
 │   │   │   ├── api.ts
+│   │   │   ├── seo-api.ts
 │   │   │   └── sitemap-api.ts
 │   │   ├── components/
 │   │   │   ├── common/
@@ -43,6 +45,10 @@
 │   │   │   │   ├── FilterPanel.tsx
 │   │   │   │   ├── KeywordFilter.tsx
 │   │   │   │   └── KeywordStats.tsx
+│   │   │   ├── seo/
+│   │   │   │   ├── SEOFilter.tsx
+│   │   │   │   ├── SEOResults.tsx
+│   │   │   │   └── SEOUploader.tsx
 │   │   │   ├── sitemap/
 │   │   │   │   ├── SitemapAnalysis.tsx
 │   │   │   │   ├── SitemapFilter.tsx
@@ -56,16 +62,19 @@
 │   │   │       └── SitemapChart.tsx
 │   │   ├── hooks/
 │   │   │   ├── useApi.ts
+│   │   │   ├── useSeoApi.ts
 │   │   │   └── useSitemapApi.ts
 │   │   ├── pages/
 │   │   │   ├── _app.tsx
 │   │   │   ├── _document.tsx
 │   │   │   ├── index.tsx
+│   │   │   ├── seo.tsx
 │   │   │   └── sitemap.tsx
 │   │   ├── styles/
 │   │   │   └── globals.css
 │   │   ├── types/
 │   │   │   ├── index.ts
+│   │   │   ├── seo.ts
 │   │   │   └── sitemap.ts
 │   │   └── utils/
 │   │       └── helpers.ts
