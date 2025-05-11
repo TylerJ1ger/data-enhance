@@ -505,10 +505,10 @@ class SitemapProcessor:
             if domain_filter and domain_filter not in parsed.netloc:
                 continue
             
-            # 深度筛选
+            # 深度筛选 - 修改此处
             if depth_filter is not None:
                 depth = len([p for p in parsed.path.split('/') if p])
-                if depth != depth_filter:
+                if depth > depth_filter:  # 只过滤掉深度大于指定值的URL
                     continue
             
             # 路径筛选 - 支持多路径
