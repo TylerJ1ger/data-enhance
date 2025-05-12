@@ -6,14 +6,18 @@ import { SitemapFilterRequest } from '../../types/sitemap';
 interface SitemapFilterProps {
   onApplyFilter: (filters: SitemapFilterRequest) => void;
   domains: string[];
+  commonPaths?: string[]; // 新增：常用路径列表
   isLoading?: boolean;
+  isLoadingCommonPaths?: boolean; // 新增：常用路径加载状态
   disabled?: boolean;
 }
 
 const SitemapFilter: React.FC<SitemapFilterProps> = ({
   onApplyFilter,
   domains,
+  commonPaths = [], // 默认为空数组
   isLoading = false,
+  isLoadingCommonPaths = false, // 加载常用路径状态
   disabled = false,
 }) => {
   const [isOpen, setIsOpen] = useState(true);
@@ -36,6 +40,14 @@ const SitemapFilter: React.FC<SitemapFilterProps> = ({
     const newPaths = [...paths];
     newPaths[index] = value;
     setPaths(newPaths);
+  };
+
+  // 添加常用路径到输入框
+  const handleAddCommonPath = (path: string) => {
+    // 检查路径是否已经添加过
+    if (!paths.includes(path)) {
+      setPaths([...paths, path]);
+    }
   };
 
   const handleApplyFilter = () => {
@@ -111,6 +123,43 @@ const SitemapFilter: React.FC<SitemapFilterProps> = ({
               </button>
             </div>
             
+            {/* 常用路径下拉菜单 - 新增 */}
+            {commonPaths.length > 0 && (
+              <div className="mb-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  常用路径
+                </label>
+                <div className="relative">
+                  <select
+                    className="w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleAddCommonPath(e.target.value);
+                        e.target.value = ""; // 重置选择
+                      }
+                    }}
+                    disabled={isLoadingCommonPaths || disabled}
+                  >
+                    <option value="">选择添加常用路径...</option>
+                    {commonPaths.map((path, index) => (
+                      <option key={index} value={path}>
+                        {path}
+                      </option>
+                    ))}
+                  </select>
+                  {isLoadingCommonPaths && (
+                    <div className="absolute right-2 top-2">
+                      <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-primary-500"></div>
+                    </div>
+                  )}
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  选择后将添加到下方路径列表
+                </div>
+              </div>
+            )}
+            
+            {/* 路径输入框列表 */}
             {paths.map((path, index) => (
               <div key={index} className="flex items-center mb-2">
                 <input

@@ -1,6 +1,6 @@
 import os
 import tempfile
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any, Optional, Set, Tuple
 import xml.etree.ElementTree as ET
 import urllib.parse
 import re
@@ -8,6 +8,7 @@ from fastapi import UploadFile
 import pandas as pd
 import requests
 from io import BytesIO
+import copy
 
 from app.utils.xml_helpers import (
     parse_xml_file,
@@ -88,7 +89,7 @@ class SitemapProcessor:
                         
                         # 检查是否包含URL列
                         url_column = None
-                        possible_url_columns = ["Address", "URL", "Loc", "Location", "Link"]
+                        possible_url_columns = ["Address", "URL", "Loc", "Location", "Link", "Page URL"]
                         for col in possible_url_columns:
                             if col in df.columns:
                                 url_column = col
@@ -158,30 +159,82 @@ class SitemapProcessor:
             depth_counts[depth] = depth_counts.get(depth, 0) + 1
         return depth_counts
     
-    def get_visualization_data(self, visualization_type: str = "tree") -> Dict[str, Any]:
-        """获取用于可视化的数据结构"""
-        if visualization_type == "tree":
-            return self._get_tree_visualization_data()
-        elif visualization_type == "graph":
-            return self._get_graph_visualization_data()
+    def get_visualization_data(self, visualization_type: str = "tree", max_depth: int = 3, max_nodes: int = 500) -> Dict[str, Any]:
+        """获取用于可视化的数据结构，增加深度和最大节点数限制
+        
+        支持的可视化类型:
+        - tree: 标准树形图
+        - tree-radial: 径向树形图
+        - graph-label-overlap: 标签网络图
+        - graph-circular-layout: 环形布局图
+        - graph-webkit-dep: 依赖关系图
+        - graph-npm: 箭头流向图
+        """
+        # 判断可视化类型，将前端支持的所有类型映射到后端处理函数
+        if visualization_type.startswith("tree"):
+            # 所有树形图类型都使用相同的数据结构，前端会处理不同的布局
+            data = self._get_tree_visualization_data()
+            # 如果节点数超过限制，执行数据简化
+            if self._count_nodes(data) > max_nodes:
+                data = self._simplify_tree_data(data, max_depth, max_nodes)
+            return data
+        elif visualization_type.startswith("graph"):
+            # 所有图形图表类型都使用相同的数据结构，前端会处理不同的布局
+            raw_data = self._get_tree_visualization_data()
+            # 先简化树形数据，再转换为图形数据
+            if self._count_nodes(raw_data) > max_nodes:
+                simplified_data = self._simplify_tree_data(raw_data, max_depth, max_nodes)
+                return self._get_graph_data_from_tree(simplified_data)
+            else:
+                return self._get_graph_visualization_data()
         else:
-            return {"error": "Unsupported visualization type"}
+            # 默认返回树形图数据
+            data = self._get_tree_visualization_data()
+            if self._count_nodes(data) > max_nodes:
+                data = self._simplify_tree_data(data, max_depth, max_nodes)
+            return data
     
-    def get_filtered_visualization_data(self, visualization_type: str = "tree", urls: List[str] = None) -> Dict[str, Any]:
-        """获取筛选后的URL的可视化数据"""
+    def get_filtered_visualization_data(self, visualization_type: str = "tree", urls: List[str] = None, max_depth: int = 3, max_nodes: int = 500) -> Dict[str, Any]:
+        """获取筛选后的URL的可视化数据，增加深度和最大节点数限制
+        
+        支持的可视化类型:
+        - tree: 标准树形图
+        - tree-radial: 径向树形图
+        - graph-label-overlap: 标签网络图
+        - graph-circular-layout: 环形布局图
+        - graph-webkit-dep: 依赖关系图
+        - graph-npm: 箭头流向图
+        """
         if not urls or len(urls) == 0:
             # 如果没有提供URLs，返回所有URL的可视化
-            return self.get_visualization_data(visualization_type)
+            return self.get_visualization_data(visualization_type, max_depth, max_nodes)
         
         # 将URL列表转换为集合以进行可视化处理
         url_set = set(urls)
         
-        if visualization_type == "tree":
-            return self._get_filtered_tree_visualization_data(url_set)
-        elif visualization_type == "graph":
-            return self._get_filtered_graph_visualization_data(url_set)
+        # 判断可视化类型，将前端支持的所有类型映射到后端处理函数
+        if visualization_type.startswith("tree"):
+            # 所有树形图类型都使用相同的数据结构，前端会处理不同的布局
+            data = self._get_filtered_tree_visualization_data(url_set)
+            # 如果节点数超过限制，执行数据简化
+            if self._count_nodes(data) > max_nodes:
+                data = self._simplify_tree_data(data, max_depth, max_nodes)
+            return data
+        elif visualization_type.startswith("graph"):
+            # 所有图形图表类型都使用相同的数据结构，前端会处理不同的布局
+            raw_data = self._get_filtered_tree_visualization_data(url_set)
+            # 先简化树形数据，再转换为图形数据
+            if self._count_nodes(raw_data) > max_nodes:
+                simplified_data = self._simplify_tree_data(raw_data, max_depth, max_nodes)
+                return self._get_graph_data_from_tree(simplified_data)
+            else:
+                return self._get_filtered_graph_visualization_data(url_set)
         else:
-            return {"error": "Unsupported visualization type"}
+            # 默认返回树形图数据
+            data = self._get_filtered_tree_visualization_data(url_set)
+            if self._count_nodes(data) > max_nodes:
+                data = self._simplify_tree_data(data, max_depth, max_nodes)
+            return data
     
     def _get_tree_visualization_data(self) -> Dict[str, Any]:
         """获取树形结构的可视化数据"""
@@ -379,6 +432,63 @@ class SitemapProcessor:
             "links": links
         }
     
+    def _get_graph_data_from_tree(self, tree_data: Dict[str, Any]) -> Dict[str, Any]:
+        """从树形数据生成图形数据结构"""
+        nodes = []
+        links = []
+        id_counter = 0
+        node_map = {}  # 用于映射节点路径到ID
+        
+        # 递归处理树形节点
+        def process_node(node, parent_id=None, category=0):
+            nonlocal id_counter
+            
+            if not node:
+                return
+            
+            # 生成当前节点ID
+            current_id = id_counter
+            id_counter += 1
+            
+            # 保存节点路径到ID的映射
+            path = node.get("path", node.get("name", f"node_{current_id}"))
+            node_map[path] = current_id
+            
+            # 添加节点
+            nodes.append({
+                "id": current_id,
+                "name": node.get("name", "Unnamed"),
+                "path": path,
+                "category": category,
+                "symbolSize": 30 if category == 0 else (20 if node.get("isLeaf", False) else 15)
+            })
+            
+            # 如果有父节点，创建连接
+            if parent_id is not None:
+                links.append({
+                    "source": parent_id,
+                    "target": current_id
+                })
+            
+            # 处理子节点
+            if node.get("children") and isinstance(node["children"], list):
+                for child in node["children"]:
+                    process_node(child, current_id, 1)
+        
+        # 开始处理根节点
+        if "name" in tree_data:
+            # 单个树
+            process_node(tree_data, None, 0)
+        elif "children" in tree_data and isinstance(tree_data["children"], list):
+            # 多个根节点
+            for child in tree_data["children"]:
+                process_node(child, None, 0)
+        
+        return {
+            "nodes": nodes,
+            "links": links
+        }
+    
     def _get_filtered_graph_visualization_data(self, urls: Set[str]) -> Dict[str, Any]:
         """获取筛选后URL的图形结构可视化数据"""
         nodes = []
@@ -480,6 +590,24 @@ class SitemapProcessor:
         if path_filter and path_filter not in paths_filter:
             paths_filter.append(path_filter)
         
+        # 确保paths_filter是一个列表，即使是空的
+        if paths_filter is None:
+            paths_filter = []
+        
+        # 预处理路径，过滤空路径
+        paths_filter = [p for p in paths_filter if p and p.strip()]
+        
+        # 如果没有有效的筛选条件，返回所有URL
+        if not domain_filter and not paths_filter and depth_filter is None:
+            filtered_urls = self.merged_urls.copy()
+            self.filtered_urls = filtered_urls
+            filtered_hierarchy = create_url_hierarchy(filtered_urls)
+            return {
+                "filtered_urls": list(filtered_urls),
+                "total_filtered": len(filtered_urls),
+                "url_hierarchy": filtered_hierarchy
+            }
+        
         for url in self.merged_urls:
             parsed = urllib.parse.urlparse(url)
             
@@ -487,10 +615,10 @@ class SitemapProcessor:
             if domain_filter and domain_filter not in parsed.netloc:
                 continue
             
-            # 深度筛选
+            # 深度筛选 - 修改此处
             if depth_filter is not None:
                 depth = len([p for p in parsed.path.split('/') if p])
-                if depth != depth_filter:
+                if depth > depth_filter:  # 只过滤掉深度大于指定值的URL
                     continue
             
             # 路径筛选 - 支持多路径
@@ -498,20 +626,30 @@ class SitemapProcessor:
                 # 默认不匹配任何路径
                 path_matched = False
                 
-                for path_filter in paths_filter:
-                    if not path_filter:  # 跳过空路径
+                for path in paths_filter:
+                    if not path:  # 跳过空路径
                         continue
                     
+                    # 确保路径以斜杠开头，便于更精确的匹配
+                    if not path.startswith('/'):
+                        path = '/' + path
+                    
                     # 根据筛选类型进行匹配
-                    if path_filter_type == "contains" and path_filter in parsed.path:
-                        path_matched = True
-                        break
-                    elif path_filter_type == "not_contains" and path_filter not in parsed.path:
-                        path_matched = True
-                        break
+                    if path_filter_type == "contains":
+                        # 使用更精确的匹配方式
+                        if path in parsed.path:
+                            path_matched = True
+                            break  # 只需匹配任一路径即可
+                    elif path_filter_type == "not_contains":
+                        # 对于not_contains类型，一旦有一个路径包含在URL中，就不匹配
+                        if path in parsed.path:
+                            path_matched = False
+                            break  # 出现一个包含的路径就排除
+                        else:
+                            path_matched = True  # 至少有一个路径不包含
                 
                 # 如果没有匹配到任何路径，则跳过该URL
-                if not path_matched and paths_filter:
+                if not path_matched:
                     continue
             
             filtered_urls.add(url)
@@ -527,6 +665,36 @@ class SitemapProcessor:
             "total_filtered": len(filtered_urls),
             "url_hierarchy": filtered_hierarchy
         }
+    
+    def get_common_paths(self, min_count: int = 5) -> List[str]:
+        """提取常见路径，至少出现min_count次的路径"""
+        if not self.merged_urls:
+            return []
+        
+        path_counts = {}
+        
+        for url in self.merged_urls:
+            parsed = urllib.parse.urlparse(url)
+            path = parsed.path
+            
+            # 分割路径并逐级构建
+            parts = [p for p in path.split('/') if p]
+            current_path = ""
+            
+            for part in parts:
+                current_path += f"/{part}"
+                path_counts[current_path] = path_counts.get(current_path, 0) + 1
+        
+        # 筛选常见路径
+        common_paths = [
+            path for path, count in path_counts.items() 
+            if count >= min_count
+        ]
+        
+        # 按出现频率排序
+        common_paths.sort(key=lambda p: path_counts[p], reverse=True)
+        
+        return common_paths[:50]  # 限制返回数量
     
     def analyze_sitemap(self) -> Dict[str, Any]:
         """分析Sitemap的结构和特性"""
@@ -639,7 +807,11 @@ class SitemapProcessor:
                 
                 # 层次结构可视化数据
                 if self.merged_urls:  # 确保有URL数据
-                    result["visualization_data"] = self._get_tree_visualization_data()
+                    vis_data = self._get_tree_visualization_data()
+                    # 如果节点数过多，简化数据
+                    if self._count_nodes(vis_data) > 500:
+                        vis_data = self._simplify_tree_data(vis_data, 3, 500)
+                    result["visualization_data"] = vis_data
             except Exception as e:
                 # 记录详细错误信息
                 import traceback
@@ -685,3 +857,119 @@ class SitemapProcessor:
         patterns.sort(key=lambda x: x["count"], reverse=True)
         
         return patterns
+    
+    def _count_nodes(self, node: Dict[str, Any]) -> int:
+        """递归计算节点总数"""
+        if not node:
+            return 0
+        
+        count = 1  # 当前节点
+        
+        if "children" in node and node["children"]:
+            for child in node["children"]:
+                count += self._count_nodes(child)
+        
+        return count
+    
+    def _is_hash_like(self, name: str) -> bool:
+        """检查节点名称是否看起来像哈希值"""
+        # 识别常见的哈希格式: 长度超过12且包含随机字符
+        if not name or not isinstance(name, str):
+            return False
+            
+        return (len(name) >= 12 and 
+                re.match(r'^[a-zA-Z0-9_-]+$', name) and
+                # 增加熵检测 - 如果有连续的字母和数字则更可能是哈希
+                re.search(r'[0-9]{2,}', name) and 
+                re.search(r'[a-zA-Z]{2,}', name))
+    
+    def _simplify_tree_data(self, data: Dict[str, Any], max_depth: int = 3, max_nodes: int = 500) -> Dict[str, Any]:
+        """简化树形数据，优先保留重要节点，限制深度，处理哈希路径"""
+        # 深拷贝避免修改原始数据
+        result = copy.deepcopy(data)
+        
+        # 如果节点数已经在限制范围内，直接返回
+        current_count = self._count_nodes(result)
+        if current_count <= max_nodes:
+            return result
+        
+        # 递归处理节点树，限制深度和处理哈希路径
+        self._process_node_tree(result, 0, max_depth, max_nodes)
+        
+        return result
+    
+    def _process_node_tree(self, node: Dict[str, Any], current_depth: int = 0, max_depth: int = 3, max_nodes: int = 500) -> int:
+        """递归处理节点树，返回处理后的节点计数"""
+        if not node:
+            return 0
+            
+        # 如果没有子节点或已达到最大深度，返回1（当前节点）
+        if not node.get("children") or current_depth >= max_depth:
+            # 如果超过最大深度，删除children以减小数据量
+            if current_depth >= max_depth and "children" in node and node["children"]:
+                # 保存子节点数量以便显示
+                child_count = len(node["children"])
+                node["name"] = f"{node['name']} (+{child_count})"
+                node["children"] = None
+                node["isLeaf"] = True
+            return 1
+        
+        # 如果子节点中有很多看起来像哈希值的节点，只保留部分
+        hash_children = [c for c in node["children"] if self._is_hash_like(c.get("name", ""))]
+        if len(hash_children) > 5:
+            # 保留的非哈希值节点
+            normal_children = [c for c in node["children"] if not self._is_hash_like(c.get("name", ""))]
+            
+            # 选择5个哈希值节点
+            sample_hash_children = hash_children[:5]
+            
+            # 创建一个"更多..."节点
+            more_node = {
+                "name": f"更多 ({len(hash_children) - 5} 个)",
+                "path": f"{node.get('path', '')}/more",
+                "children": None,
+                "isLeaf": True,
+                "itemStyle": {
+                    "color": "#cccccc"
+                }
+            }
+            
+            # 更新节点的子节点
+            node["children"] = normal_children + sample_hash_children + [more_node]
+        
+        # 递归处理每个子节点
+        node_count = 1  # 当前节点
+        
+        if node["children"]:
+            processed_children = []
+            for child in node["children"]:
+                # 递归处理子节点，累计节点数
+                child_count = self._process_node_tree(child, current_depth + 1, max_depth, max_nodes)
+                node_count += child_count
+                processed_children.append(child)
+            
+            # 如果子节点过多，可能需要进一步简化
+            if len(processed_children) > 20:
+                # 按照重要性（通常是子节点数量）排序
+                processed_children.sort(key=lambda x: self._count_nodes(x), reverse=True)
+                
+                # 保留前15个最重要的节点
+                important_children = processed_children[:15]
+                other_children = processed_children[15:]
+                
+                if other_children:
+                    # 创建"其他"节点
+                    other_node = {
+                        "name": f"其他 ({len(other_children)} 项)",
+                        "path": f"{node.get('path', '')}/others",
+                        "children": None,
+                        "isLeaf": True,
+                        "itemStyle": {
+                            "color": "#aaaaaa"
+                        }
+                    }
+                    important_children.append(other_node)
+                
+                node["children"] = important_children
+        
+        return node_count

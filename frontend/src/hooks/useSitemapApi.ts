@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import * as sitemapApi from '../api/sitemap-api';
 import {
@@ -15,6 +15,7 @@ export const useSitemapApi = () => {
   const [isFiltering, setIsFiltering] = useState(false);
   const [isLoadingVisualization, setIsLoadingVisualization] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isLoadingCommonPaths, setIsLoadingCommonPaths] = useState(false);
 
   // State for response data
   const [uploadResponse, setUploadResponse] = useState<SitemapUploadResponse | null>(null);
@@ -22,6 +23,29 @@ export const useSitemapApi = () => {
   const [filterResponse, setFilterResponse] = useState<SitemapFilterResponse | null>(null);
   const [analysisResponse, setAnalysisResponse] = useState<SitemapAnalysisResponse | null>(null);
   const [currentVisualizationType, setCurrentVisualizationType] = useState<string>('tree');
+  const [commonPaths, setCommonPaths] = useState<string[]>([]);
+
+  // 获取常用路径
+  const fetchCommonPaths = useCallback(async (minCount: number = 5) => {
+    setIsLoadingCommonPaths(true);
+    try {
+      const paths = await sitemapApi.getCommonPaths(minCount);
+      setCommonPaths(paths);
+      return paths;
+    } catch (error) {
+      console.error('Error fetching common paths:', error);
+      return [];
+    } finally {
+      setIsLoadingCommonPaths(false);
+    }
+  }, []);
+
+  // 在上传Sitemap后自动获取常用路径
+  useEffect(() => {
+    if (uploadResponse && uploadResponse.total_urls > 0) {
+      fetchCommonPaths();
+    }
+  }, [uploadResponse, fetchCommonPaths]);
 
   // Upload sitemap files
   const uploadSitemaps = useCallback(async (files: File[]) => {
@@ -31,7 +55,7 @@ export const useSitemapApi = () => {
       setUploadResponse(data);
       
       // After upload, fetch visualization data
-      await fetchVisualizationData();
+      await fetchVisualizationData('tree'); // 使用默认的树形图
       
       toast.success(`成功处理 ${files.length} 个文件，包含 ${data.total_urls} 个URL`);
       
@@ -50,6 +74,8 @@ export const useSitemapApi = () => {
     setIsLoadingVisualization(true);
     setCurrentVisualizationType(visualizationType);
     try {
+      console.log('Fetching visualization data for type:', visualizationType);
+      
       // 如果有筛选结果，使用筛选后的URL获取可视化数据
       let data;
       if (filterResponse && filterResponse.filtered_urls.length > 0) {
@@ -57,29 +83,62 @@ export const useSitemapApi = () => {
       } else {
         data = await sitemapApi.getSitemapVisualization(visualizationType);
       }
+      
+      // 检查数据是否有效
+      if (!data) {
+        console.error('Received null visualization data');
+        toast.error('获取可视化数据失败：数据为空');
+        return null;
+      }
+      
+      console.log('Received visualization data:', data);
       setVisualizationData(data);
       return data;
     } catch (error) {
       console.error('Error fetching visualization data:', error);
-      toast.error('获取可视化数据失败');
+      toast.error('获取可视化数据失败：' + (error.message || '未知错误'));
       return null;
     } finally {
       setIsLoadingVisualization(false);
     }
   }, [filterResponse]);
 
-  // Filter sitemap URLs
+  // Filter sitemap URLs - 修复后的版本
   const filterSitemap = useCallback(async (filters: SitemapFilterRequest) => {
     setIsFiltering(true);
     try {
-      const data = await sitemapApi.filterSitemap(filters);
+      // 预处理筛选条件，确保paths是有效数组
+      const processedFilters = {
+        ...filters,
+        paths: filters.paths?.filter(p => p && p.trim() !== '') || []
+      };
+      
+      if (filters.path && filters.path.trim() !== '' && 
+          !processedFilters.paths.includes(filters.path)) {
+        processedFilters.paths.push(filters.path);
+      }
+      
+      const data = await sitemapApi.filterSitemap(processedFilters);
       setFilterResponse(data);
       
+      // 直接使用筛选后的URLs获取可视化数据
+      if (data && data.filtered_urls && data.filtered_urls.length > 0) {
+        try {
+          const vizData = await sitemapApi.getFilteredVisualization(
+            currentVisualizationType,
+            data.filtered_urls
+          );
+          
+          if (vizData) {
+            setVisualizationData(vizData);
+          }
+        } catch (vizError) {
+          console.error('Error updating visualization after filtering:', vizError);
+          // 继续执行，不影响主流程
+        }
+      }
+      
       toast.success(`筛选出 ${data.total_filtered} 个URL`);
-      
-      // 重新获取可视化数据，应用筛选结果
-      await fetchVisualizationData(currentVisualizationType);
-      
       return data;
     } catch (error) {
       console.error('Error filtering sitemap:', error);
@@ -88,7 +147,7 @@ export const useSitemapApi = () => {
     } finally {
       setIsFiltering(false);
     }
-  }, [fetchVisualizationData, currentVisualizationType]);
+  }, [currentVisualizationType]);
 
   // Analyze sitemap structure
   const analyzeSitemap = useCallback(async (detailed: boolean = false) => {
@@ -112,7 +171,7 @@ export const useSitemapApi = () => {
     return sitemapApi.exportMergedSitemap(format);
   }, []);
 
-  // Get export URL for filtered URLs (新增)
+  // Get export URL for filtered URLs
   const getExportFilteredUrl = useCallback((format: string = 'csv') => {
     return sitemapApi.exportFilteredUrls(format);
   }, []);
@@ -123,6 +182,7 @@ export const useSitemapApi = () => {
     setVisualizationData(null);
     setFilterResponse(null);
     setAnalysisResponse(null);
+    setCommonPaths([]);
     setCurrentVisualizationType('tree');
   }, []);
 
@@ -132,19 +192,22 @@ export const useSitemapApi = () => {
     isFiltering,
     isLoadingVisualization,
     isAnalyzing,
+    isLoadingCommonPaths,
     uploadResponse,
     visualizationData,
     filterResponse,
     analysisResponse,
     currentVisualizationType,
+    commonPaths,
     
     // Actions
     uploadSitemaps,
     fetchVisualizationData,
     filterSitemap,
     analyzeSitemap,
+    fetchCommonPaths,
     getExportUrl,
-    getExportFilteredUrl, // 新增
+    getExportFilteredUrl,
     resetData,
   };
 };

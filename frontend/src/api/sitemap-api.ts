@@ -69,3 +69,14 @@ export const exportMergedSitemap = (format: string = 'xml'): string => {
 export const exportFilteredUrls = (format: string = 'csv'): string => {
   return `${API_BASE_URL}/sitemap/export-filtered?format=${format}`;
 };
+
+// 获取常用路径
+export const getCommonPaths = async (minCount: number = 5): Promise<string[]> => {
+  try {
+    const response = await api.get<{common_paths: string[]}>(`/sitemap/common-paths?min_count=${minCount}`);
+    return response.data.common_paths;
+  } catch (error) {
+    console.error('Error fetching common paths:', error);
+    return [];
+  }
+};

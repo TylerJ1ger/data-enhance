@@ -8,3 +8,11 @@ pydantic
 numpy
 lxml
 requests
+beautifulsoup4
+validators
+language-tool-python
+textstat
+trafilatura
+newspaper3k
+readability-lxml
+goose3
