@@ -1,12 +1,6 @@
 python3 model/ref/combined-tree-formatter.py "." "model/ref/structure/file-structure.txt" "model/ref/structure/formatted-tree.txt"
 
-api.py
-seo_processor.py
-content_checker.py
-seo.ts
-seo-api.ts
-useSeoApi.ts
-SEOUploader.tsx
-ContentDisplay.tsx
-SEOResults.tsx
-seo.tsx
+SitemapChart.tsx
+SitemapURLList.tsx
+sitemap_processor.py
+sitemap.tsx
