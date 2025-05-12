@@ -264,9 +264,18 @@ async def export_filtered_urls(format: str = "csv"):
 # 以下是SEO分析相关API端点
 
 @router.post("/seo/upload")
-async def upload_seo_file(file: UploadFile = File(...)):
+async def upload_seo_file(
+    file: UploadFile = File(...), 
+    content_extractor: Optional[str] = Form("auto"),
+    enable_advanced_analysis: bool = Form(True)
+):
     """
     Upload and analyze HTML file for SEO issues.
+    
+    Args:
+        file: The HTML file to analyze
+        content_extractor: The content extraction engine to use (auto, trafilatura, newspaper, readability, goose3, custom)
+        enable_advanced_analysis: Whether to enable advanced content analysis using language-tool-python and textstat
     """
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
@@ -275,8 +284,8 @@ async def upload_seo_file(file: UploadFile = File(...)):
     if not file.filename.lower().endswith(('.html', '.htm')):
         raise HTTPException(status_code=400, detail="Only HTML files are supported")
     
-    # 处理文件
-    result = await seo_processor.process_file(file)
+    # 处理文件，传入内容提取引擎和高级分析选项
+    result = await seo_processor.process_file(file, content_extractor, enable_advanced_analysis)
     
     return result
 

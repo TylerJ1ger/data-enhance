@@ -20,6 +20,11 @@ export default function SEOPage() {
     uploadSEOFile,
     setSelectedCategory,
     resetData,
+    // 新增状态
+    contentExtractor,
+    setContentExtractor,
+    enableAdvancedAnalysis,
+    setEnableAdvancedAnalysis
   } = useSeoApi();
 
   const handleFileSelected = async (file: File) => {
@@ -89,6 +94,10 @@ export default function SEOPage() {
             <SEOUploader
               onFileSelected={handleFileSelected}
               disabled={isUploading}
+              contentExtractor={contentExtractor}
+              setContentExtractor={setContentExtractor}
+              enableAdvancedAnalysis={enableAdvancedAnalysis}
+              setEnableAdvancedAnalysis={setEnableAdvancedAnalysis}
             />
           </div>
         )}
@@ -117,7 +126,6 @@ export default function SEOPage() {
                         <FiFileText className="text-primary-600 mr-2" />
                         <span className="text-sm font-medium">分析的文件</span>
                       </div>
-                      <br/>
                       <span className="text-sm">
                         {analysisResults?.file_name}
                       </span>
@@ -144,6 +152,21 @@ export default function SEOPage() {
                           {analysisResults?.issues_count.opportunities || 0}
                         </span>
                         <span className="text-xs text-blue-600">机会</span>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 分析选项信息 - 新增 */}
+                  <div className="bg-white rounded-lg border border-gray-200 p-4">
+                    <h4 className="text-sm font-medium mb-2">分析选项</h4>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">内容提取引擎:</span>
+                        <span className="font-medium">{contentExtractor === 'auto' ? '自动选择' : contentExtractor}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">高级内容分析:</span>
+                        <span className="font-medium">{enableAdvancedAnalysis ? '已启用' : '已禁用'}</span>
                       </div>
                     </div>
                   </div>

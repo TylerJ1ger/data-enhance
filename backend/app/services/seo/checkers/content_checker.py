@@ -1,12 +1,32 @@
 from .base_checker import BaseChecker
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import re
-from bs4 import Tag
+from bs4 import Tag, BeautifulSoup
 import importlib.util
 import logging
 
 class ContentChecker(BaseChecker):
     """检查页面内容相关的SEO问题"""
+    
+    def __init__(self, soup: BeautifulSoup, page_url: Optional[str] = None, 
+                 content_extractor: str = "auto", enable_advanced_analysis: bool = True):
+        """
+        初始化内容检查器
+        
+        Args:
+            soup: BeautifulSoup解析的HTML文档对象
+            page_url: 页面URL，可选
+            content_extractor: 内容提取引擎 ("auto", "trafilatura", "newspaper", "readability", "goose3", "custom")
+            enable_advanced_analysis: 是否启用高级内容分析
+        """
+        super().__init__(soup, page_url)
+        self.content_extractor = content_extractor
+        self.enable_advanced_analysis = enable_advanced_analysis
+        self.extracted_content = {
+            "text": "",
+            "spelling_errors": [],
+            "grammar_errors": []
+        }
     
     def check(self) -> Dict[str, List[Dict[str, Any]]]:
         """执行所有内容相关检查"""
@@ -19,155 +39,95 @@ class ContentChecker(BaseChecker):
     def extract_main_content(self) -> str:
         """
         智能提取页面主要内容区域的文本
-        优先使用第三方库，如果没有可用则使用自定义算法
+        基于用户选择的提取引擎
         """
         html_content = str(self.soup)
+        content = ""
         
-        # 尝试使用trafilatura库提取内容（目前最流行的内容提取库之一）
-        if self._check_library_available('trafilatura'):
-            try:
-                import trafilatura
-                content = trafilatura.extract(html_content)
-                if content and len(content) > 100:
-                    return content
-            except Exception as e:
-                logging.warning(f"Trafilatura内容提取失败: {str(e)}")
-        
-        # 尝试使用newspaper3k提取内容
-        if self._check_library_available('newspaper'):
-            try:
-                from newspaper import fulltext
-                content = fulltext(html_content)
-                if content and len(content) > 100:
-                    return content
-            except Exception as e:
-                logging.warning(f"Newspaper3k内容提取失败: {str(e)}")
-        
-        # 尝试使用readability-lxml提取内容
-        if self._check_library_available('readability'):
-            try:
-                from readability import Document
-                doc = Document(html_content)
-                content = doc.summary()
-                # 从HTML中提取纯文本
-                from bs4 import BeautifulSoup
-                soup = BeautifulSoup(content, 'html.parser')
-                text_content = soup.get_text(separator=' ', strip=True)
-                if text_content and len(text_content) > 100:
-                    return text_content
-            except Exception as e:
-                logging.warning(f"Readability-lxml内容提取失败: {str(e)}")
-        
-        # 尝试使用goose3提取内容
-        if self._check_library_available('goose3'):
-            try:
-                from goose3 import Goose
-                g = Goose()
-                article = g.extract(raw_html=html_content)
-                content = article.cleaned_text
-                if content and len(content) > 100:
-                    return content
-            except Exception as e:
-                logging.warning(f"Goose3内容提取失败: {str(e)}")
-        
-        # 如果没有可用的第三方库或提取失败，使用自定义算法
-        return self._fallback_extract_content()
-    
-    def _check_library_available(self, library_name: str) -> bool:
-        """检查指定的库是否可用"""
-        return importlib.util.find_spec(library_name) is not None
-    
-    def _fallback_extract_content(self) -> str:
-        """
-        自定义算法提取页面主要内容，在没有第三方库可用时使用
-        """
-        # 1. 尝试通过常见的内容容器标签和类名定位主要内容
-        content_selectors = [
-            'article', 'main', '.content', '#content', '.post', '.entry', 
-            '.post-content', '.article-content', '.entry-content', '.page-content'
-        ]
-        
-        # 尝试定位主要内容区域
-        main_content_element = None
-        for selector in content_selectors:
-            elements = self.soup.select(selector)
-            if elements:
-                main_content_element = elements[0]
-                break
-                
-        # 2. 如果没有找到明确的内容容器，使用启发式方法
-        if not main_content_element:
-            # 排除这些明显的非内容区域
-            excluded_tags = ['nav', 'header', 'footer', 'aside', 'menu', 'style', 'script', 'meta', 'link', 'noscript']
-            excluded_classes = ['menu', 'nav', 'navigation', 'header', 'footer', 'sidebar', 'widget', 'banner', 'ad']
+        # 根据选择的提取引擎选择不同的提取方法
+        if self.content_extractor == "auto" or self.content_extractor == "trafilatura":
+            if self._check_library_available('trafilatura'):
+                try:
+                    import trafilatura
+                    content = trafilatura.extract(html_content)
+                    if content and len(content) > 100:
+                        self.extracted_content["text"] = content
+                        return content
+                except Exception as e:
+                    logging.warning(f"Trafilatura内容提取失败: {str(e)}")
             
-            # 收集所有可能的内容块
-            potential_content_blocks = []
-            
-            for element in self.soup.find_all(['div', 'section', 'article', 'main']):
-                # 跳过被排除的标签
-                if element.name in excluded_tags:
-                    continue
-                
-                # 跳过被排除的类
-                element_classes = element.get('class', [])
-                if isinstance(element_classes, str):
-                    element_classes = [element_classes]
-                    
-                if any(excluded_class in (cls.lower() if isinstance(cls, str) else '') 
-                       for cls in element_classes for excluded_class in excluded_classes):
-                    continue
-                
-                # 获取文本及其长度
-                text = element.get_text(strip=True)
-                text_length = len(text)
-                
-                # 计算内容密度（文本长度与HTML长度的比值）
-                html_length = len(str(element))
-                if html_length == 0:
-                    continue
-                
-                content_density = text_length / html_length
-                
-                # 排除特别短的文本块
-                if text_length < 100:
-                    continue
-                
-                # 计算段落数量
-                paragraphs = element.find_all('p')
-                paragraph_count = len(paragraphs)
-                
-                # 收集潜在内容块信息
-                potential_content_blocks.append({
-                    'element': element,
-                    'text_length': text_length,
-                    'content_density': content_density,
-                    'paragraph_count': paragraph_count,
-                    'score': text_length * content_density * (1 + 0.1 * paragraph_count)  # 综合评分
-                })
-            
-            # 如果找到了潜在内容块，选择评分最高的
-            if potential_content_blocks:
-                potential_content_blocks.sort(key=lambda x: x['score'], reverse=True)
-                main_content_element = potential_content_blocks[0]['element']
-            else:
-                # 如果没有找到任何合适的内容块，使用body
-                main_content_element = self.soup.body
+            # 如果是auto模式，继续尝试其他引擎
+            if self.content_extractor != "auto":
+                logging.warning("指定的Trafilatura提取引擎不可用，回退到自定义算法")
+                content = self._fallback_extract_content()
+                self.extracted_content["text"] = content
+                return content
         
-        # 3. 从选定的内容区域中提取文本
-        if main_content_element:
-            # 进一步排除内容区域中的非内容元素
-            for exclude_tag in main_content_element.find_all(['nav', 'header', 'footer', 'aside', 'style', 'script']):
-                exclude_tag.decompose()
+        if self.content_extractor == "auto" or self.content_extractor == "newspaper":
+            if self._check_library_available('newspaper'):
+                try:
+                    from newspaper import fulltext
+                    content = fulltext(html_content)
+                    if content and len(content) > 100:
+                        self.extracted_content["text"] = content
+                        return content
+                except Exception as e:
+                    logging.warning(f"Newspaper3k内容提取失败: {str(e)}")
             
-            content_text = main_content_element.get_text(separator=' ', strip=True)
-            
-            # 清理多余的空白字符
-            content_text = re.sub(r'\s+', ' ', content_text).strip()
-            return content_text
+            if self.content_extractor != "auto":
+                logging.warning("指定的Newspaper提取引擎不可用，回退到自定义算法")
+                content = self._fallback_extract_content()
+                self.extracted_content["text"] = content
+                return content
         
-        # 4. 如果所有方法都失败，回退到使用整个页面文本
-        return self.soup.get_text(separator=' ', strip=True)
+        if self.content_extractor == "auto" or self.content_extractor == "readability":
+            if self._check_library_available('readability'):
+                try:
+                    from readability import Document
+                    doc = Document(html_content)
+                    content_html = doc.summary()
+                    # 从HTML中提取纯文本
+                    from bs4 import BeautifulSoup
+                    soup = BeautifulSoup(content_html, 'html.parser')
+                    text_content = soup.get_text(separator=' ', strip=True)
+                    if text_content and len(text_content) > 100:
+                        self.extracted_content["text"] = text_content
+                        return text_content
+                except Exception as e:
+                    logging.warning(f"Readability-lxml内容提取失败: {str(e)}")
+            
+            if self.content_extractor != "auto":
+                logging.warning("指定的Readability提取引擎不可用，回退到自定义算法")
+                content = self._fallback_extract_content()
+                self.extracted_content["text"] = content
+                return content
+        
+        if self.content_extractor == "auto" or self.content_extractor == "goose3":
+            if self._check_library_available('goose3'):
+                try:
+                    from goose3 import Goose
+                    g = Goose()
+                    article = g.extract(raw_html=html_content)
+                    content = article.cleaned_text
+                    if content and len(content) > 100:
+                        self.extracted_content["text"] = content
+                        return content
+                except Exception as e:
+                    logging.warning(f"Goose3内容提取失败: {str(e)}")
+            
+            if self.content_extractor != "auto":
+                logging.warning("指定的Goose3提取引擎不可用，回退到自定义算法")
+                content = self._fallback_extract_content()
+                self.extracted_content["text"] = content
+                return content
+        
+        # 如果所有引擎都失败或用户选择自定义算法
+        if self.content_extractor == "custom" or not content:
+            content = self._fallback_extract_content()
+            self.extracted_content["text"] = content
+            return content
+        
+        return content
     
     def check_content(self):
         """检查内容相关问题"""
@@ -194,7 +154,12 @@ class ContentChecker(BaseChecker):
                 issue_type="warnings"
             )
         
-        # 使用language-tool-python和textstat进行高级内容分析
+        # 仅在启用高级分析时执行
+        if self.enable_advanced_analysis:
+            self._perform_advanced_content_analysis(text_content)
+    
+    def _perform_advanced_content_analysis(self, text_content: str):
+        """使用language-tool-python和textstat进行高级内容分析"""
         try:
             import language_tool_python
             import textstat
@@ -218,11 +183,25 @@ class ContentChecker(BaseChecker):
             # 执行语法和拼写检查
             matches = tool.check(sample_text)
             
+            # 保存所有错误和建议，便于前端展示
+            self.extracted_content["spelling_errors"] = []
+            self.extracted_content["grammar_errors"] = []
+            
             # 释放LanguageTool资源
             tool.close()
             
             # 拼写错误
             spelling_errors = [m for m in matches if m.ruleId.startswith(('MORFOLOGIK_', 'SPELLING'))]
+            for error in spelling_errors:
+                error_data = {
+                    "text": error.context,
+                    "offset": error.offsetInContext,
+                    "length": error.errorLength,
+                    "message": error.message,
+                    "replacements": error.replacements[:5] if error.replacements else []
+                }
+                self.extracted_content["spelling_errors"].append(error_data)
+            
             if spelling_errors and len(spelling_errors) > 2:  # 忽略少量可能的误报
                 # 格式化错误信息
                 formatted_resources = []
@@ -251,6 +230,17 @@ class ContentChecker(BaseChecker):
             
             # 语法错误
             grammar_errors = [m for m in matches if not m.ruleId.startswith(('MORFOLOGIK_', 'SPELLING'))]
+            for error in grammar_errors:
+                error_data = {
+                    "text": error.context,
+                    "offset": error.offsetInContext,
+                    "length": error.errorLength,
+                    "message": error.message,
+                    "replacements": error.replacements[:5] if error.replacements else [],
+                    "rule_id": error.ruleId
+                }
+                self.extracted_content["grammar_errors"].append(error_data)
+            
             if grammar_errors and len(grammar_errors) > 2:  # 忽略少量可能的误报
                 # 格式化错误信息
                 formatted_resources = []
@@ -360,6 +350,102 @@ class ContentChecker(BaseChecker):
                 issue_type="warnings"
             )
     
+    def _check_library_available(self, library_name: str) -> bool:
+        """检查指定的库是否可用"""
+        return importlib.util.find_spec(library_name) is not None
+    
+    def _fallback_extract_content(self) -> str:
+        """
+        自定义算法提取页面主要内容，在没有第三方库可用时使用
+        """
+        # 1. 尝试通过常见的内容容器标签和类名定位主要内容
+        content_selectors = [
+            'article', 'main', '.content', '#content', '.post', '.entry', 
+            '.post-content', '.article-content', '.entry-content', '.page-content'
+        ]
+        
+        # 尝试定位主要内容区域
+        main_content_element = None
+        for selector in content_selectors:
+            elements = self.soup.select(selector)
+            if elements:
+                main_content_element = elements[0]
+                break
+                
+        # 2. 如果没有找到明确的内容容器，使用启发式方法
+        if not main_content_element:
+            # 排除这些明显的非内容区域
+            excluded_tags = ['nav', 'header', 'footer', 'aside', 'menu', 'style', 'script', 'meta', 'link', 'noscript']
+            excluded_classes = ['menu', 'nav', 'navigation', 'header', 'footer', 'sidebar', 'widget', 'banner', 'ad']
+            
+            # 收集所有可能的内容块
+            potential_content_blocks = []
+            
+            for element in self.soup.find_all(['div', 'section', 'article', 'main']):
+                # 跳过被排除的标签
+                if element.name in excluded_tags:
+                    continue
+                
+                # 跳过被排除的类
+                element_classes = element.get('class', [])
+                if isinstance(element_classes, str):
+                    element_classes = [element_classes]
+                    
+                if any(excluded_class in (cls.lower() if isinstance(cls, str) else '') 
+                       for cls in element_classes for excluded_class in excluded_classes):
+                    continue
+                
+                # 获取文本及其长度
+                text = element.get_text(strip=True)
+                text_length = len(text)
+                
+                # 计算内容密度（文本长度与HTML长度的比值）
+                html_length = len(str(element))
+                if html_length == 0:
+                    continue
+                
+                content_density = text_length / html_length
+                
+                # 排除特别短的文本块
+                if text_length < 100:
+                    continue
+                
+                # 计算段落数量
+                paragraphs = element.find_all('p')
+                paragraph_count = len(paragraphs)
+                
+                # 收集潜在内容块信息
+                potential_content_blocks.append({
+                    'element': element,
+                    'text_length': text_length,
+                    'content_density': content_density,
+                    'paragraph_count': paragraph_count,
+                    'score': text_length * content_density * (1 + 0.1 * paragraph_count)  # 综合评分
+                })
+            
+            # 如果找到了潜在内容块，选择评分最高的
+            if potential_content_blocks:
+                potential_content_blocks.sort(key=lambda x: x['score'], reverse=True)
+                main_content_element = potential_content_blocks[0]['element']
+            else:
+                # 如果没有找到任何合适的内容块，使用body
+                main_content_element = self.soup.body
+        
+        # 3. 从选定的内容区域中提取文本
+        if main_content_element:
+            # 进一步排除内容区域中的非内容元素
+            for exclude_tag in main_content_element.find_all(['nav', 'header', 'footer', 'aside', 'style', 'script']):
+                exclude_tag.decompose()
+            
+            content_text = main_content_element.get_text(separator=' ', strip=True)
+            
+            # 清理多余的空白字符
+            content_text = re.sub(r'\s+', ' ', content_text).strip()
+            return content_text
+        
+        # 4. 如果所有方法都失败，回退到使用整个页面文本
+        return self.soup.get_text(separator=' ', strip=True)
+    
     def check_images(self):
         """检查图片相关问题"""
         img_tags = self.soup.find_all('img')
@@ -432,3 +518,7 @@ class ContentChecker(BaseChecker):
                     priority="medium",
                     issue_type="warnings"
                 )
+    
+    def get_extracted_content(self) -> Dict[str, Any]:
+        """获取提取的内容和标记的错误，供前端展示"""
+        return self.extracted_content

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FiAlertTriangle, FiAlertCircle, FiSearch, FiExternalLink, FiChevronDown, FiChevronUp } from 'react-icons/fi';
 import { SEOIssue, SEOUploadResponse } from '../../types/seo';
+import ContentDisplay from './ContentDisplay';
 
 interface SEOResultsProps {
   results: SEOUploadResponse | null;
@@ -172,6 +173,14 @@ const SEOResults: React.FC<SEOResultsProps> = ({
           )}
         </div>
       </div>
+
+      {/* 内容展示组件 - 新增 */}
+      {results.extracted_content && (
+        <ContentDisplay 
+          content={results.extracted_content} 
+          isLoading={isLoading}
+        />
+      )}
 
       {/* 统计摘要 */}
       <div className="card">

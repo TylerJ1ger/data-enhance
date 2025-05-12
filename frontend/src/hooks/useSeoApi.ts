@@ -4,7 +4,8 @@ import * as seoApi from '../api/seo-api';
 import {
   SEOUploadResponse,
   SEOCategory,
-  SEOIssue
+  SEOIssue,
+  ContentExtractor
 } from '../types/seo';
 
 export const useSeoApi = () => {
@@ -25,6 +26,10 @@ export const useSeoApi = () => {
     warnings: [],
     opportunities: []
   });
+
+  // 新增状态：内容提取器和高级分析选项
+  const [contentExtractor, setContentExtractor] = useState<ContentExtractor>('auto');
+  const [enableAdvancedAnalysis, setEnableAdvancedAnalysis] = useState<boolean>(true);
 
   // Load categories on mount
   useEffect(() => {
@@ -49,11 +54,16 @@ export const useSeoApi = () => {
     setFilteredIssues(filtered);
   }, [selectedCategory, analysisResults]);
 
-  // Upload HTML file
+  // Upload HTML file - 更新以支持新参数
   const uploadSEOFile = useCallback(async (file: File) => {
     setIsUploading(true);
     try {
-      const data = await seoApi.uploadSEOFile(file);
+      const data = await seoApi.uploadSEOFile({
+        file,
+        contentExtractor,
+        enableAdvancedAnalysis
+      });
+      
       setAnalysisResults(data);
       setFilteredIssues(data.issues);
       
@@ -71,7 +81,7 @@ export const useSeoApi = () => {
     } finally {
       setIsUploading(false);
     }
-  }, []);
+  }, [contentExtractor, enableAdvancedAnalysis]);
 
   // Fetch categories
   const fetchCategories = useCallback(async () => {
@@ -101,18 +111,22 @@ export const useSeoApi = () => {
   }, []);
 
   return {
-    // State
+    // 原有状态和函数
     isUploading,
     isLoadingCategories,
     analysisResults,
     categories,
     selectedCategory,
     filteredIssues,
-    
-    // Actions
     uploadSEOFile,
     fetchCategories,
     setSelectedCategory,
     resetData,
+    
+    // 新增状态和函数
+    contentExtractor,
+    setContentExtractor,
+    enableAdvancedAnalysis,
+    setEnableAdvancedAnalysis
   };
 };

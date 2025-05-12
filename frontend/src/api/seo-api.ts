@@ -2,6 +2,7 @@ import axios from 'axios';
 import {
   SEOUploadResponse,
   SEOCategory,
+  ContentExtractor
 } from '../types/seo';
 
 // API base URL
@@ -12,10 +13,23 @@ const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
-// Upload HTML file for SEO analysis
-export const uploadSEOFile = async (file: File): Promise<SEOUploadResponse> => {
+// 上传HTML文件参数
+export interface UploadSEOFileParams {
+  file: File;
+  contentExtractor?: ContentExtractor;
+  enableAdvancedAnalysis?: boolean;
+}
+
+// 上传HTML文件for SEO分析
+export const uploadSEOFile = async ({
+  file,
+  contentExtractor = 'auto',
+  enableAdvancedAnalysis = true
+}: UploadSEOFileParams): Promise<SEOUploadResponse> => {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('content_extractor', contentExtractor);
+  formData.append('enable_advanced_analysis', enableAdvancedAnalysis.toString());
   
   const response = await api.post<SEOUploadResponse>('/seo/upload', formData, {
     headers: {
