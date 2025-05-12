@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import Head from 'next/head';
-import { FiUpload, FiDownload, FiRefreshCw, FiActivity, FiList, FiExternalLink } from 'react-icons/fi';
+import { FiUpload, FiDownload, FiRefreshCw, FiActivity, FiList, FiExternalLink, FiSettings, FiAlertTriangle } from 'react-icons/fi';
 import Layout from '../components/common/Layout';
 import Button from '../components/common/Button';
 import SitemapUploader from '../components/sitemap/SitemapUploader';
@@ -16,6 +16,16 @@ export default function SitemapPage() {
   const [activeTab, setActiveTab] = useState<string>('visualization');
   const [visualizationType, setVisualizationType] = useState<string>('tree');
   const [exportFormat, setExportFormat] = useState<string>('csv');
+  const [showChartConfig, setShowChartConfig] = useState(false);
+
+  // 图表配置状态
+  const [chartConfig, setChartConfig] = useState({
+    maxNodes: 300,           // 最大显示节点数
+    initialDepth: 3,         // 初始展开深度
+    enableAnimation: true,   // 是否启用动画
+    labelStrategy: 'hover' as 'always' | 'hover' | 'none',  // 标签显示策略
+  });
+
   const {
     isUploading,
     isFiltering,
@@ -77,6 +87,23 @@ export default function SitemapPage() {
     window.open(getExportFilteredUrl(exportFormat), '_blank');
   };
 
+  // 计算节点总数的辅助函数，用于检测性能问题
+  const countNodes = (node: any): number => {
+    if (!node) return 0;
+    let count = 1; // 当前节点
+    
+    if (node.children && Array.isArray(node.children)) {
+      node.children.forEach((child: any) => {
+        count += countNodes(child);
+      });
+    }
+    
+    return count;
+  };
+
+  // 检查是否有大量节点，决定是否显示性能警告
+  const hasLargeDataset = visualizationData && countNodes(visualizationData) > 500;
+
   const hasData = uploadResponse !== null;
   const hasFilteredUrls = filterResponse && filterResponse.filtered_urls.length > 0;
 
@@ -87,11 +114,40 @@ export default function SitemapPage() {
         return (
           <div className="card">
             <h3 className="text-lg font-medium text-gray-800 mb-4">网站结构可视化</h3>
+            
+            {/* 性能警告提示 - 独立组件 */}
+            {hasLargeDataset && (
+              <div className="mb-4 px-4 py-3 bg-yellow-50 text-yellow-800 rounded-md text-sm flex">
+                <FiAlertTriangle className="flex-shrink-0 mt-0.5 mr-2" />
+                <div>
+                  <div className="font-medium">大型数据集提示</div>
+                  <p>当前数据集包含大量URL，可能影响可视化性能。您可以：</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button 
+                      className="px-2 py-1 bg-white border border-yellow-500 rounded-md text-yellow-700 text-xs hover:bg-yellow-100 transition-colors"
+                      onClick={() => setActiveTab('urls')}
+                    >
+                      <FiList className="inline mr-1" />
+                      切换到URL列表
+                    </button>
+                    <button 
+                      className="px-2 py-1 bg-white border border-yellow-500 rounded-md text-yellow-700 text-xs hover:bg-yellow-100 transition-colors"
+                      onClick={() => setShowChartConfig(!showChartConfig)}
+                    >
+                      <FiSettings className="inline mr-1" />
+                      调整图表配置
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <SitemapChart
               visualizationData={visualizationData as any}
               visualizationType={visualizationType}
               isLoading={isLoadingVisualization}
               height={700}
+              chartConfig={chartConfig}
             />
           </div>
         );
@@ -244,6 +300,79 @@ export default function SitemapPage() {
                       <option value="graph-npm">箭头流向图 - 方向指示</option>
                     </select>
                   </div>
+                  
+                  {/* 图表配置面板 - 新增 */}
+                  <details 
+                    className={`bg-gray-50 p-3 rounded-md ${showChartConfig ? 'open' : ''}`}
+                    open={showChartConfig}
+                  >
+                    <summary 
+                      className="font-medium cursor-pointer"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setShowChartConfig(!showChartConfig);
+                      }}
+                    >
+                      高级图表配置
+                      <FiSettings className="inline ml-2" />
+                    </summary>
+                    
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          初始展开深度: {chartConfig.initialDepth}
+                        </label>
+                        <input 
+                          type="range" 
+                          min={1} 
+                          max={5} 
+                          step={1}
+                          value={chartConfig.initialDepth}
+                          onChange={(e) => setChartConfig({...chartConfig, initialDepth: Number(e.target.value)})}
+                          className="w-full"
+                        />
+                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                          <span>更少</span>
+                          <span>更多</span>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          节点标签显示
+                        </label>
+                        <select
+                          value={chartConfig.labelStrategy}
+                          onChange={(e) => setChartConfig({
+                            ...chartConfig, 
+                            labelStrategy: e.target.value as 'always' | 'hover' | 'none'
+                          })}
+                          className="w-full p-2 border border-gray-300 rounded-md"
+                        >
+                          <option value="hover">仅悬停时显示 (推荐)</option>
+                          <option value="always">始终显示所有标签</option>
+                          <option value="none">隐藏所有标签</option>
+                        </select>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id="enableAnimation"
+                          checked={chartConfig.enableAnimation}
+                          onChange={(e) => setChartConfig({...chartConfig, enableAnimation: e.target.checked})}
+                          className="mr-2"
+                        />
+                        <label htmlFor="enableAnimation" className="text-sm text-gray-700">
+                          启用动画 (大数据集建议关闭)
+                        </label>
+                      </div>
+                      
+                      <div className="bg-blue-50 p-2 rounded text-xs text-blue-800">
+                        提示: 大型网站结构建议使用较低的展开深度和关闭动画效果以提高性能
+                      </div>
+                    </div>
+                  </details>
                   
                   {isLoadingVisualization && (
                     <div className="bg-blue-50 p-3 rounded-md text-sm text-blue-700 flex items-center">
