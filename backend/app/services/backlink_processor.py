@@ -117,7 +117,14 @@ class BacklinkProcessor:
         
         # Get unique domains
         if 'Domain' in self.filtered_data.columns:
+            # 计算每个域名出现的次数
+            domain_counts = self.filtered_data['Domain'].value_counts().to_dict()
+            
+            # 获取唯一域名
             unique_domains = self.filtered_data.drop_duplicates(subset=['Domain'])
+            
+            # 添加duplicate列，表示域名的重复次数
+            unique_domains['duplicate'] = unique_domains['Domain'].map(domain_counts)
             
             # Convert DataFrame to CSV
             csv_bytes = unique_domains.to_csv(index=False).encode('utf-8')
