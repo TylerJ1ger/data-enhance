@@ -169,3 +169,70 @@ export interface SitemapAnalysisResponse {
   visualization_data?: TreeVisualizationData;
   error?: string;
 }
+
+// 添加到 frontend/src/types/index.ts
+
+// Backlink filter ranges
+export interface BacklinkFilterRanges {
+  domain_ascore_range?: [number, number];
+  backlinks_range?: [number, number];
+  domain_frequency_range?: [number, number];
+}
+
+// Backlink filter response
+export interface BacklinkFilterResponse {
+  filtered_stats: BacklinkDataStats;
+  domain_counts: Record<string, number>;
+}
+
+// Backlink data statistics
+export interface BacklinkDataStats {
+  total_rows: number;
+  domain_count: number;
+  unique_domains: number;
+  brands: string[];
+  min_values: Record<string, number>;
+  max_values: Record<string, number>;
+}
+
+// Backlink filter range values
+export interface BacklinkFilterRangeValues {
+  domain_ascore: [number, number];
+  backlinks: [number, number];
+  domain_frequency: [number, number];
+}
+
+// Backlink upload response
+export interface BacklinkUploadResponse {
+  file_stats: FileStats[];
+  merged_stats: BacklinkDataStats;
+}
+
+// Domain filter result item
+export interface DomainFilterItem {
+  domain: string;
+  brand: string;
+  domain_ascore?: number;
+  backlinks?: number;
+  ip_address?: string;
+  country?: string;
+  first_seen?: string;
+  last_seen?: string;
+}
+
+// Domain filter response
+export interface DomainFilterResponse {
+  results: DomainFilterItem[];
+}
+
+// Brand domain overlap data
+export interface BrandDomainOverlapResponse {
+  overlap_matrix: Record<string, Record<string, number>>;
+  brand_stats: Record<string, BrandDomainStats>;
+}
+
+// Brand domain statistics
+export interface BrandDomainStats {
+  total_domains: number;
+  unique_domains: number;
+}

@@ -1,5 +1,6 @@
+// 修改 Layout.tsx
 import React, { ReactNode } from 'react';
-import { FiFileText, FiFilter, FiBarChart2, FiDownload, FiMap, FiSearch } from 'react-icons/fi';
+import { FiFileText, FiFilter, FiBarChart2, FiDownload, FiMap, FiSearch, FiLink } from 'react-icons/fi';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
@@ -19,6 +20,7 @@ const Layout: React.FC<LayoutProps> = ({
   const isHome = router.pathname === '/';
   const isSitemap = router.pathname === '/sitemap';
   const isSeo = router.pathname === '/seo';
+  const isBacklink = router.pathname === '/backlink'; // 新增
   
   return (
     <>
@@ -54,6 +56,19 @@ const Layout: React.FC<LayoutProps> = ({
                   >
                     <FiBarChart2 className="mr-1 h-4 w-4" />
                     关键词分析
+                  </Link>
+                  
+                  {/* 添加外链分析导航 */}
+                  <Link 
+                    href="/backlink" 
+                    className={`inline-flex items-center px-3 py-2 border-b-2 text-sm font-medium ${
+                      isBacklink
+                        ? 'border-primary-500 text-primary-600'
+                        : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                    }`}
+                  >
+                    <FiLink className="mr-1 h-4 w-4" />
+                    外链分析
                   </Link>
                   
                   <Link 

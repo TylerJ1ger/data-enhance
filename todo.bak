@@ -1,6 +1,4 @@
 python3 model/ref/combined-tree-formatter.py "." "model/ref/structure/file-structure.txt" "model/ref/structure/formatted-tree.txt"
 
-SitemapChart.tsx
-SitemapURLList.tsx
-sitemap_processor.py
-sitemap.tsx
+api.py
+ForceGraphChart.tsx 
