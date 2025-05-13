@@ -1,10 +1,11 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
-import { BrandOverlapResponse } from '../../types';
+import { BrandOverlapResponse, BrandDomainOverlapResponse, BrandStats, BrandDomainStats } from '../../types';
 
 // 类型定义
-interface BrandOverlapChartProps {
-  brandOverlapData: BrandOverlapResponse | null;
+interface ForceGraphChartProps {
+  brandOverlapData: BrandOverlapResponse | BrandDomainOverlapResponse | null;
   height?: number;
+  dataType?: 'keyword' | 'domain';  // 新增参数，用于区分关键词和域名数据
 }
 
 interface GraphNode {
@@ -12,8 +13,8 @@ interface GraphNode {
   name: string;
   val: number; // 节点大小
   color: string;
-  totalKeywords: number;
-  uniqueKeywords: number;
+  totalItems: number;
+  uniqueItems: number;
 }
 
 interface GraphLink {
@@ -29,9 +30,10 @@ const COLORS = [
   '#ec4899', '#d946ef', '#a855f7', '#8b5cf6', '#6366f1'
 ];
 
-const ForceGraphChart: React.FC<BrandOverlapChartProps> = ({
+const ForceGraphChart: React.FC<ForceGraphChartProps> = ({
   brandOverlapData,
-  height = 450
+  height = 450,
+  dataType = 'keyword' // 默认为关键词类型
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isClient, setIsClient] = useState(false);
@@ -50,18 +52,38 @@ const ForceGraphChart: React.FC<BrandOverlapChartProps> = ({
     
     if (brands.length === 0) return { nodes: [], links: [] };
     
+    // 根据数据类型获取相应的统计数据
+    const getCount = (brand: string) => {
+      if (dataType === 'domain' && 'total_domains' in brand_stats[brand]) {
+        return (brand_stats[brand] as BrandDomainStats).total_domains;
+      } else if ('total_keywords' in brand_stats[brand]) {
+        return (brand_stats[brand] as BrandStats).total_keywords;
+      }
+      return 0;
+    };
+    
+    // 获取唯一数量
+    const getUniqueCount = (brand: string) => {
+      if (dataType === 'domain' && 'unique_domains' in brand_stats[brand]) {
+        return (brand_stats[brand] as BrandDomainStats).unique_domains;
+      } else if ('unique_keywords' in brand_stats[brand]) {
+        return (brand_stats[brand] as BrandStats).unique_keywords;
+      }
+      return 0;
+    };
+    
     // 找出最大关键词数量，用于缩放节点大小
-    const maxKeywords = Math.max(...Object.values(brand_stats).map(stats => stats.total_keywords));
+    const maxItems = Math.max(...Object.values(brands).map(brand => getCount(brand)));
     
     // 准备节点，调整大小计算
     const nodes: GraphNode[] = brands.map((brand, index) => ({
       id: brand,
       name: brand,
-      // 根据关键词数量调整节点大小，使用开平方根缩放并限制最大/最小值
-      val: Math.max(3, Math.min(10, 3 + Math.sqrt(brand_stats[brand].total_keywords / maxKeywords) * 10)),
+      // 根据数量调整节点大小，使用开平方根缩放并限制最大/最小值
+      val: Math.max(3, Math.min(10, 3 + Math.sqrt(getCount(brand) / maxItems) * 10)),
       color: COLORS[index % COLORS.length],
-      totalKeywords: brand_stats[brand].total_keywords,
-      uniqueKeywords: brand_stats[brand].unique_keywords
+      totalItems: getCount(brand),
+      uniqueItems: getUniqueCount(brand)
     }));
     
     // 准备连接
@@ -82,7 +104,7 @@ const ForceGraphChart: React.FC<BrandOverlapChartProps> = ({
     });
     
     return { nodes, links };
-  }, [brandOverlapData]);
+  }, [brandOverlapData, dataType]);
 
   // 标记组件挂载状态
   useEffect(() => {
@@ -162,6 +184,22 @@ const ForceGraphChart: React.FC<BrandOverlapChartProps> = ({
     }
   }, []);
 
+  // 生成节点标签内容
+  const getNodeLabel = (node: any) => {
+    if (dataType === 'domain') {
+      return `${node.name}: ${node.totalItems} 个域名`;
+    }
+    return `${node.name}: ${node.totalItems} 关键词`;
+  };
+
+  // 生成连接标签内容
+  const getLinkLabel = (link: any) => {
+    if (dataType === 'domain') {
+      return `共同域名: ${link.value}`;
+    }
+    return `共同关键词: ${link.value}`;
+  };
+
   // 错误处理渲染
   if (error) {
     return (
@@ -178,14 +216,22 @@ const ForceGraphChart: React.FC<BrandOverlapChartProps> = ({
               <thead>
                 <tr className="bg-gray-50">
                   <th className="px-4 py-2 text-left">品牌</th>
-                  <th className="px-4 py-2 text-right">关键词数量</th>
+                  <th className="px-4 py-2 text-right">
+                    {dataType === 'domain' ? '域名数量' : '关键词数量'}
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {Object.entries(brandOverlapData.brand_stats).map(([brand, stats]) => (
                   <tr key={brand} className="border-t">
                     <td className="px-4 py-2">{brand}</td>
-                    <td className="px-4 py-2 text-right">{stats.total_keywords}</td>
+                    <td className="px-4 py-2 text-right">
+                      {dataType === 'domain' && 'total_domains' in stats
+                        ? (stats as BrandDomainStats).total_domains
+                        : 'total_keywords' in stats
+                          ? (stats as BrandStats).total_keywords
+                          : 0}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -201,7 +247,10 @@ const ForceGraphChart: React.FC<BrandOverlapChartProps> = ({
     return (
       <div className="flex items-center justify-center h-64 bg-gray-50 rounded-lg">
         <p className="text-gray-500">
-          无可用品牌重叠数据。请确保上传的文件包含品牌信息。
+          {dataType === 'domain' 
+            ? '无可用品牌域名重叠数据。请确保上传的文件包含品牌信息。'
+            : '无可用品牌重叠数据。请确保上传的文件包含品牌信息。'
+          }
         </p>
       </div>
     );
@@ -219,13 +268,17 @@ const ForceGraphChart: React.FC<BrandOverlapChartProps> = ({
   // 渲染备用表格视图
   const renderTableView = () => (
     <div className="mt-6 bg-white border rounded-lg p-4">
-      <h4 className="text-sm font-medium mb-2">品牌关键词重叠数据</h4>
+      <h4 className="text-sm font-medium mb-2">
+        {dataType === 'domain' ? '品牌域名重叠数据' : '品牌关键词重叠数据'}
+      </h4>
       <div className="overflow-auto max-h-[400px]">
         <table className="min-w-full">
           <thead>
             <tr className="bg-gray-50">
               <th className="px-4 py-2 text-left">品牌</th>
-              <th className="px-4 py-2 text-right">关键词数量</th>
+              <th className="px-4 py-2 text-right">
+                {dataType === 'domain' ? '域名数量' : '关键词数量'}
+              </th>
               <th className="px-4 py-2 text-left">重叠信息</th>
             </tr>
           </thead>
@@ -233,7 +286,13 @@ const ForceGraphChart: React.FC<BrandOverlapChartProps> = ({
             {Object.entries(brandOverlapData.brand_stats).map(([brand, stats]) => (
               <tr key={brand} className="border-t">
                 <td className="px-4 py-2">{brand}</td>
-                <td className="px-4 py-2 text-right">{stats.total_keywords}</td>
+                <td className="px-4 py-2 text-right">
+                  {dataType === 'domain' && 'total_domains' in stats
+                    ? (stats as BrandDomainStats).total_domains
+                    : 'total_keywords' in stats
+                      ? (stats as BrandStats).total_keywords
+                      : 0}
+                </td>
                 <td className="px-4 py-2">
                   <div className="flex flex-wrap gap-1">
                     {Object.entries(brandOverlapData.overlap_matrix[brand])
@@ -264,8 +323,8 @@ const ForceGraphChart: React.FC<BrandOverlapChartProps> = ({
             height={height}
             nodeVal={node => node.val}
             nodeRelSize={4}
-            nodeLabel={node => `${node.name}: ${node.totalKeywords} 关键词`}
-            linkLabel={link => `共同关键词: ${link.value}`}
+            nodeLabel={node => getNodeLabel(node)}
+            linkLabel={link => getLinkLabel(link)}
             nodeColor={node => node.color}
             linkWidth={link => Math.min(5, Math.sqrt(link.value) / 2)}
             linkColor={() => "#88888866"}

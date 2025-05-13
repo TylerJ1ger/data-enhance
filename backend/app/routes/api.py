@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.services.csv_processor import CSVProcessor
 from app.services.sitemap_processor import SitemapProcessor
 from app.services.seo_processor import SEOProcessor
+from app.services.backlink_processor import BacklinkProcessor
 
 router = APIRouter()
 
@@ -16,6 +17,7 @@ router = APIRouter()
 csv_processor = CSVProcessor()
 sitemap_processor = SitemapProcessor()
 seo_processor = SEOProcessor()
+backlink_processor = BacklinkProcessor()
 
 class FilterRanges(BaseModel):
     position_range: Optional[List[float]] = None
@@ -37,6 +39,15 @@ class SitemapFilterRequest(BaseModel):
 class FilteredVisualizationRequest(BaseModel):
     visualization_type: str = "tree"
     urls: List[str] = []
+
+# 新增外链分析相关模型
+class BacklinkFilterRanges(BaseModel):
+    domain_ascore_range: Optional[List[float]] = None
+    backlinks_range: Optional[List[float]] = None
+    domain_frequency_range: Optional[List[float]] = None
+
+class DomainFilterRequest(BaseModel):
+    domain: str
 
 @router.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
@@ -315,6 +326,94 @@ async def get_seo_categories():
         {"id": "robots_directives", "name": "Robots Directives", "description": "机器人指令相关问题，包括meta robots标签和X-Robots-Tag设置"}
     ]
     return {"categories": categories}
+
+# 以下是Backlink相关API端点
+
+@router.post("/backlink/upload")
+async def upload_backlink_files(files: List[UploadFile] = File(...)):
+    """
+    Upload and process backlink CSV/XLSX files.
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    # Process files
+    result = await backlink_processor.process_files(files)
+    
+    return result
+
+@router.post("/backlink/filter")
+async def apply_backlink_filters(filter_ranges: BacklinkFilterRanges):
+    """
+    Apply filters to processed backlink data.
+    """
+    # Convert list ranges to tuples
+    domain_ascore_range = tuple(filter_ranges.domain_ascore_range) if filter_ranges.domain_ascore_range else None
+    backlinks_range = tuple(filter_ranges.backlinks_range) if filter_ranges.backlinks_range else None
+    domain_frequency_range = tuple(filter_ranges.domain_frequency_range) if filter_ranges.domain_frequency_range else None
+    
+    # Apply filters
+    result = backlink_processor.apply_filters(
+        domain_ascore_range,
+        backlinks_range,
+        domain_frequency_range
+    )
+    
+    return result
+
+@router.post("/backlink/domain-filter")
+async def filter_by_domain(request: DomainFilterRequest):
+    """
+    Filter data by a specific domain and return its information across different brands.
+    """
+    if not request.domain:
+        raise HTTPException(status_code=400, detail="No domain provided")
+    
+    result = backlink_processor.filter_by_domain(request.domain)
+    
+    return result
+
+@router.get("/backlink/brand-overlap")
+async def get_backlink_brand_overlap():
+    """
+    Get brand domain overlap data.
+    """
+    result = backlink_processor.get_brand_overlap()
+    
+    return result
+
+@router.get("/backlink/export")
+async def export_backlink_data():
+    """
+    Export filtered backlink data as a CSV file.
+    """
+    csv_data = backlink_processor.export_filtered_data()
+    
+    return StreamingResponse(
+        io.BytesIO(csv_data),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=filtered_backlinks.csv"}
+    )
+
+@router.get("/backlink/export-unique")
+async def export_unique_backlink_data():
+    """
+    Export filtered unique domains as a CSV file.
+    """
+    csv_data = backlink_processor.export_unique_filtered_data()
+    
+    return StreamingResponse(
+        io.BytesIO(csv_data),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=unique_domains.csv"}
+    )
+
+@router.get("/backlink/filter-ranges")
+async def get_backlink_filter_ranges():
+    """
+    Get minimum and maximum values for filter sliders.
+    """
+    return backlink_processor.get_filter_ranges()
 
 @router.get("/health")
 async def health_check():
