@@ -1,1 +1,1 @@
-It's part of SEMagi Keyword Grouper Tool, and you can use it for free. At the same time, people can try it online at <a href="https://dashboard.semagi.com">SEMagi Dashboard</a> or visit the homepage at <a href="http://semagi.com/">SEMagi</a>
+It's part of SEMagi Keyword Grouper Tool, and you can use it for free. At the same time, people can try it online at [SEMagi Dashboard](https://dashboard.semagi.com) or visit the homepage at <a href="http://semagi.com/">SEMagi</a>
