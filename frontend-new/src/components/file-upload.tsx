@@ -28,7 +28,7 @@ export function FileUpload({
     'application/vnd.ms-excel': ['.xls'],
   },
   multiple = true,
-  maxSize = 10 * 1024 * 1024, // 10MB default
+  maxSize = 100 * 1024 * 1024, // 10MB default
   disabled = false,
 }: FileUploadProps) {
   const [files, setFiles] = useState<File[]>([]);

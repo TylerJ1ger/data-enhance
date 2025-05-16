@@ -10,14 +10,19 @@ from app.services.csv_processor import CSVProcessor
 from app.services.sitemap_processor import SitemapProcessor
 from app.services.seo_processor import SEOProcessor
 from app.services.backlink_processor import BacklinkProcessor
+from app.services.cross_analysis_processor import CrossAnalysisProcessor  # 新增导入
 
 router = APIRouter()
+
+# 设置文件大小限制为 100MB
+MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
 
 # Singleton instances
 csv_processor = CSVProcessor()
 sitemap_processor = SitemapProcessor()
 seo_processor = SEOProcessor()
 backlink_processor = BacklinkProcessor()
+cross_analysis_processor = CrossAnalysisProcessor()  # 新增实例
 
 class FilterRanges(BaseModel):
     position_range: Optional[List[float]] = None
@@ -49,6 +54,18 @@ class BacklinkFilterRanges(BaseModel):
 class DomainFilterRequest(BaseModel):
     domain: str
 
+async def check_file_size(files: List[UploadFile]):
+    """检查上传文件的大小是否超过限制"""
+    for file in files:
+        content = await file.read()
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=413,
+                detail=f"文件 {file.filename} 超过最大大小限制 {MAX_FILE_SIZE/(1024*1024)}MB"
+            )
+        # 重置文件指针，以便后续处理
+        await file.seek(0)
+
 @router.post("/upload")
 async def upload_files(files: List[UploadFile] = File(...)):
     """
@@ -56,6 +73,9 @@ async def upload_files(files: List[UploadFile] = File(...)):
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
+    
+    # 检查文件大小
+    await check_file_size(files)
     
     # Process files
     result = await csv_processor.process_files(files)
@@ -148,6 +168,9 @@ async def upload_sitemap_files(files: List[UploadFile] = File(...)):
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
+    
+    # 检查文件大小
+    await check_file_size(files)
     
     # Process sitemap files
     result = await sitemap_processor.process_files(files)
@@ -291,6 +314,16 @@ async def upload_seo_file(
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
     
+    # 检查文件大小
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"文件 {file.filename} 超过最大大小限制 {MAX_FILE_SIZE/(1024*1024)}MB"
+        )
+    # 重置文件指针
+    await file.seek(0)
+    
     # 检查文件类型是否为HTML
     if not file.filename.lower().endswith(('.html', '.htm')):
         raise HTTPException(status_code=400, detail="Only HTML files are supported")
@@ -336,6 +369,9 @@ async def upload_backlink_files(files: List[UploadFile] = File(...)):
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
+    
+    # 检查文件大小
+    await check_file_size(files)
     
     # Process files
     result = await backlink_processor.process_files(files)
@@ -414,6 +450,53 @@ async def get_backlink_filter_ranges():
     Get minimum and maximum values for filter sliders.
     """
     return backlink_processor.get_filter_ranges()
+
+# 新增交叉分析相关端点 - 使用新的处理器
+
+@router.post("/backlink/cross-analysis/upload-first")
+async def upload_cross_analysis_first_round(files: List[UploadFile] = File(...)):
+    """
+    上传交叉分析第一轮文件（包含Domain和Domain ascore字段）
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    # 检查文件大小
+    await check_file_size(files)
+    
+    # 使用新的处理器
+    result = await cross_analysis_processor.process_first_round(files)
+    
+    return result
+
+@router.post("/backlink/cross-analysis/upload-second")
+async def upload_cross_analysis_second_round(files: List[UploadFile] = File(...)):
+    """
+    上传交叉分析第二轮文件（包含Source url和Target url字段）并执行交叉分析
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    # 检查文件大小
+    await check_file_size(files)
+    
+    # 使用新的处理器
+    result = await cross_analysis_processor.process_second_round(files)
+    
+    return result
+
+@router.get("/backlink/cross-analysis/export")
+async def export_cross_analysis_results():
+    """
+    导出交叉分析结果为CSV文件
+    """
+    csv_data = cross_analysis_processor.export_results()
+    
+    return StreamingResponse(
+        io.BytesIO(csv_data),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=cross_analysis_results.csv"}
+    )
 
 @router.get("/health")
 async def health_check():
