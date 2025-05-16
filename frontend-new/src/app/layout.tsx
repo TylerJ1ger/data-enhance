@@ -1,4 +1,4 @@
-//frontend-new/src/app/layout.tsx
+// frontend-new/src/app/layout.tsx
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { ToastContainer } from "react-toastify";
@@ -48,16 +48,20 @@ export default function RootLayout({
         <Providers>
           <div className="relative flex min-h-screen flex-col">
             <SiteHeader />
-            <main className="flex-1 container py-6">
-              {children}
-            </main>
-            <footer className="border-t py-4">
-              <div className="container flex flex-col items-center justify-between gap-4 md:flex-row">
-                <p className="text-center text-sm text-muted-foreground">
-                  &copy; {new Date().getFullYear()} 数据分析工具 - 版权所有
-                </p>
-              </div>
-            </footer>
+            <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-8"> {/* 添加外层容器确保居中 */}
+              <main className="flex-1 py-6">
+                {children}
+              </main>
+            </div>
+            <div className="mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-8"> {/* 添加外层容器确保居中 */}
+              <footer className="border-t py-4">
+                <div className="flex flex-col items-center justify-between gap-4 md:flex-row">
+                  <p className="text-center text-sm text-muted-foreground">
+                    &copy; {new Date().getFullYear()} 数据分析工具 - 版权所有
+                  </p>
+                </div>
+              </footer>
+            </div>
           </div>
           <ToastContainer
             position="top-right"
