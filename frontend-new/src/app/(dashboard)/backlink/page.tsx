@@ -50,6 +50,7 @@ export default function BacklinkPage() {
     crossAnalysisFirstRoundComplete,
     crossAnalysisSecondRoundComplete,
     crossAnalysisResults,
+    domainData,  // 新增：来自第一轮上传文件的域名和权重数据
     uploadCrossAnalysisFirstRound,
     uploadCrossAnalysisSecondRound,
     exportCrossAnalysisResults,
@@ -234,6 +235,7 @@ export default function BacklinkPage() {
           {crossAnalysisSecondRoundComplete && (
             <CrossAnalysisResults
               results={crossAnalysisResults}
+              domainData={domainData}  // 传递域名数据
               isLoading={isCrossAnalysisSecondRound}
               onExport={() => window.open(exportCrossAnalysisResults(), '_blank')}
             />

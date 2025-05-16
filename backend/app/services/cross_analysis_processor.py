@@ -13,6 +13,7 @@ class CrossAnalysisProcessor:
     
     def __init__(self):
         self.domain_cache: Set[str] = set()
+        self.domain_scores: Dict[str, float] = {}  # 新增：存储域名对应的权重
         self.results: List[Dict[str, Any]] = []
         self.chunk_size = 1000  # 每个处理块的大小
         
@@ -20,6 +21,7 @@ class CrossAnalysisProcessor:
         """处理第一轮上传的域名文件"""
         # 清空之前的数据
         self.domain_cache = set()
+        self.domain_scores = {}  # 重置域名权重
         self.results = []
         
         dataframes = []
@@ -36,7 +38,7 @@ class CrossAnalysisProcessor:
                 "success": False,
                 "message": "未能成功处理任何文件"
             }
-            
+                
         merged_df = merge_dataframes(dataframes)
         
         # 检查必要列
@@ -46,25 +48,50 @@ class CrossAnalysisProcessor:
                 "message": "上传的文件中缺少Domain列"
             }
         
+        # 如果存在Domain ascore列，则读取域名权重
+        domain_ascore_col = None
+        if 'Domain ascore' in merged_df.columns:
+            domain_ascore_col = 'Domain ascore'
+        elif 'domain_ascore' in merged_df.columns:
+            domain_ascore_col = 'domain_ascore'
+        
         # 提取唯一域名
         domain_series = merged_df['Domain'].dropna()
         unique_domains = set()
+        domain_scores = {}  # 存储域名对应的权重
         
-        # 并行处理域名规范化
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            futures = [executor.submit(self._normalize_domain, domain) 
-                      for domain in domain_series if isinstance(domain, str) and domain]
-            
-            for future in concurrent.futures.as_completed(futures):
-                domain = future.result()
-                if domain:
-                    unique_domains.add(domain)
+        # 处理域名规范化
+        for domain in domain_series:
+            if isinstance(domain, str) and domain:
+                normalized_domain = self._normalize_domain(domain)
+                if normalized_domain:
+                    unique_domains.add(normalized_domain)
+        
+        # 如果有权重列，存储每个域名的权重
+        if domain_ascore_col:
+            for _, row in merged_df.iterrows():
+                domain = row['Domain']
+                if pd.notna(domain) and isinstance(domain, str) and domain:
+                    normalized_domain = self._normalize_domain(domain)
+                    ascore = row[domain_ascore_col]
+                    if pd.notna(ascore) and normalized_domain:
+                        domain_scores[normalized_domain] = float(ascore)
         
         self.domain_cache = unique_domains
+        self.domain_scores = domain_scores  # 保存域名权重
+        
+        # 创建域名数据列表
+        domains_data = []
+        for domain in unique_domains:
+            domains_data.append({
+                "domain": domain,
+                "ascore": domain_scores.get(domain, 0)  # 获取域名权重，如果没有则为0
+            })
         
         return {
             "success": True,
             "domains_count": len(unique_domains),
+            "domains_data": domains_data,  # 返回域名数据列表
             "message": f"成功提取 {len(unique_domains)} 个唯一域名"
         }
     
@@ -92,7 +119,7 @@ class CrossAnalysisProcessor:
                 "message": "未能成功处理任何文件",
                 "results": []
             }
-            
+                
         merged_df = merge_dataframes(dataframes)
         
         # 检查必要列
@@ -124,9 +151,18 @@ class CrossAnalysisProcessor:
         filtered_results = self._apply_domain_filtering(all_results)
         self.results = filtered_results
         
+        # 准备域名数据列表
+        domains_data = []
+        for domain in self.domain_cache:
+            domains_data.append({
+                "domain": domain,
+                "ascore": self.domain_scores.get(domain, 0)
+            })
+        
         return {
             "success": True,
             "results": filtered_results,
+            "domains_data": domains_data,  # 返回域名数据
             "message": f"成功匹配 {len(filtered_results)} 条记录"
         }
     
@@ -205,8 +241,8 @@ class CrossAnalysisProcessor:
             
             # 解析域名
             try:
-                source_domain = self._extract_domain(source_url)
-                target_domain = self._extract_domain(target_url)
+                source_domain = self._extract_root_domain(source_url)
+                target_domain = self._extract_root_domain(target_url)
             except:
                 continue
             
@@ -298,7 +334,7 @@ class CrossAnalysisProcessor:
         return filtered_results
     
     def _normalize_domain(self, domain: str) -> str:
-        """规范化域名格式"""
+        """简单规范化域名格式"""
         if not isinstance(domain, str):
             return ""
             
@@ -310,8 +346,75 @@ class CrossAnalysisProcessor:
             
         return domain
     
+    def _extract_root_domain(self, url: str) -> str:
+        """更健壮的从URL中提取根域名的方法"""
+        try:
+            urlObj = urlparse(url)
+            hostname = urlObj.netloc.lower()
+            
+            # 如果没有netloc，尝试从path中提取域名
+            if not hostname and urlObj.path:
+                path_parts = urlObj.path.split('/')
+                if len(path_parts) > 0 and '.' in path_parts[0]:
+                    hostname = path_parts[0]
+            
+            # 处理IP地址的情况
+            if hostname and hostname[0].isdigit() and all(part.isdigit() for part in hostname.split('.')):
+                return hostname
+            
+            # 移除www前缀
+            if hostname.startswith('www.'):
+                hostname = hostname[4:]
+            
+            # 分割域名部分
+            parts = hostname.split('.')
+            
+            # 如果只有两部分或更少，直接返回
+            if len(parts) <= 2:
+                return hostname
+            
+            # 识别根域名的规则集
+            # 常见的顶级域名
+            common_tlds = [
+                'com', 'org', 'net', 'edu', 'gov', 'mil', 'io', 'co', 'ai', 'app',
+                'dev', 'me', 'info', 'biz', 'tv', 'us', 'uk', 'cn', 'jp', 'de', 'fr'
+            ]
+            
+            # 处理二级顶级域名的情况，如.co.uk，.com.au等
+            if len(parts) >= 3:
+                # 处理特殊情况，如example.co.uk
+                if parts[-2] in ['co', 'com', 'org', 'net', 'ac', 'gov', 'edu'] and len(parts[-1]) == 2:
+                    if len(parts) > 3:
+                        # 形如subdomain.example.co.uk，返回example.co.uk
+                        return f"{parts[-3]}.{parts[-2]}.{parts[-1]}"
+                    else:
+                        # 形如example.co.uk，直接返回
+                        return hostname
+                
+                # 对于uptodown.com这样的域名，确保子域名如seeu-ai.id.uptodown.com被识别为uptodown.com
+                for tld in common_tlds:
+                    if parts[-1] == tld:
+                        # 返回主域名和TLD
+                        return f"{parts[-2]}.{parts[-1]}"
+                
+                # 对于leonardo.ai这样的域名，确保子域名如app.leonardo.ai被识别为leonardo.ai
+                if len(parts) >= 2:
+                    last_part = parts[-1]
+                    if last_part not in common_tlds:
+                        # 如果最后一部分不是常见TLD，可能是类似.ai的域名
+                        # 返回最后两个部分
+                        return f"{parts[-2]}.{parts[-1]}"
+            
+            # 默认情况，返回hostname
+            return hostname
+            
+        except Exception as e:
+            # 如果URL解析失败，尝试从字符串中提取类似域名的部分
+            domain_match = url.replace('http://', '').replace('https://', '').split('/')[0]
+            return domain_match.lower()
+    
     def _extract_domain(self, url: str) -> str:
-        """从URL中提取域名"""
+        """从URL中提取域名 - 之前的简单方法，保留以兼容现有代码"""
         domain = urlparse(url).netloc.lower()
         
         # 移除www前缀

@@ -13,6 +13,12 @@ import {
   DomainFilterResponse,
 } from '@/types';
 
+// 定义域名数据接口
+interface Domain {
+  domain: string;
+  ascore: number;
+}
+
 export function useBacklinkApi() {
   // 请求状态
   const [isUploading, setIsUploading] = useState(false);
@@ -40,6 +46,7 @@ export function useBacklinkApi() {
   const [crossAnalysisFirstRoundComplete, setCrossAnalysisFirstRoundComplete] = useState(false);
   const [crossAnalysisSecondRoundComplete, setCrossAnalysisSecondRoundComplete] = useState(false);
   const [crossAnalysisResults, setCrossAnalysisResults] = useState<any[]>([]);
+  const [domainData, setDomainData] = useState<Domain[]>([]); // 新增：存储域名数据
 
   // 组件挂载时检查API健康状态
   useEffect(() => {
@@ -190,6 +197,12 @@ export function useBacklinkApi() {
     try {
       const data = await api.uploadCrossAnalysisFirstRound(files);
       setCrossAnalysisFirstRoundComplete(true);
+      
+      // 存储域名数据
+      if (data.domains_data) {
+        setDomainData(data.domains_data);
+      }
+      
       toast.success(`成功处理第一轮文件`);
       return data;
     } catch (error) {
@@ -207,6 +220,12 @@ export function useBacklinkApi() {
     try {
       const data = await api.uploadCrossAnalysisSecondRound(files);
       setCrossAnalysisResults(data.results);
+      
+      // 如果第二轮也返回了域名数据，更新它
+      if (data.domains_data) {
+        setDomainData(data.domains_data);
+      }
+      
       setCrossAnalysisSecondRoundComplete(true);
       toast.success(`成功处理第二轮文件，发现 ${data.results.length} 条匹配记录`);
       return data;
@@ -229,6 +248,7 @@ export function useBacklinkApi() {
     setCrossAnalysisFirstRoundComplete(false);
     setCrossAnalysisSecondRoundComplete(false);
     setCrossAnalysisResults([]);
+    setDomainData([]); // 重置域名数据
   }, []);
 
   return {
@@ -262,6 +282,7 @@ export function useBacklinkApi() {
     crossAnalysisFirstRoundComplete,
     crossAnalysisSecondRoundComplete,
     crossAnalysisResults,
+    domainData, // 暴露域名数据
     uploadCrossAnalysisFirstRound,
     uploadCrossAnalysisSecondRound,
     exportCrossAnalysisResults,
