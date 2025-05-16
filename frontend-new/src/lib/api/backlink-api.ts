@@ -20,7 +20,7 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/a
 // 创建axios实例
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // 30秒超时
+  timeout: 120000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -148,6 +148,64 @@ export const checkBacklinkHealth = async (): Promise<{ status: string; service: 
 };
 
 /**
+ * 上传交叉分析第一轮文件
+ * @param files 要上传的文件数组
+ * @returns 上传响应数据
+ */
+export const uploadCrossAnalysisFirstRound = async (files: File[]) => {
+  try {
+    const formData = new FormData();
+    
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+    
+    const response = await api.post<any>('/backlink/cross-analysis/upload-first', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    return response.data;
+  } catch (error) {
+    return handleApiError(error as Error);
+  }
+};
+
+/**
+ * 上传交叉分析第二轮文件
+ * @param files 要上传的文件数组
+ * @returns 交叉分析结果
+ */
+export const uploadCrossAnalysisSecondRound = async (files: File[]) => {
+  try {
+    const formData = new FormData();
+    
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+    
+    const response = await api.post<any>('/backlink/cross-analysis/upload-second', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    return response.data;
+  } catch (error) {
+    return handleApiError(error as Error);
+  }
+};
+
+/**
+ * 获取交叉分析结果的导出URL
+ * @returns 导出数据的URL
+ */
+export const exportCrossAnalysisResults = (): string => {
+  return `${API_BASE_URL}/backlink/cross-analysis/export`;
+};
+
+/**
  * 批量处理API请求
  * @param requests 要批量处理的请求数组
  * @returns 批量处理结果
@@ -170,4 +228,7 @@ export default {
   filterByDomain,
   checkBacklinkHealth,
   batchProcessRequests,
+  uploadCrossAnalysisFirstRound,
+  uploadCrossAnalysisSecondRound,
+  exportCrossAnalysisResults,
 };

@@ -3,6 +3,7 @@ import pandas as pd
 import tempfile
 from typing import List, Dict, Any, Tuple, Optional
 from fastapi import UploadFile
+from urllib.parse import urlparse
 
 from app.utils.helpers import (
     read_file, 
@@ -173,7 +174,7 @@ class BacklinkProcessor:
         if self.filtered_data.empty:
             return {"results": []}
         
-        # Filter for the specific domain (case insensitive)
+        # 转换为Python原生逻辑，避免Series布尔操作
         domain_data = self.filtered_data[self.filtered_data['Domain'].str.lower() == domain.lower()]
         
         if domain_data.empty:

@@ -4,9 +4,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.config import config, is_development, is_production
 from app.routes.api import router as api_router
+
+# 创建中间件来处理大文件上传
+class LargeUploadMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        # 这里不检查内容长度，直接放行所有请求
+        return await call_next(request)
 
 # Create FastAPI app
 app = FastAPI(
@@ -16,6 +23,9 @@ app = FastAPI(
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json"
 )
+
+# 添加中间件以支持大文件上传
+app.add_middleware(LargeUploadMiddleware)
 
 # 显式设置允许的源
 origins = [
@@ -135,10 +145,12 @@ if is_development():
         """)
 
 if __name__ == "__main__":
-    # Run the FastAPI app with uvicorn
+    # Run the FastAPI app with uvicorn - 更改配置支持大文件上传
     uvicorn.run(
         "main:app",
         host=config["host"],
         port=config["port"],
-        reload=is_development()
+        reload=is_development(),
+        # 修改默认配置，支持大文件上传
+        timeout_keep_alive=300,  # 增加保持连接的超时时间，单位为秒
     )

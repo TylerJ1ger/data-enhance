@@ -34,6 +34,13 @@ export function useBacklinkApi() {
     domain_frequency: [1, 100],
   });
 
+  // 交叉分析状态
+  const [isCrossAnalysisFirstRound, setIsCrossAnalysisFirstRound] = useState(false);
+  const [isCrossAnalysisSecondRound, setIsCrossAnalysisSecondRound] = useState(false);
+  const [crossAnalysisFirstRoundComplete, setCrossAnalysisFirstRoundComplete] = useState(false);
+  const [crossAnalysisSecondRoundComplete, setCrossAnalysisSecondRoundComplete] = useState(false);
+  const [crossAnalysisResults, setCrossAnalysisResults] = useState<any[]>([]);
+
   // 组件挂载时检查API健康状态
   useEffect(() => {
     const checkApiHealth = async () => {
@@ -177,6 +184,53 @@ export function useBacklinkApi() {
     });
   }, []);
 
+  // 第一轮上传函数
+  const uploadCrossAnalysisFirstRound = useCallback(async (files: File[]) => {
+    setIsCrossAnalysisFirstRound(true);
+    try {
+      const data = await api.uploadCrossAnalysisFirstRound(files);
+      setCrossAnalysisFirstRoundComplete(true);
+      toast.success(`成功处理第一轮文件`);
+      return data;
+    } catch (error) {
+      console.error('第一轮上传文件时出错:', error);
+      toast.error('上传第一轮文件失败。请重试。');
+      throw error;
+    } finally {
+      setIsCrossAnalysisFirstRound(false);
+    }
+  }, []);
+
+  // 第二轮上传函数
+  const uploadCrossAnalysisSecondRound = useCallback(async (files: File[]) => {
+    setIsCrossAnalysisSecondRound(true);
+    try {
+      const data = await api.uploadCrossAnalysisSecondRound(files);
+      setCrossAnalysisResults(data.results);
+      setCrossAnalysisSecondRoundComplete(true);
+      toast.success(`成功处理第二轮文件，发现 ${data.results.length} 条匹配记录`);
+      return data;
+    } catch (error) {
+      console.error('第二轮上传文件时出错:', error);
+      toast.error('上传第二轮文件失败。请重试。');
+      throw error;
+    } finally {
+      setIsCrossAnalysisSecondRound(false);
+    }
+  }, []);
+
+  // 导出交叉分析结果
+  const exportCrossAnalysisResults = useCallback(() => {
+    return api.exportCrossAnalysisResults();
+  }, []);
+
+  // 重置交叉分析状态
+  const resetCrossAnalysis = useCallback(() => {
+    setCrossAnalysisFirstRoundComplete(false);
+    setCrossAnalysisSecondRoundComplete(false);
+    setCrossAnalysisResults([]);
+  }, []);
+
   return {
     // 状态
     isUploading,
@@ -201,5 +255,16 @@ export function useBacklinkApi() {
     getExportUrl,
     getExportUniqueUrl,
     resetData,
+
+    // 交叉分析相关
+    isCrossAnalysisFirstRound,
+    isCrossAnalysisSecondRound,
+    crossAnalysisFirstRoundComplete,
+    crossAnalysisSecondRoundComplete,
+    crossAnalysisResults,
+    uploadCrossAnalysisFirstRound,
+    uploadCrossAnalysisSecondRound,
+    exportCrossAnalysisResults,
+    resetCrossAnalysis,
   };
 }
