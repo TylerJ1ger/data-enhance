@@ -76,6 +76,52 @@ if ! command_exists npm; then
     exit 1
 fi
 
+# Variable to store frontend directory
+FRONTEND_DIR=""
+
+# Function to select frontend version
+select_frontend_version() {
+    echo -e "${BLUE}=================================${NC}"
+    echo -e "${BLUE}  Select Frontend Version        ${NC}"
+    echo -e "${BLUE}=================================${NC}"
+    echo -e "1) ${GREEN}Old version${NC} (from frontend directory)"
+    echo -e "2) ${GREEN}New version${NC} (from frontend-new directory)"
+    echo -e "${BLUE}=================================${NC}"
+    
+    local selection
+    while true; do
+        echo -n "Enter your choice (1 or 2): "
+        read selection
+        
+        case $selection in
+            1)
+                FRONTEND_DIR="$SCRIPT_DIR/frontend"
+                echo -e "${GREEN}Selected: Old frontend version${NC}"
+                break
+                ;;
+            2)
+                FRONTEND_DIR="$SCRIPT_DIR/frontend-new"
+                echo -e "${GREEN}Selected: New frontend version${NC}"
+                break
+                ;;
+            *)
+                echo -e "${RED}Invalid selection. Please enter 1 or 2.${NC}"
+                ;;
+        esac
+    done
+    
+    # Check if the selected frontend directory exists
+    if [ ! -d "$FRONTEND_DIR" ]; then
+        echo -e "${RED}Error: The selected frontend directory '$FRONTEND_DIR' does not exist.${NC}"
+        echo -e "${YELLOW}If you selected the new version, please make sure you've created the frontend-new directory.${NC}"
+        exit 1
+    fi
+    
+    # Log the selection
+    log_with_timestamp "$FRONTEND_LOG" "Selected frontend directory: $FRONTEND_DIR"
+    echo ""
+}
+
 # Function to start the backend server
 start_backend() {
     echo -e "${GREEN}Starting backend server...${NC}"
@@ -150,9 +196,9 @@ start_frontend() {
     echo -e "${GREEN}Starting frontend server...${NC}"
     log_with_timestamp "$FRONTEND_LOG" "Starting frontend server initialization"
     
-    cd "$SCRIPT_DIR/frontend" || { 
-        echo -e "${RED}Frontend directory not found${NC}"
-        log_with_timestamp "$FRONTEND_LOG" "ERROR: Frontend directory not found"
+    cd "$FRONTEND_DIR" || { 
+        echo -e "${RED}Frontend directory not found: $FRONTEND_DIR${NC}"
+        log_with_timestamp "$FRONTEND_LOG" "ERROR: Frontend directory not found: $FRONTEND_DIR"
         return 1
     }
     
@@ -339,6 +385,9 @@ monitor_services() {
 
 # Set up cleanup on script exit (Ctrl+C or terminal close)
 trap cleanup EXIT INT TERM
+
+# First prompt for frontend version selection
+select_frontend_version
 
 # Start backend and frontend servers
 start_backend
