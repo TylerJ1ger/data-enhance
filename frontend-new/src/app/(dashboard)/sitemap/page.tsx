@@ -184,9 +184,9 @@ export default function SitemapPage() {
     <div className="space-y-6">
       {/* 页面标题 */}
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-foreground">Sitemap分析与可视化</h1>
+        <h1 className="text-3xl font-bold text-foreground">Sitemap分析与可视化</h1>
       </div>
-
+      <Separator />
       {/* 操作栏 */}
       {hasData && (
         <div className="flex flex-wrap gap-4 justify-between mb-6">
