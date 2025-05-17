@@ -1,4 +1,4 @@
-// frontend-new/src/components/backlink/cross-analysis/cross-analysis-filters.tsx
+// frontend-new/src/components/backlink/cross-analysis/CrossAnalysisFilters.tsx
 import React, { useRef, useEffect } from 'react';
 import { Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { Input } from "@/components/ui/input";
@@ -91,8 +91,6 @@ export function CrossAnalysisFilters({
   
   // 渲染分页控件
   const renderPagination = () => {
-    if (pageCount <= 1 && itemsPerPage !== -1) return null;
-    
     return (
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t">
         <div className="flex items-center text-sm text-muted-foreground">
@@ -106,9 +104,9 @@ export function CrossAnalysisFilters({
           )}
         </div>
         
-        <div className="flex items-center gap-6">
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">每页显示:</span>
+        <div className="flex items-end gap-6 w-2xl">
+          <div className="flex items-center gap-4 w-xs">
+            <span className="text-sm text-muted-foreground w-auto">每页显示:</span>
             <Select
               value={itemsPerPage.toString()}
               onValueChange={onItemsPerPageChange}
@@ -128,106 +126,110 @@ export function CrossAnalysisFilters({
             </Select>
           </div>
           
-          {itemsPerPage !== -1 && pageCount > 1 && (
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious 
-                    href="#" 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (currentPage > 1) onPageChange(currentPage - 1);
-                    }}
-                    aria-disabled={currentPage === 1}
-                    className={currentPage === 1 ? "pointer-events-none opacity-50" : ""}
-                  />
-                </PaginationItem>
-                
-                {Array.from({ length: Math.min(5, pageCount) }).map((_, i) => {
-                  let pageNum = i + 1;
-                  
-                  // 调整页码显示，使当前页尽量居中
-                  if (pageCount > 5) {
-                    if (currentPage > 3 && currentPage < pageCount - 1) {
-                      pageNum = currentPage - 2 + i;
-                    } else if (currentPage >= pageCount - 1) {
-                      pageNum = pageCount - 4 + i;
+          {/* 分页控件 - 无论是否显示全部，都保留分页UI，但在显示全部时禁用 */}
+          <Pagination>
+            <PaginationContent>
+              <PaginationItem>
+                <PaginationPrevious 
+                  href="#" 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (currentPage > 1 && itemsPerPage !== -1) onPageChange(currentPage - 1);
+                  }}
+                  aria-disabled={currentPage === 1 || itemsPerPage === -1}
+                  className={currentPage === 1 || itemsPerPage === -1 ? "pointer-events-none opacity-50" : ""}
+                />
+              </PaginationItem>
+              
+              {/* 只在非全部显示时渲染页码 */}
+              {itemsPerPage !== -1 && pageCount > 1 && (
+                <>
+                  {Array.from({ length: Math.min(5, pageCount) }).map((_, i) => {
+                    let pageNum = i + 1;
+                    
+                    // 调整页码显示，使当前页尽量居中
+                    if (pageCount > 5) {
+                      if (currentPage > 3 && currentPage < pageCount - 1) {
+                        pageNum = currentPage - 2 + i;
+                      } else if (currentPage >= pageCount - 1) {
+                        pageNum = pageCount - 4 + i;
+                      }
                     }
-                  }
-                  
-                  // 确保页码在有效范围内
-                  if (pageNum <= 0 || pageNum > pageCount) return null;
-                  
-                  // 当页码大于1且不是第一个显示项时，显示省略号
-                  if (i === 0 && pageNum > 1) {
+                    
+                    // 确保页码在有效范围内
+                    if (pageNum <= 0 || pageNum > pageCount) return null;
+                    
+                    // 当页码大于1且不是第一个显示项时，显示省略号
+                    if (i === 0 && pageNum > 1) {
+                      return (
+                        <PaginationItem key="start-ellipsis">
+                          <PaginationLink 
+                            href="#" 
+                            onClick={(e) => {
+                              e.preventDefault();
+                              onPageChange(1);
+                            }}
+                          >
+                            1
+                          </PaginationLink>
+                        </PaginationItem>
+                      );
+                    }
+                    
+                    // 当页码小于总页数且是最后一个显示项时，显示省略号
+                    if (i === Math.min(5, pageCount) - 1 && pageNum < pageCount) {
+                      return (
+                        <PaginationItem key="end-ellipsis">
+                          <PaginationEllipsis />
+                        </PaginationItem>
+                      );
+                    }
+                    
                     return (
-                      <PaginationItem key="start-ellipsis">
+                      <PaginationItem key={pageNum}>
                         <PaginationLink 
                           href="#" 
                           onClick={(e) => {
                             e.preventDefault();
-                            onPageChange(1);
+                            onPageChange(pageNum);
                           }}
+                          isActive={currentPage === pageNum}
                         >
-                          1
+                          {pageNum}
                         </PaginationLink>
                       </PaginationItem>
                     );
-                  }
+                  })}
                   
-                  // 当页码小于总页数且是最后一个显示项时，显示省略号
-                  if (i === Math.min(5, pageCount) - 1 && pageNum < pageCount) {
-                    return (
-                      <PaginationItem key="end-ellipsis">
-                        <PaginationEllipsis />
-                      </PaginationItem>
-                    );
-                  }
-                  
-                  return (
-                    <PaginationItem key={pageNum}>
+                  {pageCount > 5 && currentPage < pageCount - 2 && (
+                    <PaginationItem>
                       <PaginationLink 
                         href="#" 
                         onClick={(e) => {
                           e.preventDefault();
-                          onPageChange(pageNum);
+                          onPageChange(pageCount);
                         }}
-                        isActive={currentPage === pageNum}
                       >
-                        {pageNum}
+                        {pageCount}
                       </PaginationLink>
                     </PaginationItem>
-                  );
-                })}
-                
-                {pageCount > 5 && currentPage < pageCount - 2 && (
-                  <PaginationItem>
-                    <PaginationLink 
-                      href="#" 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        onPageChange(pageCount);
-                      }}
-                    >
-                      {pageCount}
-                    </PaginationLink>
-                  </PaginationItem>
-                )}
-                
-                <PaginationItem>
-                  <PaginationNext 
-                    href="#" 
-                    onClick={(e) => {
-                      e.preventDefault();
-                      if (currentPage < pageCount) onPageChange(currentPage + 1);
-                    }}
-                    aria-disabled={currentPage === pageCount}
-                    className={currentPage === pageCount ? "pointer-events-none opacity-50" : ""}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-          )}
+                  )}
+                </>
+              )}
+              
+              <PaginationItem>
+                <PaginationNext 
+                  href="#" 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (currentPage < pageCount && itemsPerPage !== -1) onPageChange(currentPage + 1);
+                  }}
+                  aria-disabled={currentPage === pageCount || itemsPerPage === -1}
+                  className={currentPage === pageCount || itemsPerPage === -1 ? "pointer-events-none opacity-50" : ""}
+                />
+              </PaginationItem>
+            </PaginationContent>
+          </Pagination>
         </div>
       </div>
     );

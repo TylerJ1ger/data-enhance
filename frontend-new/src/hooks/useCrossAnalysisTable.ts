@@ -1,5 +1,5 @@
 // frontend-new/src/hooks/useCrossAnalysisTable.ts
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 
 interface CrossAnalysisResult {
   page_ascore: number;
@@ -111,21 +111,6 @@ export function useCrossAnalysisTable({ results, domainData = [] }: UseCrossAnal
   const [compareSortDirection, setCompareSortDirection] = useState<SortDirection>('desc');
   const [filterExpanded, setFilterExpanded] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  
-  // 表格列宽管理相关
-  const [columnWidths, setColumnWidths] = useState<{[key: string]: number}>({
-    page_ascore: 100,
-    source_title: 200,
-    source_url: 200,
-    target_url: 200,
-    anchor: 150,
-    nofollow: 100,
-    domain: 150
-  });
-  const [isResizing, setIsResizing] = useState(false);
-  const [resizingColumn, setResizingColumn] = useState<string | null>(null);
-  const resizeStartPosition = useRef<number>(0);
-  const initialWidth = useRef<number>(0);
 
   // 筛选结果
   const filteredResults = useMemo(() => {
@@ -305,48 +290,6 @@ export function useCrossAnalysisTable({ results, domainData = [] }: UseCrossAnal
     setCurrentPage(1); // 重置到第一页
   };
 
-  // 列宽调整函数
-  const startColumnResizing = (
-    e: React.MouseEvent<HTMLDivElement>,
-    columnName: string
-  ) => {
-    e.preventDefault();
-    e.stopPropagation(); // 阻止事件传播，避免触发其他点击事件
-    
-    setIsResizing(true);
-    setResizingColumn(columnName);
-    resizeStartPosition.current = e.clientX;
-    initialWidth.current = columnWidths[columnName] || 100;
-    
-    const handleMouseMove = (moveEvent: MouseEvent) => {
-      if (isResizing && resizingColumn) {
-        moveEvent.preventDefault(); // 防止选中文本
-        const delta = moveEvent.clientX - resizeStartPosition.current;
-        const newWidth = Math.max(60, initialWidth.current + delta); // 最小宽度60px
-        
-        setColumnWidths(prev => ({
-          ...prev,
-          [resizingColumn]: newWidth
-        }));
-      }
-    };
-    
-    const handleMouseUp = () => {
-      setIsResizing(false);
-      setResizingColumn(null);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
-    };
-    
-    // 确保移除之前添加的事件监听器，防止多次绑定
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-    
-    // 添加新的事件监听器
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
-  };
-
   // 获取要显示的单元格值
   const getCellValue = (result: CrossAnalysisResult | null, type: CellDisplayType) => {
     if (!result) return "None";
@@ -424,12 +367,6 @@ export function useCrossAnalysisTable({ results, domainData = [] }: UseCrossAnal
     setFilterExpanded,
     isFullscreen,
     setIsFullscreen,
-    
-    // 列宽调整
-    columnWidths,
-    isResizing,
-    resizingColumn,
-    startColumnResizing,
     
     // 工具函数
     getCellValue
