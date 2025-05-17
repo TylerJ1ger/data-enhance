@@ -1,4 +1,4 @@
-//frontend-new/src/components/dashboard/keyword-stats.tsx
+//frontend-new/src/components/keyword/keyword-stats.tsx
 "use client";
 
 import { FileText, BarChart2, Filter } from "lucide-react";

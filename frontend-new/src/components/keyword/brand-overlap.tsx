@@ -1,4 +1,4 @@
-//frontend-new/src/components/dashboard/brand-overlap.tsx
+//frontend-new/src/components/keyword/brand-overlap.tsx
 "use client";
 
 import React from 'react';
