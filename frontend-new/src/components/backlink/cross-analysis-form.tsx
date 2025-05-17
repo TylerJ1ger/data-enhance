@@ -114,7 +114,7 @@ export function CrossAnalysisForm({
             />
           </CardContent>
           {isLoadingSecondRound && (
-            <Alert className="m-4">
+            <Alert className="w-xl m-auto justify-center">
               <AlertDescription>
                 正在处理文件并进行交叉分析，请稍候...
               </AlertDescription>

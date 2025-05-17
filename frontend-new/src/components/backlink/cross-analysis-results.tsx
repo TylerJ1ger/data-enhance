@@ -1,23 +1,19 @@
 // frontend-new/src/components/backlink/cross-analysis-results.tsx
 "use client";
 
-import { useState } from 'react';
-import { Download, Search, Filter } from 'lucide-react';
-import { Button } from "@/components/ui/button";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
+import { useState, useEffect } from 'react';
+import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
+
+// 导入拆分的子组件
+import { CrossAnalysisHeader } from "./cross-analysis/CrossAnalysisHeader";
+import { CrossAnalysisFilters } from "./cross-analysis/CrossAnalysisFilters";
+import { CrossAnalysisTable } from "./cross-analysis/CrossAnalysisTable";
+
+// 导入自定义Hook
+import { useCrossAnalysisTable } from "@/hooks/useCrossAnalysisTable";
 
 interface CrossAnalysisResult {
   page_ascore: number;
@@ -28,61 +24,96 @@ interface CrossAnalysisResult {
   nofollow: boolean;
 }
 
+interface Domain {
+  domain: string;
+  ascore: number;
+}
+
+// 为导出参数定义类型
+type CellDisplayType = 'target_url' | 'source_title' | 'source_url' | 'anchor' | 'nofollow';
+type DisplayMode = 'flat' | 'compare';
+type SortDirection = 'asc' | 'desc';
+
+interface ExportParams {
+  displayMode: DisplayMode;
+  searchTerm: string;
+  sortColumn: keyof CrossAnalysisResult;
+  sortDirection: SortDirection;
+  cellDisplayType: CellDisplayType;
+  comparisonData?: {
+    domains: any[];
+    targetDomains: string[];
+  };
+}
+
 interface CrossAnalysisResultsProps {
   results: CrossAnalysisResult[];
+  domainData?: Domain[]; // 来自第一轮上传的域名数据
   isLoading: boolean;
-  onExport: () => void;
+  onExport: (params: ExportParams) => void; // 更新类型定义，接收参数
 }
 
 export function CrossAnalysisResults({
   results,
+  domainData = [],
   isLoading,
   onExport
 }: CrossAnalysisResultsProps) {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [sortColumn, setSortColumn] = useState<keyof CrossAnalysisResult>('page_ascore');
-  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-
-  // 筛选和排序结果
-  const filteredResults = results.filter(result => {
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      result.source_url.toLowerCase().includes(searchLower) ||
-      result.target_url.toLowerCase().includes(searchLower) ||
-      result.source_title.toLowerCase().includes(searchLower) ||
-      (result.anchor && result.anchor.toLowerCase().includes(searchLower))
-    );
-  });
-
-  const sortedResults = [...filteredResults].sort((a, b) => {
-    const valueA = a[sortColumn];
-    const valueB = b[sortColumn];
+  // 检测是否是移动设备
+  const [isMobile, setIsMobile] = useState(false);
+  
+  // 使用自定义Hook来管理表格状态和逻辑
+  const tableState = useCrossAnalysisTable({ results, domainData });
+  
+  // 检测是否是移动设备
+  useEffect(() => {
+    const checkIfMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
     
-    if (typeof valueA === 'number' && typeof valueB === 'number') {
-      return sortDirection === 'asc' ? valueA - valueB : valueB - valueA;
+    checkIfMobile();
+    window.addEventListener('resize', checkIfMobile);
+    
+    return () => {
+      window.removeEventListener('resize', checkIfMobile);
+    };
+  }, []);
+  
+  // 处理全屏模式
+  useEffect(() => {
+    if (tableState.isFullscreen) {
+      document.body.style.overflow = 'hidden';
     } else {
-      const strA = String(valueA).toLowerCase();
-      const strB = String(valueB).toLowerCase();
-      return sortDirection === 'asc' 
-        ? strA.localeCompare(strB) 
-        : strB.localeCompare(strA);
+      document.body.style.overflow = '';
     }
-  });
+    
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [tableState.isFullscreen]);
 
-  // 处理排序逻辑
-  const handleSort = (column: keyof CrossAnalysisResult) => {
-    if (sortColumn === column) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortColumn(column);
-      setSortDirection('desc');
+  // 处理导出功能，传递当前的筛选和显示状态
+  const handleExport = () => {
+    // 收集当前的表格状态和筛选条件
+    const exportParams: ExportParams = {
+      displayMode: tableState.displayMode,
+      searchTerm: tableState.searchTerm,
+      sortColumn: tableState.sortColumn,
+      sortDirection: tableState.sortDirection,
+      cellDisplayType: tableState.cellDisplayType
+    };
+    
+    // 如果是对比视图，还需要传递完整的对比数据结构
+    if (tableState.displayMode === 'compare') {
+      // 使用comparisonData而不是paginatedComparisonData，确保导出全部数据而不仅是当前页的数据
+      exportParams.comparisonData = {
+        domains: tableState.comparisonData.domains,
+        targetDomains: tableState.comparisonData.targetDomains
+      };
     }
-  };
-
-  // 获取排序图标
-  const getSortIcon = (column: keyof CrossAnalysisResult) => {
-    if (sortColumn !== column) return null;
-    return sortDirection === 'asc' ? '↑' : '↓';
+    
+    // 调用父组件提供的导出函数，传递参数
+    onExport(exportParams);
   };
 
   if (isLoading) {
@@ -116,141 +147,102 @@ export function CrossAnalysisResults({
   }
 
   return (
-    <Card className="w-full">
-      <CardHeader className="space-y-0 pb-3">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-          <div className="flex items-center space-x-2">
-            <CardTitle>交叉分析结果</CardTitle>
-            <Badge variant="secondary">{results.length} 条匹配</Badge>
-          </div>
-          
-          <Button onClick={onExport} variant="outline" size="sm">
-            <Download className="mr-2 h-4 w-4" />
-            导出结果
-          </Button>
-        </div>
-      </CardHeader>
+    <Card className={cn(
+      "w-full transition-all duration-300", 
+      tableState.isFullscreen && "fixed inset-0 z-50 rounded-none max-h-screen h-screen overflow-hidden"
+    )}>
+      {/* 头部组件 */}
+      <CrossAnalysisHeader 
+        resultsCount={tableState.filteredResults.length}
+        isFullscreen={tableState.isFullscreen}
+        onToggleFullscreen={() => tableState.setIsFullscreen(!tableState.isFullscreen)}
+        onExport={handleExport} // 使用新的处理函数
+      />
+      
+      {/* 筛选组件 */}
+      <CrossAnalysisFilters 
+        searchTerm={tableState.searchTerm}
+        onSearchChange={tableState.setSearchTerm}
+        displayMode={tableState.displayMode}
+        onDisplayModeChange={(mode) => {
+          tableState.setDisplayMode(mode as 'flat' | 'compare');
+          tableState.setCurrentPage(1); // 切换视图时重置到第一页
+        }}
+        sortValue={`${tableState.sortColumn}-${tableState.sortDirection}`}
+        onSortChange={(value) => {
+          const [column, direction] = value.split('-') as [keyof CrossAnalysisResult, 'asc' | 'desc'];
+          tableState.setSortColumn(column);
+          tableState.setSortDirection(direction);
+        }}
+        compareSort={`${tableState.compareSort}-${tableState.compareSortDirection}`}
+        onCompareSortChange={(value) => {
+          const [column, direction] = value.split('-') as ['ascore' | 'domain', 'asc' | 'desc'];
+          tableState.setCompareSort(column);
+          tableState.setCompareSortDirection(direction);
+        }}
+        cellDisplayType={tableState.cellDisplayType}
+        onCellDisplayTypeChange={(type) => tableState.setCellDisplayType(type as any)}
+        currentPage={tableState.currentPage}
+        itemsPerPage={tableState.itemsPerPage}
+        pageCount={tableState.pageCount}
+        totalItems={tableState.sortedResults.length}
+        onPageChange={tableState.handlePageChange}
+        onItemsPerPageChange={tableState.handleItemsPerPageChange}
+        expanded={tableState.filterExpanded}
+        onExpandedChange={tableState.setFilterExpanded}
+        isMobile={isMobile}
+      />
       
       <CardContent className="p-0">
-        <div className="p-4 border-b">
-          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-            <div className="flex-1 w-full sm:max-w-sm relative">
-              <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="搜索源URL、目标URL或锚文本..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-8"
-              />
-            </div>
-            
-            <div className="flex gap-2 items-center">
-              <span className="text-sm text-muted-foreground">排序方式:</span>
-              <Select
-                value={`${sortColumn}-${sortDirection}`}
-                onValueChange={(value) => {
-                  const [column, direction] = value.split('-') as [keyof CrossAnalysisResult, 'asc' | 'desc'];
-                  setSortColumn(column);
-                  setSortDirection(direction);
-                }}
-              >
-                <SelectTrigger className="w-[160px] h-9">
-                  <SelectValue placeholder="Select" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="page_ascore-desc">页面权重 (高到低)</SelectItem>
-                  <SelectItem value="page_ascore-asc">页面权重 (低到高)</SelectItem>
-                  <SelectItem value="source_url-asc">源URL (A-Z)</SelectItem>
-                  <SelectItem value="source_url-desc">源URL (Z-A)</SelectItem>
-                  <SelectItem value="target_url-asc">目标URL (A-Z)</SelectItem>
-                  <SelectItem value="target_url-desc">目标URL (Z-A)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-        </div>
-        
-        <div className="rounded-md border">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[100px] cursor-pointer" onClick={() => handleSort('page_ascore')}>
-                    页面权重 {getSortIcon('page_ascore')}
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort('source_title')}>
-                    来源标题 {getSortIcon('source_title')}
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort('source_url')}>
-                    来源URL {getSortIcon('source_url')}
-                  </TableHead>
-                  <TableHead className="cursor-pointer" onClick={() => handleSort('target_url')}>
-                    目标URL {getSortIcon('target_url')}
-                  </TableHead>
-                  <TableHead>锚文本</TableHead>
-                  <TableHead className="w-[100px] text-center">Nofollow</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedResults.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="text-center py-6 text-muted-foreground">
-                      未找到匹配的结果
-                    </TableCell>
-                  </TableRow>
-                ) : (
-                  sortedResults.map((result, index) => (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{result.page_ascore}</TableCell>
-                      <TableCell className="max-w-[200px] truncate" title={result.source_title}>
-                        {result.source_title || '-'}
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        <a 
-                          href={result.source_url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline"
-                          title={result.source_url}
-                        >
-                          {result.source_url}
-                        </a>
-                      </TableCell>
-                      <TableCell className="max-w-[200px] truncate">
-                        <a 
-                          href={result.target_url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline"
-                          title={result.target_url}
-                        >
-                          {result.target_url}
-                        </a>
-                      </TableCell>
-                      <TableCell className="max-w-[150px] truncate" title={result.anchor}>
-                        {result.anchor || '-'}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {result.nofollow ? (
-                          <Badge variant="secondary">是</Badge>
-                        ) : (
-                          <Badge variant="outline">否</Badge>
-                        )}
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </div>
-        
-        {filteredResults.length > 0 && (
-          <div className="p-4 text-sm text-muted-foreground">
-            显示 {filteredResults.length} 条结果，共 {results.length} 条
-          </div>
-        )}
+        {/* 表格组件 */}
+        <CrossAnalysisTable 
+          displayMode={tableState.displayMode}
+          paginatedResults={tableState.paginatedResults}
+          paginatedComparisonData={tableState.paginatedComparisonData}
+          cellDisplayType={tableState.cellDisplayType}
+          sortColumn={tableState.sortColumn}
+          handleSort={tableState.handleSort}
+          getSortIcon={tableState.getSortIcon}
+          handleCompareSort={tableState.handleCompareSort}
+          getCompareSortIcon={tableState.getCompareSortIcon}
+          columnWidths={tableState.columnWidths}
+          startColumnResizing={tableState.startColumnResizing}
+          getCellValue={tableState.getCellValue}
+          isFullscreen={tableState.isFullscreen}
+          filterExpanded={tableState.filterExpanded}
+          onFilterExpandedChange={tableState.setFilterExpanded}
+          isMobile={isMobile}
+          isResizing={tableState.isResizing}
+          resizingColumn={tableState.resizingColumn}
+        />
       </CardContent>
     </Card>
+  );
+}
+
+// 防止 TypeScript 错误
+interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
+  children?: React.ReactNode;
+}
+
+function CardHeader({ children, className, ...props }: CardHeaderProps) {
+  return (
+    <div className={cn("flex flex-col space-y-1.5 p-6", className)} {...props}>
+      {children}
+    </div>
+  );
+}
+
+function CardTitle({
+  children,
+  ...props
+}: React.HTMLAttributes<HTMLHeadingElement>) {
+  return (
+    <h3
+      className="text-lg font-semibold leading-none tracking-tight"
+      {...props}
+    >
+      {children}
+    </h3>
   );
 }

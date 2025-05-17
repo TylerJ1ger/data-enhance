@@ -54,6 +54,15 @@ class BacklinkFilterRanges(BaseModel):
 class DomainFilterRequest(BaseModel):
     domain: str
 
+# 新增交叉分析导出请求模型
+class CrossAnalysisExportRequest(BaseModel):
+    display_mode: str = "flat"
+    search_term: str = ""
+    sort_column: str = "page_ascore"
+    sort_direction: str = "desc"
+    cell_display_type: str = "target_url" 
+    comparison_data: Optional[Dict[str, Any]] = None
+
 async def check_file_size(files: List[UploadFile]):
     """检查上传文件的大小是否超过限制"""
     for file in files:
@@ -485,17 +494,67 @@ async def upload_cross_analysis_second_round(files: List[UploadFile] = File(...)
     
     return result
 
+# 保留原有GET路由,但增加筛选参数支持
 @router.get("/backlink/cross-analysis/export")
-async def export_cross_analysis_results():
+async def export_cross_analysis_results(
+    display_mode: str = "flat",
+    search_term: str = "",
+    sort_column: str = "page_ascore",
+    sort_direction: str = "desc",
+    cell_display_type: str = "target_url"
+):
     """
-    导出交叉分析结果为CSV文件
+    导出交叉分析结果为CSV文件,支持简单的URL参数筛选
     """
-    csv_data = cross_analysis_processor.export_results()
+    # 导出对应格式的数据 - 直接调用原方法作为默认导出
+    if display_mode == "flat" and not search_term:
+        csv_data = cross_analysis_processor.export_results()
+    else:
+        # 使用新增的筛选导出功能
+        csv_data = cross_analysis_processor.export_filtered_results(
+            display_mode=display_mode,
+            search_term=search_term,
+            sort_column=sort_column,
+            sort_direction=sort_direction,
+            cell_display_type=cell_display_type
+        )
+    
+    # 根据显示模式设置不同的文件名
+    filename = "cross_analysis_results.csv"
+    if display_mode == "compare":
+        filename = "cross_analysis_comparison.csv"
     
     return StreamingResponse(
         io.BytesIO(csv_data),
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=cross_analysis_results.csv"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+# 新增POST路由,用于复杂筛选(如对比视图)
+@router.post("/backlink/cross-analysis/export-filtered")
+async def export_filtered_cross_analysis_results(request: CrossAnalysisExportRequest):
+    """
+    导出交叉分析结果为CSV文件,支持复杂的筛选条件和对比视图数据
+    """
+    # 导出对应格式的数据
+    csv_data = cross_analysis_processor.export_filtered_results(
+        display_mode=request.display_mode,
+        search_term=request.search_term,
+        sort_column=request.sort_column,
+        sort_direction=request.sort_direction,
+        comparison_data=request.comparison_data,
+        cell_display_type=request.cell_display_type
+    )
+    
+    # 根据显示模式设置不同的文件名
+    filename = "cross_analysis_results.csv"
+    if request.display_mode == "compare":
+        filename = "cross_analysis_comparison.csv"
+    
+    return StreamingResponse(
+        io.BytesIO(csv_data),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 @router.get("/health")
