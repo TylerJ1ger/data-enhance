@@ -1,5 +1,6 @@
 // frontend-new/src/hooks/useCrossAnalysisTable.ts
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
+import { getDomainFromUrl, sortItems, filterByText } from '@/lib/utils';
 
 interface CrossAnalysisResult {
   page_ascore: number;
@@ -35,67 +36,6 @@ interface ComparisonData {
   targetDomains: string[];
 }
 
-// 域名提取函数
-export const extractRootDomain = (url: string): string => {
-  try {
-    const urlObj = new URL(url);
-    const hostname = urlObj.hostname.toLowerCase();
-    
-    // 处理IP地址的情况
-    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(hostname)) {
-      return hostname;
-    }
-    
-    // 提取域名部分
-    const hostParts = hostname.split('.');
-    
-    // 如果只有两部分(如example.com)，直接返回
-    if (hostParts.length <= 2) {
-      return hostname;
-    }
-    
-    // 常见的顶级域名
-    const commonTLDs = [
-      'com', 'org', 'net', 'edu', 'gov', 'mil', 'io', 'co', 'ai', 'app',
-      'dev', 'me', 'info', 'biz', 'tv', 'us', 'uk', 'cn', 'jp', 'de', 'fr'
-    ];
-    
-    // 检查是否有多级顶级域名，如co.uk, com.au等
-    const lastPart = hostParts[hostParts.length - 1];
-    const secondLastPart = hostParts[hostParts.length - 2];
-    
-    // 处理常见的二级顶级域名
-    if (
-      (secondLastPart === 'co' || secondLastPart === 'com' || secondLastPart === 'org' || secondLastPart === 'gov') && 
-      lastPart.length === 2 // 国家代码通常是2个字符
-    ) {
-      // 如果是形如 example.co.uk 的情况，我们想要返回 example.co.uk
-      if (hostParts.length <= 3) {
-        return hostname;
-      }
-      // 否则,形如 subdomain.example.co.uk，我们想要返回 example.co.uk
-      return `${hostParts[hostParts.length - 3]}.${secondLastPart}.${lastPart}`;
-    }
-    
-    // 其他情况，返回主域名和TLD，如subdomain.example.com返回example.com
-    if (commonTLDs.includes(lastPart)) {
-      return `${hostParts[hostParts.length - 2]}.${lastPart}`;
-    }
-    
-    // 对于不常见的TLD，可能是多段式的，如example.something.ai
-    // 在没有更复杂的规则的情况下，默认返回最后两段
-    return `${hostParts[hostParts.length - 2]}.${lastPart}`;
-    
-  } catch (e) {
-    // 如果URL解析失败，尝试从字符串中提取类似域名的部分
-    const domainMatch = url.match(/(?:https?:\/\/)?(?:www\.)?([^\/]+)/i);
-    if (domainMatch && domainMatch[1]) {
-      return domainMatch[1].toLowerCase();
-    }
-    return url.toLowerCase();
-  }
-};
-
 export function useCrossAnalysisTable({ results, domainData = [] }: UseCrossAnalysisTableProps) {
   // 分页相关状态
   const [currentPage, setCurrentPage] = useState(1);
@@ -112,39 +52,22 @@ export function useCrossAnalysisTable({ results, domainData = [] }: UseCrossAnal
   const [filterExpanded, setFilterExpanded] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // 筛选结果
+  // 筛选结果 - 使用优化后的filterByText函数
   const filteredResults = useMemo(() => {
     if (!results) return [];
     
-    return results.filter(result => {
-      const searchLower = searchTerm.toLowerCase();
-      return (
-        result.source_url.toLowerCase().includes(searchLower) ||
-        result.target_url.toLowerCase().includes(searchLower) ||
-        (result.source_title && result.source_title.toLowerCase().includes(searchLower)) ||
-        (result.anchor && result.anchor.toLowerCase().includes(searchLower))
-      );
-    });
+    return filterByText(
+      results,
+      searchTerm,
+      ['source_url', 'target_url', 'source_title', 'anchor']
+    );
   }, [results, searchTerm]);
 
-  // 排序后的结果
+  // 排序后的结果 - 使用优化后的sortItems函数
   const sortedResults = useMemo(() => {
-    if (!filteredResults) return [];
+    if (!filteredResults.length) return [];
     
-    return [...filteredResults].sort((a, b) => {
-      const valueA = a[sortColumn];
-      const valueB = b[sortColumn];
-      
-      if (typeof valueA === 'number' && typeof valueB === 'number') {
-        return sortDirection === 'asc' ? valueA - valueB : valueB - valueA;
-      } else {
-        const strA = String(valueA || '').toLowerCase();
-        const strB = String(valueB || '').toLowerCase();
-        return sortDirection === 'asc' 
-          ? strA.localeCompare(strB) 
-          : strB.localeCompare(strA);
-      }
-    });
+    return sortItems(filteredResults, sortColumn, sortDirection);
   }, [filteredResults, sortColumn, sortDirection]);
 
   // 计算分页数据
@@ -163,14 +86,14 @@ export function useCrossAnalysisTable({ results, domainData = [] }: UseCrossAnal
     return Math.max(1, Math.ceil(sortedResults.length / itemsPerPage));
   }, [sortedResults.length, itemsPerPage]);
 
-  // 为对比视图处理数据
+  // 为对比视图处理数据 - 使用getDomainFromUrl替代原extractRootDomain
   const comparisonData = useMemo<ComparisonData>(() => {
     // 从结果中提取所有唯一的目标域名
     const targetDomains = new Set<string>();
     
     // 解析每个结果的目标域名
     results.forEach(result => {
-      const targetDomain = extractRootDomain(result.target_url);
+      const targetDomain = getDomainFromUrl(result.target_url, true); // 使用优化后的函数，提取根域名
       targetDomains.add(targetDomain);
     });
     
@@ -179,8 +102,8 @@ export function useCrossAnalysisTable({ results, domainData = [] }: UseCrossAnal
     
     // 处理每个结果，填充映射
     results.forEach(result => {
-      const sourceDomain = extractRootDomain(result.source_url);
-      const targetDomain = extractRootDomain(result.target_url);
+      const sourceDomain = getDomainFromUrl(result.source_url, true); // 使用优化后的函数
+      const targetDomain = getDomainFromUrl(result.target_url, true); // 使用优化后的函数
       
       if (!sourceToTargets.has(sourceDomain)) {
         sourceToTargets.set(sourceDomain, new Map());
@@ -213,7 +136,7 @@ export function useCrossAnalysisTable({ results, domainData = [] }: UseCrossAnal
       });
     }
     
-    // 排序域名
+    // 排序域名 - 可以使用sortItems但这里保留原有逻辑保持简单
     const sortedDomains = [...domainsWithScores].sort((a, b) => {
       if (compareSort === 'ascore') {
         return compareSortDirection === 'asc' 

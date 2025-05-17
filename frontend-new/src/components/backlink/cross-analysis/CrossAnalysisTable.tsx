@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, normalizeUrl } from "@/lib/utils";
 
 // 定义结果类型
 interface CrossAnalysisResult {
@@ -190,7 +190,7 @@ export function CrossAnalysisTable({
                       </TableCell>
                       <TableCell className="w-[200px] max-w-[200px] truncate">
                         <a 
-                          href={result.source_url} 
+                          href={normalizeUrl(result.source_url)} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-primary hover:underline flex items-center gap-1"
@@ -202,7 +202,7 @@ export function CrossAnalysisTable({
                       </TableCell>
                       <TableCell className="w-[200px] max-w-[200px] truncate">
                         <a 
-                          href={result.target_url} 
+                          href={normalizeUrl(result.target_url)} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="text-primary hover:underline flex items-center gap-1"
@@ -266,7 +266,7 @@ export function CrossAnalysisTable({
                           {result ? (
                             cellDisplayType === 'target_url' || cellDisplayType === 'source_url' ? (
                               <a 
-                                href={getCellValue(result, cellDisplayType)} 
+                                href={normalizeUrl(getCellValue(result, cellDisplayType))} 
                                 target="_blank" 
                                 rel="noopener noreferrer"
                                 className="text-primary hover:underline flex items-center gap-1"
