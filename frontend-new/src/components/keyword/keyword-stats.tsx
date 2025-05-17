@@ -1,11 +1,11 @@
-//frontend-new/src/components/dashboard/keyword-stats.tsx
+//frontend-new/src/components/keyword/keyword-stats.tsx
 "use client";
 
 import { FileText, BarChart2, Filter } from "lucide-react";
 import { DataStats } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 
 interface KeywordStatsProps {
@@ -117,18 +117,16 @@ export function KeywordStats({
         </div>
         
         {filteredStats && filteredStats.keyword_count !== originalStats.keyword_count && (
-          <Alert variant="info" className="bg-blue-50 border-blue-200">
-            <div className="flex flex-col space-y-1">
-              <div className="font-medium flex items-center">
-                筛选已应用 
-                <Badge variant="outline" className="ml-2 bg-blue-100">
-                  {percentageRetained}%
-                </Badge>
-              </div>
-              <AlertDescription>
-                显示 {filteredStats.keyword_count.toLocaleString()} 个关键词，共 {originalStats.keyword_count.toLocaleString()} 个
-              </AlertDescription>
-            </div>
+          <Alert variant="info">
+            <AlertTitle className="flex items-center">
+              筛选已应用
+              <Badge variant="outline" className="ml-2">
+                {percentageRetained}%
+              </Badge>
+            </AlertTitle>
+            <AlertDescription>
+              显示 {filteredStats.keyword_count.toLocaleString()} 个关键词，共 {originalStats.keyword_count.toLocaleString()} 个
+            </AlertDescription>
           </Alert>
         )}
       </CardContent>

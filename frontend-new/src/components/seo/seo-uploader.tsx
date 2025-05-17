@@ -154,9 +154,7 @@ export function SeoUploader({
           </Button>
         </CollapsibleTrigger>
         
-        <CollapsibleContent className="p-4 space-y-4">
-          <h4 className="text-sm font-medium text-foreground mb-3">高级分析选项</h4>
-          
+        <CollapsibleContent className="p-4 space-y-4">          
           {/* 内容提取引擎选择 */}
           <div className="space-y-2">
             <Label htmlFor="content-extractor">内容提取引擎</Label>

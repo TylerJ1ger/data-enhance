@@ -1,4 +1,4 @@
-//frontend-new/src/components/dashboard/keyword-filter.tsx
+//frontend-new/src/components/keyword/keyword-filter.tsx
 "use client";
 
 import React, { useState } from 'react';

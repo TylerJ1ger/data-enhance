@@ -1,4 +1,4 @@
-//frontend-new/src/components/dashboard/brand-overlap.tsx
+//frontend-new/src/components/keyword/brand-overlap.tsx
 "use client";
 
 import React from 'react';
@@ -167,7 +167,7 @@ export function BrandOverlap({
         {/* 最高重叠统计信息 */}
         {summary.maxOverlap > 0 && (
           <div className="bg-primary/5 rounded-lg border border-primary/20 p-4 text-sm">
-            <div className="font-medium text-primary-foreground/90 mb-1">最高重叠品牌对</div>
+            <div className="font-medium mb-1">最高重叠品牌对</div>
             <div className="flex items-center justify-between">
               <div className="flex items-center">
                 <span className="font-medium mr-1">{summary.maxOverlapPair[0]}</span>

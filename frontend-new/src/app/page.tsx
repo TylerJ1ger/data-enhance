@@ -1,202 +1,70 @@
-//frontend-new/src/app/page.tsx
+// frontend-new/src/app/page.tsx
 "use client";
 
-import { useState } from 'react';
-import { Upload, Download, RefreshCw } from 'lucide-react';
-import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { FileUpload } from "@/components/file-upload";
-import { KeywordStats } from "@/components/dashboard/keyword-stats";
-import { FilterPanel } from "@/components/dashboard/filter-panel";
-import { BrandOverlap } from "@/components/dashboard/brand-overlap";
-import { KeywordChart } from "@/visualizations/keyword-chart";
-import { KeywordFilter } from "@/components/dashboard/keyword-filter";
-import { useApi } from "@/hooks/use-api";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { FileText, Globe, Search, BarChart2 } from "lucide-react";
+import Link from "next/link";
 
 export default function HomePage() {
-  const [showUpload, setShowUpload] = useState(true);
-  const {
-    isUploading,
-    isFiltering,
-    isLoadingOverlap,
-    isLoadingRanges,
-    isLoadingKeywordFilter,
-    fileStats,
-    mergedStats,
-    filteredStats,
-    keywordCounts,
-    brandOverlapData,
-    keywordFilterResults,
-    filterRanges,
-    uploadFiles,
-    applyFilters,
-    filterByKeyword,
-    getExportUrl,
-    getExportUniqueUrl,
-    resetData,
-  } = useApi();
-
-  const handleFilesSelected = async (files: File[]) => {
-    if (files.length === 0) return;
-
-    try {
-      await uploadFiles(files);
-      setShowUpload(false);
-    } catch (error) {
-      console.error('Error processing files:', error);
+  const tools = [
+    {
+      title: "关键词分析",
+      description: "分析CSV或XLSX文件中的关键词数据，提供筛选、可视化和品牌重叠分析。",
+      icon: <FileText className="h-10 w-10 text-primary" />,
+      href: "/keyword",
+      color: "bg-blue-50"
+    },
+    {
+      title: "外链分析",
+      description: "分析外部链接数据，识别引荐域名、URL分布和品牌重叠分析。",
+      icon: <BarChart2 className="h-10 w-10 text-primary" />,
+      href: "/backlink",
+      color: "bg-green-50"
+    },
+    {
+      title: "SEO分析",
+      description: "上传HTML文件进行单页SEO分析，包括标题、元描述、内容、图片、链接等方面。",
+      icon: <Search className="h-10 w-10 text-primary" />,
+      href: "/seo",
+      color: "bg-purple-50"
+    },
+    {
+      title: "Sitemap分析",
+      description: "可视化网站结构，分析URL分布，识别网站架构问题。",
+      icon: <Globe className="h-10 w-10 text-primary" />,
+      href: "/sitemap",
+      color: "bg-amber-50"
     }
-  };
-
-  const handleApplyFilter = async (filters: any) => {
-    try {
-      await applyFilters(filters);
-    } catch (error) {
-      console.error('Error applying filters:', error);
-    }
-  };
-
-  const handleReset = () => {
-    resetData();
-    setShowUpload(true);
-  };
-
-  const hasData = fileStats.length > 0 && mergedStats !== null;
+  ];
 
   return (
-    <div className="space-y-6">
-      {/* 页面标题 */}
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-foreground">关键词分析</h1>
+    <div className="space-y-8">
+      <div className="text-center py-12">
+        <h1 className="text-4xl font-bold tracking-tight text-foreground mb-4">数据分析工具</h1>
+        <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
+          针对SEMRush导出数据衍生的一站式解决方案，帮助您交叉/合并分析导出后的关键词、外链、SEO和网站结构数据
+        </p>
       </div>
-      
-      {/* Action Bar */}
-      {hasData && (
-        <div className="flex flex-wrap gap-4 justify-between mb-6">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              onClick={() => setShowUpload(true)}
-              className="gap-2"
-            >
-              <Upload className="h-4 w-4" />
-              上传更多文件
-            </Button>
 
-            <Button
-              variant="outline"
-              onClick={() => {
-                window.open(getExportUrl(), '_blank');
-              }}
-              disabled={isUploading || isFiltering}
-              className="gap-2"
-            >
-              <Download className="h-4 w-4" />
-              导出筛选数据
-            </Button>
-
-            <Button
-              variant="outline"
-              onClick={() => {
-                window.open(getExportUniqueUrl(), '_blank');
-              }}
-              disabled={isUploading || isFiltering}
-              className="gap-2"
-            >
-              <Download className="h-4 w-4" />
-              导出唯一数据
-            </Button>
-          </div>
-
-          <Button
-            variant="ghost"
-            onClick={handleReset}
-            disabled={isUploading || isFiltering}
-            className="gap-2"
-          >
-            <RefreshCw className="h-4 w-4" />
-            重置所有数据
-          </Button>
-        </div>
-      )}
-
-      {/* File Upload Section */}
-      {(showUpload || !hasData) && (
-        <Card>
-          <CardHeader>
-            <CardTitle>上传CSV或XLSX文件</CardTitle>
-            <CardDescription>
-              上传CSV或XLSX文件以处理和分析关键词数据。您可以一次上传多个文件。
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <FileUpload
-              onFilesSelected={handleFilesSelected}
-              disabled={isUploading}
-            />
-          </CardContent>
-        </Card>
-      )}
-
-      {/* 加载状态 */}
-      {isUploading && (
-        <div className="space-y-4">
-          <Skeleton className="h-[300px] w-full rounded-xl" />
-          <div className="grid grid-cols-3 gap-4">
-            <Skeleton className="h-[100px] w-full rounded-xl" />
-            <Skeleton className="h-[100px] w-full rounded-xl" />
-            <Skeleton className="h-[100px] w-full rounded-xl" />
-          </div>
-        </div>
-      )}
-
-      {/* Main Dashboard */}
-      {hasData && !isUploading && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Column */}
-          <div className="lg:col-span-1">
-            <FilterPanel
-              filterRanges={filterRanges}
-              onApplyFilter={handleApplyFilter}
-              isLoading={isFiltering || isLoadingRanges}
-              disabled={isUploading}
-            />
-          </div>
-
-          {/* Right Column */}
-          <div className="lg:col-span-2 space-y-6">
-            <KeywordStats
-              originalStats={mergedStats}
-              filteredStats={filteredStats}
-              isLoading={isUploading || isFiltering}
-            />
-
-            <Card>
-              <CardHeader>
-                <CardTitle>关键词分布</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                {isFiltering ? (
-                  <Skeleton className="h-[400px] w-full rounded-xl" />
-                ) : (
-                  <KeywordChart keywordCounts={keywordCounts} />
-                )}
-              </CardContent>
-            </Card>
-
-            <KeywordFilter
-              onFilter={filterByKeyword}
-              results={keywordFilterResults}
-              isLoading={isLoadingKeywordFilter}
-              disabled={isUploading || !hasData}
-            />
-
-            <BrandOverlap
-              brandOverlapData={brandOverlapData}
-              isLoading={isLoadingOverlap}
-            />
-          </div>
-        </div>
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {tools.map((tool, i) => (
+          <Card key={i} className={`overflow-hidden border-none ${tool.color}`}>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-2xl">{tool.title}</CardTitle>
+                {tool.icon}
+              </div>
+              <CardDescription className="text-base">{tool.description}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Link href={tool.href} passHref>
+                <Button className="w-full">进入分析</Button>
+              </Link>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 }
