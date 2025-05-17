@@ -19,6 +19,16 @@ interface Domain {
   ascore: number;
 }
 
+// 定义导出参数接口
+interface ExportParams {
+  displayMode: 'flat' | 'compare';
+  searchTerm: string;
+  sortColumn: string;
+  sortDirection: 'asc' | 'desc';
+  comparisonData?: any;
+  cellDisplayType?: string;
+}
+
 export function useBacklinkApi() {
   // 请求状态
   const [isUploading, setIsUploading] = useState(false);
@@ -167,13 +177,27 @@ export function useBacklinkApi() {
   }, []);
 
   // 获取导出URL
-  const getExportUrl = useCallback(() => {
-    return api.exportBacklinkData();
+  const getExportUrl = useCallback(async () => {
+    try {
+      // 假设导出URL是异步获取的
+      return await api.exportBacklinkData();
+    } catch (error) {
+      console.error('获取导出URL失败:', error);
+      toast.error('获取导出URL失败，请重试');
+      return '';
+    }
   }, []);
 
   // 获取唯一数据导出URL
-  const getExportUniqueUrl = useCallback(() => {
-    return api.exportUniqueBacklinkData();
+  const getExportUniqueUrl = useCallback(async () => {
+    try {
+      // 假设导出URL是异步获取的
+      return await api.exportUniqueBacklinkData();
+    } catch (error) {
+      console.error('获取唯一数据导出URL失败:', error);
+      toast.error('获取导出URL失败，请重试');
+      return '';
+    }
   }, []);
 
   // 重置所有数据
@@ -238,9 +262,70 @@ export function useBacklinkApi() {
     }
   }, []);
 
-  // 导出交叉分析结果
-  const exportCrossAnalysisResults = useCallback(() => {
-    return api.exportCrossAnalysisResults();
+  // 导出交叉分析结果 - 更新版本
+  const exportCrossAnalysisResults = useCallback(async (params: ExportParams) => {
+    try {
+      // 如果是对比视图且有比较数据，使用POST请求
+      if (params.displayMode === 'compare' && params.comparisonData) {
+        // 创建导出数据对象，注意参数名称与后端一致
+        const exportData = {
+          display_mode: params.displayMode,
+          search_term: params.searchTerm,
+          sort_column: params.sortColumn,
+          sort_direction: params.sortDirection,
+          cell_display_type: params.cellDisplayType,
+          comparison_data: params.comparisonData
+        };
+        
+        // 使用POST请求
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/backlink/cross-analysis/export-filtered`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(exportData)
+        });
+        
+        if (!response.ok) {
+          throw new Error(`导出失败: ${response.statusText}`);
+        }
+        
+        // 获取blob数据
+        const blob = await response.blob();
+        
+        // 创建下载链接
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = 'cross_analysis_comparison.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+        
+        // 返回一个空URL，因为我们已经处理了下载
+        return '';
+      } else {
+        // 平铺视图使用GET请求
+        // 构建查询参数，注意参数名称与后端一致
+        const queryParams = new URLSearchParams();
+        queryParams.append('display_mode', params.displayMode);
+        queryParams.append('search_term', params.searchTerm);
+        queryParams.append('sort_column', params.sortColumn);
+        queryParams.append('sort_direction', params.sortDirection);
+        
+        if (params.cellDisplayType) {
+          queryParams.append('cell_display_type', params.cellDisplayType);
+        }
+        
+        // 返回完整URL，让调用者打开
+        return `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'}/backlink/cross-analysis/export?${queryParams.toString()}`;
+      }
+    } catch (error) {
+      console.error('导出失败:', error);
+      toast.error('导出失败，请重试');
+      return '';
+    }
   }, []);
 
   // 重置交叉分析状态

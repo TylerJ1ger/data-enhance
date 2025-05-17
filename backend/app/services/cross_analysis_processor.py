@@ -7,6 +7,8 @@ from urllib.parse import urlparse
 import asyncio
 import concurrent.futures
 from app.utils.helpers import read_file, merge_dataframes
+from io import StringIO
+import csv
 
 class CrossAnalysisProcessor:
     """处理交叉分析功能的独立类"""
@@ -167,7 +169,7 @@ class CrossAnalysisProcessor:
         }
     
     def export_results(self) -> bytes:
-        """导出结果为CSV格式"""
+        """导出结果为CSV格式 (原始方法，保留向后兼容)"""
         if not self.results:
             return b"No data to export"
         
@@ -190,6 +192,118 @@ class CrossAnalysisProcessor:
         # 转换为CSV
         csv_bytes = df.to_csv(index=False).encode('utf-8')
         return csv_bytes
+    
+    def export_filtered_results(self, display_mode="flat", search_term="", 
+                               sort_column="page_ascore", sort_direction="desc",
+                               comparison_data=None, cell_display_type="target_url") -> bytes:
+        """根据筛选条件和表格类型导出结果"""
+        if not self.results:
+            return b"No data to export"
+        
+        # 筛选结果
+        filtered_results = self.results
+        if search_term:
+            search_term_lower = search_term.lower()
+            filtered_results = [
+                r for r in filtered_results 
+                if (search_term_lower in (r.get('source_url', '') or '').lower() or
+                    search_term_lower in (r.get('target_url', '') or '').lower() or
+                    search_term_lower in (r.get('source_title', '') or '').lower() or
+                    search_term_lower in (r.get('anchor', '') or '').lower())
+            ]
+        
+        # 对比视图模式
+        if display_mode == "compare" and comparison_data:
+            return self._export_comparison_data(filtered_results, comparison_data, sort_column, 
+                                               sort_direction, cell_display_type)
+            
+        # 平铺视图模式 - 普通表格导出
+        # 排序结果
+        if sort_direction == "asc":
+            reverse = False
+        else:
+            reverse = True
+            
+        # 针对不同类型的列使用不同的排序方式
+        if sort_column in ['page_ascore']:
+            # 数值排序
+            filtered_results = sorted(
+                filtered_results, 
+                key=lambda x: float(x.get(sort_column, 0) or 0), 
+                reverse=reverse
+            )
+        else:
+            # 字符串排序
+            filtered_results = sorted(
+                filtered_results, 
+                key=lambda x: str(x.get(sort_column, '') or '').lower(), 
+                reverse=reverse
+            )
+        
+        # 创建DataFrame
+        df = pd.DataFrame(filtered_results)
+        
+        # 列名首字母大写并添加空格
+        column_rename = {
+            'page_ascore': 'Page ascore',
+            'source_title': 'Source title',
+            'source_url': 'Source url',
+            'target_url': 'Target url',
+            'anchor': 'Anchor',
+            'nofollow': 'Nofollow'
+        }
+        
+        # 重命名列
+        if not df.empty:
+            df = df.rename(columns={k: v for k, v in column_rename.items() if k in df.columns})
+        
+        # 转换为CSV
+        csv_bytes = df.to_csv(index=False).encode('utf-8')
+        return csv_bytes
+
+    def _export_comparison_data(self, filtered_results, comparison_data, sort_column="ascore", 
+                               sort_direction="desc", cell_display_type="target_url") -> bytes:
+        """导出对比视图格式的数据"""
+        # 从comparison_data中提取域名和目标域名信息
+        domains = comparison_data.get("domains", [])
+        target_domains = comparison_data.get("targetDomains", [])
+        
+        # 创建CSV内存流
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # 写入表头
+        header = ["站点权重", "站点域名"]
+        header.extend(target_domains)
+        writer.writerow(header)
+        
+        # 写入数据行
+        for domain_data in domains:
+            row = [domain_data.get("ascore", ""), domain_data.get("domain", "")]
+            
+            # 为每个目标域名添加数据
+            for i, target in enumerate(domain_data.get("targets", [])):
+                if target:
+                    # 根据cell_display_type确定要显示的字段
+                    if cell_display_type == "source_title":
+                        cell_value = target.get("source_title", "") or ""
+                    elif cell_display_type == "source_url":
+                        cell_value = target.get("source_url", "") or ""
+                    elif cell_display_type == "anchor":
+                        cell_value = target.get("anchor", "") or ""
+                    elif cell_display_type == "nofollow":
+                        cell_value = "是" if target.get("nofollow", False) else "否"
+                    else:  # 默认为target_url
+                        cell_value = target.get("target_url", "") or ""
+                    
+                    row.append(cell_value)
+                else:
+                    row.append("")
+            
+            writer.writerow(row)
+        
+        # 返回CSV数据
+        return output.getvalue().encode('utf-8')
         
     async def _process_single_file(self, file: UploadFile) -> Optional[pd.DataFrame]:
         """处理单个上传文件"""

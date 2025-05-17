@@ -21,6 +21,17 @@ import { useBacklinkApi } from "@/hooks/use-backlink-api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CrossAnalysisForm } from "@/components/backlink/cross-analysis-form";
 import { CrossAnalysisResults } from "@/components/backlink/cross-analysis-results";
+import { toast } from 'react-toastify';
+
+// 导出参数接口定义
+interface ExportParams {
+  displayMode: 'flat' | 'compare';
+  searchTerm: string;
+  sortColumn: string; 
+  sortDirection: 'asc' | 'desc';
+  comparisonData?: any;
+  cellDisplayType?: string;
+}
 
 export default function BacklinkPage() {
   const [showUpload, setShowUpload] = useState(true);
@@ -50,7 +61,7 @@ export default function BacklinkPage() {
     crossAnalysisFirstRoundComplete,
     crossAnalysisSecondRoundComplete,
     crossAnalysisResults,
-    domainData,  // 新增：来自第一轮上传文件的域名和权重数据
+    domainData,  // 来自第一轮上传文件的域名和权重数据
     uploadCrossAnalysisFirstRound,
     uploadCrossAnalysisSecondRound,
     exportCrossAnalysisResults,
@@ -81,6 +92,30 @@ export default function BacklinkPage() {
     setShowUpload(true);
   };
 
+  // 处理交叉分析导出 - 修正版本
+  const handleCrossAnalysisExport = async (params: ExportParams) => {
+    try {
+      // 导出方式提示
+      const exportType = params.displayMode === 'flat' ? '平铺视图' : '对比视图';
+      toast.info(`正在导出${exportType}数据...`);
+      
+      // 使用异步导出方法，该方法会根据不同模式选择合适的导出方式
+      if (params.displayMode === 'compare' && params.comparisonData) {
+        // 对比视图使用POST请求导出，会自动触发下载
+        await exportCrossAnalysisResults(params);
+      } else {
+        // 平铺视图使用GET请求导出
+        const exportUrl = await exportCrossAnalysisResults(params);
+        if (exportUrl) {
+          window.open(exportUrl, '_blank');
+        }
+      }
+    } catch (error) {
+      console.error('导出失败:', error);
+      toast.error('导出数据时出错，请重试');
+    }
+  };
+
   const hasData = fileStats.length > 0 && mergedStats !== null;
 
   return (
@@ -93,7 +128,7 @@ export default function BacklinkPage() {
       
       {/* Tabs组件 */}
       <Tabs defaultValue="referral-domains" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 mb-4">
+        <TabsList className="grid w-xl grid-cols-2 mb-4">
           <TabsTrigger value="referral-domains">引荐域名分析</TabsTrigger>
           <TabsTrigger value="cross-analysis">交叉分析</TabsTrigger>
         </TabsList>
@@ -115,7 +150,13 @@ export default function BacklinkPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    window.open(getExportUrl(), '_blank');
+                    // 修复：添加异步处理
+                    getExportUrl().then(url => {
+                      window.open(url, '_blank');
+                    }).catch(error => {
+                      console.error('获取导出URL失败:', error);
+                      toast.error('获取导出URL失败，请重试');
+                    });
                   }}
                   disabled={isUploading || isFiltering}
                 >
@@ -126,7 +167,13 @@ export default function BacklinkPage() {
                 <Button
                   variant="outline"
                   onClick={() => {
-                    window.open(getExportUniqueUrl(), '_blank');
+                    // 修复：添加异步处理
+                    getExportUniqueUrl().then(url => {
+                      window.open(url, '_blank');
+                    }).catch(error => {
+                      console.error('获取导出URL失败:', error);
+                      toast.error('获取导出URL失败，请重试');
+                    });
                   }}
                   disabled={isUploading || isFiltering}
                 >
@@ -235,9 +282,9 @@ export default function BacklinkPage() {
           {crossAnalysisSecondRoundComplete && (
             <CrossAnalysisResults
               results={crossAnalysisResults}
-              domainData={domainData}  // 传递域名数据
+              domainData={domainData}
               isLoading={isCrossAnalysisSecondRound}
-              onExport={() => window.open(exportCrossAnalysisResults(), '_blank')}
+              onExport={handleCrossAnalysisExport}
             />
           )}
         </TabsContent>

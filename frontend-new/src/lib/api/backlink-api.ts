@@ -14,6 +14,16 @@ interface ApiErrorResponse {
   [key: string]: any; // 允许有其他属性
 }
 
+// 交叉分析导出参数接口
+export interface CrossAnalysisExportParams {
+  displayMode: 'flat' | 'compare';
+  searchTerm: string;
+  sortColumn: string;
+  sortDirection: 'asc' | 'desc';
+  comparisonData?: any;
+  cellDisplayType?: string;
+}
+
 // API基础URL
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
 
@@ -198,11 +208,52 @@ export const uploadCrossAnalysisSecondRound = async (files: File[]) => {
 };
 
 /**
- * 获取交叉分析结果的导出URL
- * @returns 导出数据的URL
+ * 获取交叉分析结果的导出URL - 增强版,支持筛选参数
+ * @param params 导出参数,包括显示模式、搜索词、排序等
+ * @returns 导出数据的URL或blob URL
  */
-export const exportCrossAnalysisResults = (): string => {
-  return `${API_BASE_URL}/backlink/cross-analysis/export`;
+export const exportCrossAnalysisResults = async (params?: CrossAnalysisExportParams): Promise<string> => {
+  // 如果没有提供参数,使用原始导出URL
+  if (!params) {
+    return `${API_BASE_URL}/backlink/cross-analysis/export`;
+  }
+  
+  try {
+    // 发送POST请求获取带有筛选条件的导出数据
+    const response = await api.post('/backlink/cross-analysis/export', params, {
+      responseType: 'blob', // 指定响应类型为blob
+    });
+    
+    // 创建Blob URL以便直接下载
+    const blob = new Blob([response.data], { type: 'text/csv' });
+    const blobUrl = window.URL.createObjectURL(blob);
+    
+    // 构造文件名
+    let filename = 'cross_analysis_results.csv';
+    if (params.displayMode === 'compare') {
+      filename = 'cross_analysis_comparison.csv';
+    }
+    
+    // 创建一个临时链接元素并触发下载
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    // 清理Blob URL
+    setTimeout(() => {
+      window.URL.revokeObjectURL(blobUrl);
+    }, 100);
+    
+    return blobUrl;
+  } catch (error) {
+    console.error('导出交叉分析结果失败:', error);
+    
+    // 出错时回退到基本导出URL
+    return `${API_BASE_URL}/backlink/cross-analysis/export`;
+  }
 };
 
 /**
