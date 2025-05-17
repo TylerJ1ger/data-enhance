@@ -1,4 +1,4 @@
-//frontend-new/src/keyword/dashboard/file-stats.tsx
+//frontend-new/src/components/keyword/file-stats.tsx
 "use client";
 
 import { FileTextIcon, BarChart2Icon, FilterIcon } from "lucide-react";
