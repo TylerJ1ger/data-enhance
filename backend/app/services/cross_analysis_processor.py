@@ -3,12 +3,19 @@ import tempfile
 import os
 from typing import List, Dict, Any, Set, Optional
 from fastapi import UploadFile
-from urllib.parse import urlparse
 import asyncio
 import concurrent.futures
 from app.utils.helpers import read_file, merge_dataframes
 from io import StringIO
 import csv
+
+# 导入新的URL工具函数
+from app.utils.url_helpers import (
+    normalize_domain,
+    extract_domain,
+    extract_root_domain,
+    check_domain_match
+)
 
 class CrossAnalysisProcessor:
     """处理交叉分析功能的独立类"""
@@ -65,7 +72,7 @@ class CrossAnalysisProcessor:
         # 处理域名规范化
         for domain in domain_series:
             if isinstance(domain, str) and domain:
-                normalized_domain = self._normalize_domain(domain)
+                normalized_domain = normalize_domain(domain)  # 使用新的工具函数
                 if normalized_domain:
                     unique_domains.add(normalized_domain)
         
@@ -74,7 +81,7 @@ class CrossAnalysisProcessor:
             for _, row in merged_df.iterrows():
                 domain = row['Domain']
                 if pd.notna(domain) and isinstance(domain, str) and domain:
-                    normalized_domain = self._normalize_domain(domain)
+                    normalized_domain = normalize_domain(domain)  # 使用新的工具函数
                     ascore = row[domain_ascore_col]
                     if pd.notna(ascore) and normalized_domain:
                         domain_scores[normalized_domain] = float(ascore)
@@ -353,15 +360,15 @@ class CrossAnalysisProcessor:
             if not source_url or not target_url:
                 continue
             
-            # 解析域名
+            # 解析域名 - 使用导入的工具函数
             try:
-                source_domain = self._extract_root_domain(source_url)
-                target_domain = self._extract_root_domain(target_url)
+                source_domain = extract_root_domain(source_url)
+                target_domain = extract_root_domain(target_url)
             except:
                 continue
             
-            # 检查源域名是否在第一轮提取的域名列表中
-            domain_match = self._check_domain_match(source_domain)
+            # 检查源域名是否在第一轮提取的域名列表中 - 使用导入的工具函数
+            domain_match = check_domain_match(source_domain, self.domain_cache)
             
             # 如果找到匹配，添加到结果中
             if domain_match:
@@ -446,106 +453,3 @@ class CrossAnalysisProcessor:
                 del result['source_domain']
         
         return filtered_results
-    
-    def _normalize_domain(self, domain: str) -> str:
-        """简单规范化域名格式"""
-        if not isinstance(domain, str):
-            return ""
-            
-        domain = domain.lower().strip()
-        
-        # 移除www前缀
-        if domain.startswith('www.'):
-            domain = domain[4:]
-            
-        return domain
-    
-    def _extract_root_domain(self, url: str) -> str:
-        """更健壮的从URL中提取根域名的方法"""
-        try:
-            urlObj = urlparse(url)
-            hostname = urlObj.netloc.lower()
-            
-            # 如果没有netloc，尝试从path中提取域名
-            if not hostname and urlObj.path:
-                path_parts = urlObj.path.split('/')
-                if len(path_parts) > 0 and '.' in path_parts[0]:
-                    hostname = path_parts[0]
-            
-            # 处理IP地址的情况
-            if hostname and hostname[0].isdigit() and all(part.isdigit() for part in hostname.split('.')):
-                return hostname
-            
-            # 移除www前缀
-            if hostname.startswith('www.'):
-                hostname = hostname[4:]
-            
-            # 分割域名部分
-            parts = hostname.split('.')
-            
-            # 如果只有两部分或更少，直接返回
-            if len(parts) <= 2:
-                return hostname
-            
-            # 识别根域名的规则集
-            # 常见的顶级域名
-            common_tlds = [
-                'com', 'org', 'net', 'edu', 'gov', 'mil', 'io', 'co', 'ai', 'app',
-                'dev', 'me', 'info', 'biz', 'tv', 'us', 'uk', 'cn', 'jp', 'de', 'fr'
-            ]
-            
-            # 处理二级顶级域名的情况，如.co.uk，.com.au等
-            if len(parts) >= 3:
-                # 处理特殊情况，如example.co.uk
-                if parts[-2] in ['co', 'com', 'org', 'net', 'ac', 'gov', 'edu'] and len(parts[-1]) == 2:
-                    if len(parts) > 3:
-                        # 形如subdomain.example.co.uk，返回example.co.uk
-                        return f"{parts[-3]}.{parts[-2]}.{parts[-1]}"
-                    else:
-                        # 形如example.co.uk，直接返回
-                        return hostname
-                
-                # 对于uptodown.com这样的域名，确保子域名如seeu-ai.id.uptodown.com被识别为uptodown.com
-                for tld in common_tlds:
-                    if parts[-1] == tld:
-                        # 返回主域名和TLD
-                        return f"{parts[-2]}.{parts[-1]}"
-                
-                # 对于leonardo.ai这样的域名，确保子域名如app.leonardo.ai被识别为leonardo.ai
-                if len(parts) >= 2:
-                    last_part = parts[-1]
-                    if last_part not in common_tlds:
-                        # 如果最后一部分不是常见TLD，可能是类似.ai的域名
-                        # 返回最后两个部分
-                        return f"{parts[-2]}.{parts[-1]}"
-            
-            # 默认情况，返回hostname
-            return hostname
-            
-        except Exception as e:
-            # 如果URL解析失败，尝试从字符串中提取类似域名的部分
-            domain_match = url.replace('http://', '').replace('https://', '').split('/')[0]
-            return domain_match.lower()
-    
-    def _extract_domain(self, url: str) -> str:
-        """从URL中提取域名 - 之前的简单方法，保留以兼容现有代码"""
-        domain = urlparse(url).netloc.lower()
-        
-        # 移除www前缀
-        if domain.startswith('www.'):
-            domain = domain[4:]
-            
-        return domain
-    
-    def _check_domain_match(self, source_domain: str) -> bool:
-        """检查源域名是否与已缓存的域名匹配"""
-        # 直接匹配
-        if source_domain in self.domain_cache:
-            return True
-            
-        # 子域名匹配
-        for domain in self.domain_cache:
-            if source_domain.endswith('.' + domain):
-                return True
-                
-        return False
