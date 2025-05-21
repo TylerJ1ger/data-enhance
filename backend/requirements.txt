@@ -16,3 +16,9 @@ trafilatura
 newspaper3k
 readability-lxml
 goose3
+nltk
+python-dateutil
+jieba
+certifi
+cssselect
+pillow
