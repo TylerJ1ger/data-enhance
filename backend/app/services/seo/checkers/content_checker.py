@@ -47,6 +47,67 @@ class ContentChecker(BaseChecker):
         
         return self.get_issues()
     
+    def extract_json_content_from_scripts(self, soup):
+        """
+        从页面中的脚本标签中提取JSON内容
+        特别针对现代前端框架（如Next.js、React等）将内容存储在脚本标签中的情况
+        """
+        self.logger.info("尝试从脚本标签中提取JSON内容...")
+        extracted_text = ""
+        
+        # 查找可能包含内容的脚本标签
+        script_tags = soup.find_all('script', {'type': 'application/json'})
+        if not script_tags:
+            # 也查找可能没有指定type的__NEXT_DATA__标签
+            script_tags = soup.find_all('script', {'id': '__NEXT_DATA__'})
+
+        for script in script_tags:
+            try:
+                import json
+                script_content = script.string
+                if not script_content:
+                    continue
+                    
+                # 解析JSON内容
+                json_data = json.loads(script_content)
+                
+                # 递归提取所有字符串值
+                def extract_strings(obj, min_length=15):
+                    texts = []
+                    if isinstance(obj, dict):
+                        for key, value in obj.items():
+                            # 排除一些常见的非内容键
+                            if key.lower() in ['url', 'href', 'src', 'alt', 'id', 'class', 'style', 'type']:
+                                continue
+                            texts.extend(extract_strings(value, min_length))
+                    elif isinstance(obj, list):
+                        for item in obj:
+                            texts.extend(extract_strings(item, min_length))
+                    elif isinstance(obj, str) and len(obj) > min_length:
+                        # 排除URL和短文本
+                        if not obj.startswith(('http://', 'https://', '/', '#')):
+                            texts.append(obj)
+                    return texts
+                
+                # 提取JSON中的所有可能内容
+                text_candidates = extract_strings(json_data)
+                
+                # 按长度排序并选择最长的几个文本
+                text_candidates.sort(key=len, reverse=True)
+                top_candidates = text_candidates[:10]  # 取最长的10段文本
+                
+                if top_candidates:
+                    self.logger.info(f"从脚本标签中提取到 {len(top_candidates)} 段可能的内容")
+                    extracted_text = "\n\n".join(top_candidates)
+                    
+            except Exception as e:
+                self.logger.warning(f"从脚本中提取JSON内容失败: {str(e)}")
+        
+        if extracted_text:
+            self.logger.info(f"从脚本中提取的JSON内容长度: {len(extracted_text)}")
+        
+        return extracted_text
+
     def extract_main_content(self) -> str:
         """
         智能提取页面主要内容区域的文本
@@ -54,6 +115,13 @@ class ContentChecker(BaseChecker):
         """
         html_content = str(self.soup)
         content = ""
+        
+        # 首先尝试从脚本标签中提取JSON内容，适用于所有引擎的前置处理
+        script_content = self.extract_json_content_from_scripts(self.soup)
+        if script_content and len(script_content) > 500:
+            self.logger.info(f"使用脚本标签中的JSON内容作为主要内容，长度: {len(script_content)}")
+            self.extracted_content["text"] = script_content
+            return script_content
         
         # 根据选择的提取引擎选择不同的提取方法
         if self.content_extractor == "auto" or self.content_extractor == "trafilatura":
@@ -254,11 +322,24 @@ class ContentChecker(BaseChecker):
                         except Exception as e:
                             self.logger.warning(f"从top_node提取文本失败: {str(e)}")
                     
-                    # 4. 如果Goose3提取的内容不足，使用我们的自定义提取方法
+                    # 4. 如果Goose3提取的内容不足，先尝试从脚本中提取，再使用自定义提取方法
                     if not content_parts or len("\n\n".join(content_parts)) < 500:  # 如果总内容少于500个字符
-                        self.logger.info("Goose3提取内容不足，尝试使用自定义提取方法")
+                        self.logger.info("Goose3提取内容不足，尝试从脚本标签和自定义方法提取内容")
                         
-                        # 使用自定义方法提取主要内容
+                        # 首先尝试从脚本标签中提取JSON内容
+                        script_content = self.extract_json_content_from_scripts(soup)
+                        
+                        if script_content and len(script_content) > 500:
+                            self.logger.info(f"使用脚本标签中的JSON内容，长度: {len(script_content)}")
+                            content = script_content
+                            
+                            # 清理资源
+                            g.close()
+                            
+                            self.extracted_content["text"] = content
+                            return content
+                        
+                        # 如果从脚本中提取内容不足，再使用自定义方法提取主要内容
                         fallback_content = self._extract_content_direct(soup)
                         
                         # 如果自定义方法提取的内容更多，则使用它
@@ -600,6 +681,12 @@ class ContentChecker(BaseChecker):
         增强的自定义算法提取页面主要内容，在没有第三方库可用时使用
         """
         self.logger.info("使用增强的自定义内容提取算法")
+        
+        # 新增：尝试从脚本标签中提取JSON内容
+        script_content = self.extract_json_content_from_scripts(self.soup)
+        if script_content and len(script_content) > 500:
+            self.logger.info(f"从脚本标签提取JSON内容成功，内容长度: {len(script_content)}")
+            return script_content
         
         # 新增：直接从整个文档提取内容，不尝试识别特定容器
         direct_content = self._extract_content_direct(self.soup)
