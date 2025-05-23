@@ -1,6 +1,7 @@
 from .base_checker import BaseChecker
 from typing import Dict, Any, List, Optional
 import re
+import html
 from bs4 import Tag, BeautifulSoup
 import importlib.util
 import logging
@@ -257,6 +258,51 @@ class ContentChecker(BaseChecker):
         
         return extracted_text
 
+    def normalize_text(self, text: str) -> str:
+        """
+        标准化文本：处理HTML实体、清理特殊字符等
+        
+        Args:
+            text: 原始文本
+            
+        Returns:
+            标准化后的文本
+        """
+        if not text:
+            return ""
+        
+        # 1. 解码HTML实体
+        text = html.unescape(text)
+        
+        # 2. 处理常见的HTML实体和特殊字符
+        html_entities_map = {
+            '&mdash;': '—',
+            '&ndash;': '–',
+            '&ldquo;': '"',
+            '&rdquo;': '"',
+            '&lsquo;': ''',
+            '&rsquo;': ''',
+            '&quot;': '"',
+            '&amp;': '&',
+            '&lt;': '<',
+            '&gt;': '>',
+            '&nbsp;': ' ',
+            '&hellip;': '…',
+            '&bull;': '•',
+        }
+        
+        for entity, replacement in html_entities_map.items():
+            text = text.replace(entity, replacement)
+        
+        # 3. 清理多余的空白字符
+        text = re.sub(r'\s+', ' ', text)
+        text = text.strip()
+        
+        # 4. 移除零宽字符和其他不可见字符
+        text = re.sub(r'[\u200b-\u200f\u2028-\u202f\u205f-\u206f\ufeff]', '', text)
+        
+        return text
+
     def extract_main_content(self) -> str:
         """
         智能提取页面主要内容区域的文本
@@ -269,7 +315,7 @@ class ContentChecker(BaseChecker):
         script_content = self.extract_json_content_from_scripts(self.soup)
         if script_content and len(script_content) > 500:
             self.logger.info(f"使用脚本标签中的JSON内容作为主要内容，长度: {len(script_content)}")
-            return script_content
+            return self.normalize_text(script_content)
         
         # 根据选择的提取引擎选择不同的提取方法
         if self.content_extractor == "auto" or self.content_extractor == "trafilatura":
@@ -279,7 +325,7 @@ class ContentChecker(BaseChecker):
                     content = trafilatura.extract(html_content)
                     if content and len(content) > 100:
                         self.logger.info("成功使用Trafilatura提取内容，长度: %d", len(content))
-                        return content
+                        return self.normalize_text(content)
                 except Exception as e:
                     self.logger.warning("Trafilatura内容提取失败: %s", str(e))
             
@@ -287,7 +333,7 @@ class ContentChecker(BaseChecker):
             if self.content_extractor != "auto":
                 self.logger.warning("指定的Trafilatura提取引擎不可用，回退到自定义算法")
                 content = self._fallback_extract_content()
-                return content
+                return self.normalize_text(content)
         
         if self.content_extractor == "auto" or self.content_extractor == "newspaper":
             if self._check_library_available('newspaper'):
@@ -297,7 +343,7 @@ class ContentChecker(BaseChecker):
                     content = fulltext(html_content)
                     if content and len(content) > 100:
                         self.logger.info("成功使用Newspaper提取内容，长度: %d", len(content))
-                        return content
+                        return self.normalize_text(content)
                 except Exception as e:
                     self.logger.warning("Newspaper3k内容提取失败: %s", str(e))
                     # 尝试备用方法
@@ -309,7 +355,7 @@ class ContentChecker(BaseChecker):
                         content = article.text
                         if content and len(content) > 100:
                             self.logger.info("成功使用Newspaper Article提取内容，长度: %d", len(content))
-                            return content
+                            return self.normalize_text(content)
                     except Exception as e2:
                         self.logger.warning("Newspaper3k备用方法提取失败: %s", str(e2))
                         self.logger.debug("详细错误: %s", traceback.format_exc())
@@ -317,7 +363,7 @@ class ContentChecker(BaseChecker):
             if self.content_extractor != "auto":
                 self.logger.warning("指定的Newspaper提取引擎不可用，回退到自定义算法")
                 content = self._fallback_extract_content()
-                return content
+                return self.normalize_text(content)
         
         if self.content_extractor == "auto" or self.content_extractor == "readability":
             if self._check_library_available('readability'):
@@ -331,7 +377,7 @@ class ContentChecker(BaseChecker):
                     text_content = soup.get_text(separator=' ', strip=True)
                     if text_content and len(text_content) > 100:
                         self.logger.info("成功使用Readability提取内容，长度: %d", len(text_content))
-                        return text_content
+                        return self.normalize_text(text_content)
                 except Exception as e:
                     self.logger.warning("Readability-lxml内容提取失败: %s", str(e))
                     self.logger.debug("详细错误: %s", traceback.format_exc())
@@ -339,7 +385,7 @@ class ContentChecker(BaseChecker):
             if self.content_extractor != "auto":
                 self.logger.warning("指定的Readability提取引擎不可用，回退到自定义算法")
                 content = self._fallback_extract_content()
-                return content
+                return self.normalize_text(content)
         
         # Goose3 处理部分的增强版本
         if self.content_extractor == "auto" or self.content_extractor == "goose3":
@@ -349,7 +395,7 @@ class ContentChecker(BaseChecker):
                 self.logger.warning("Goose3库不可用")
                 if self.content_extractor != "auto":
                     content = self._fallback_extract_content()
-                    return content
+                    return self.normalize_text(content)
             else:
                 try:
                     # 导入必要的模块
@@ -476,7 +522,7 @@ class ContentChecker(BaseChecker):
                             # 清理资源
                             g.close()
                             
-                            return content
+                            return self.normalize_text(content)
                         
                         # 如果从脚本中提取内容不足，再使用自定义方法提取主要内容
                         fallback_content = self._extract_content_direct(soup)
@@ -489,7 +535,7 @@ class ContentChecker(BaseChecker):
                             # 清理资源
                             g.close()
                             
-                            return content
+                            return self.normalize_text(content)
                     
                     # 组合所有部分
                     content = "\n\n".join(content_parts)
@@ -504,7 +550,7 @@ class ContentChecker(BaseChecker):
                         self.logger.info(f"自定义方法提取的内容长度: {len(content)}")
                     
                     self.logger.info(f"最终内容长度: {len(content)}")
-                    return content
+                    return self.normalize_text(content)
                     
                 except Exception as e:
                     self.logger.error(f"使用Goose3提取内容时出错: {str(e)}")
@@ -513,14 +559,14 @@ class ContentChecker(BaseChecker):
             if self.content_extractor != "auto":
                 self.logger.warning("指定的Goose3提取引擎不可用或提取内容为空，回退到自定义算法")
                 content = self._fallback_extract_content()
-                return content
+                return self.normalize_text(content)
 
         # 如果所有引擎都失败或用户选择自定义算法
         if self.content_extractor == "custom" or not content:
             content = self._fallback_extract_content()
-            return content
+            return self.normalize_text(content)
         
-        return content
+        return self.normalize_text(content)
     
     def _extract_content_direct(self, soup: BeautifulSoup) -> str:
         """直接从BeautifulSoup对象提取内容，不依赖于特定容器"""
@@ -590,6 +636,133 @@ class ContentChecker(BaseChecker):
         if self.enable_advanced_analysis:
             self._perform_advanced_content_analysis(text_content)
     
+    def is_valid_error(self, error, text_content: str) -> bool:
+        """
+        验证拼写或语法错误是否为有效错误
+        过滤掉误报
+        
+        Args:
+            error: language_tool_python返回的错误对象
+            text_content: 完整的文本内容
+            
+        Returns:
+            bool: 是否为有效错误
+        """
+        if not error.context or not hasattr(error, 'offset') or not hasattr(error, 'errorLength'):
+            return False
+        
+        # 提取错误的具体文本
+        error_start = error.offset
+        error_end = error.offset + error.errorLength
+        
+        # 确保索引在范围内
+        if error_start < 0 or error_end > len(error.context):
+            return False
+            
+        error_text = error.context[error_start:error_end].strip()
+        
+        if not error_text:
+            return False
+        
+        # 常见的误报过滤规则
+        
+        # 1. 过滤常见英文单词的误报
+        common_words = {
+            'support', 'browser', 'content', 'website', 'online', 'video', 'editing',
+            'software', 'hardware', 'internet', 'connection', 'application', 'service',
+            'template', 'workflow', 'footage', 'desktop', 'integration', 'acceleration',
+            'graphics', 'resource', 'endeavor', 'alternatives', 'transitions', 'trimming',
+            'accessible', 'alternatives', 'enormous', 'programs', 'notoriously'
+        }
+        
+        if error_text.lower() in common_words:
+            self.logger.debug(f"过滤常见词汇误报: {error_text}")
+            return False
+        
+        # 2. 过滤技术术语和专有名词
+        tech_terms = {
+            'html', 'css', 'javascript', 'api', 'url', 'http', 'https', 'json', 'xml',
+            'seo', 'cms', 'ui', 'ux', 'pcmag', 'veed', 'clipchamp', 'ai', 'os'
+        }
+        
+        if error_text.lower() in tech_terms:
+            self.logger.debug(f"过滤技术术语误报: {error_text}")
+            return False
+        
+        # 3. 过滤品牌名称和产品名称（通常是大写开头）
+        if error_text[0].isupper() and len(error_text) > 2:
+            # 检查是否可能是品牌名或专有名词
+            if not any(char.islower() for char in error_text[1:3]):  # 前几个字符都是大写
+                self.logger.debug(f"过滤可能的品牌名称: {error_text}")
+                return False
+        
+        # 4. 过滤过短的错误（可能是误报）
+        if len(error_text) < 2:
+            self.logger.debug(f"过滤过短文本: {error_text}")
+            return False
+        
+        # 5. 过滤数字和符号组合
+        if re.match(r'^[\d\W]+$', error_text):
+            self.logger.debug(f"过滤数字符号组合: {error_text}")
+            return False
+        
+        # 6. 检查错误是否是较长单词的一部分
+        # 通过查找错误文本在原始内容中的位置来验证
+        error_positions = []
+        start = 0
+        while True:
+            pos = text_content.find(error_text, start)
+            if pos == -1:
+                break
+            error_positions.append(pos)
+            start = pos + 1
+        
+        # 检查每个位置是否是完整单词
+        valid_positions = []
+        for pos in error_positions:
+            # 检查前后字符
+            before_char = text_content[pos - 1] if pos > 0 else ' '
+            after_char = text_content[pos + len(error_text)] if pos + len(error_text) < len(text_content) else ' '
+            
+            # 如果前后都是字母或数字，则可能是单词的一部分
+            if before_char.isalnum() or after_char.isalnum():
+                # 获取完整的单词来进一步检查
+                word_start = pos
+                word_end = pos + len(error_text)
+                
+                # 向前查找单词边界
+                while word_start > 0 and text_content[word_start - 1].isalnum():
+                    word_start -= 1
+                
+                # 向后查找单词边界
+                while word_end < len(text_content) and text_content[word_end].isalnum():
+                    word_end += 1
+                
+                complete_word = text_content[word_start:word_end]
+                
+                # 如果完整单词在常见词汇中，则过滤这个错误
+                if complete_word.lower() in common_words or complete_word.lower() in tech_terms:
+                    self.logger.debug(f"过滤单词片段误报: {error_text} (完整单词: {complete_word})")
+                    continue
+            
+            valid_positions.append(pos)
+        
+        # 如果没有有效位置，则过滤
+        if not valid_positions:
+            return False
+        
+        # 7. 最后检查：如果错误的建议替换明显不合理，则过滤
+        if hasattr(error, 'replacements') and error.replacements:
+            # 检查建议是否合理
+            original_length = len(error_text)
+            for suggestion in error.replacements[:3]:  # 只检查前3个建议
+                if len(suggestion) == 1 and original_length > 3:
+                    # 长单词建议替换为单个字符，可能是误报
+                    self.logger.debug(f"过滤不合理替换建议: {error_text} -> {suggestion}")
+                    return False
+        
+        return True
+
     def _perform_advanced_content_analysis(self, text_content: str):
         """使用language-tool-python和textstat进行高级内容分析"""
         try:
@@ -603,7 +776,7 @@ class ContentChecker(BaseChecker):
             # 检测页面主要语言
             # 简单方法：根据中文字符比例判断
             chinese_chars = sum(1 for c in text_content if '\u4e00' <= c <= '\u9fff')
-            is_chinese = chinese_chars / len(text_content) > 0.5
+            is_chinese = chinese_chars / len(text_content) > 0.5 if text_content else False
             lang = 'zh-CN' if is_chinese else 'en-US'
             
             # 初始化LanguageTool
@@ -619,25 +792,39 @@ class ContentChecker(BaseChecker):
             self.extracted_content["spelling_errors"] = []
             self.extracted_content["grammar_errors"] = []
             
+            # 过滤和分类错误
+            valid_spelling_errors = []
+            valid_grammar_errors = []
+            
+            for match in matches:
+                # 使用新的验证方法过滤误报
+                if not self.is_valid_error(match, sample_text):
+                    continue
+                
+                error_data = {
+                    "text": match.context,
+                    "offset": match.offsetInContext,
+                    "length": match.errorLength,
+                    "message": match.message,
+                    "replacements": match.replacements[:5] if match.replacements else []
+                }
+                
+                # 分类错误
+                if match.ruleId.startswith(('MORFOLOGIK_', 'SPELLING')):
+                    valid_spelling_errors.append(match)
+                    self.extracted_content["spelling_errors"].append(error_data)
+                else:
+                    valid_grammar_errors.append(match)
+                    self.extracted_content["grammar_errors"].append(error_data)
+            
             # 释放LanguageTool资源
             tool.close()
             
-            # 拼写错误
-            spelling_errors = [m for m in matches if m.ruleId.startswith(('MORFOLOGIK_', 'SPELLING'))]
-            for error in spelling_errors:
-                error_data = {
-                    "text": error.context,
-                    "offset": error.offsetInContext,
-                    "length": error.errorLength,
-                    "message": error.message,
-                    "replacements": error.replacements[:5] if error.replacements else []
-                }
-                self.extracted_content["spelling_errors"].append(error_data)
-            
-            if spelling_errors and len(spelling_errors) > 2:  # 忽略少量可能的误报
+            # 只在有足够数量的有效错误时报告问题
+            if valid_spelling_errors and len(valid_spelling_errors) > 2:  # 忽略少量可能的误报
                 # 格式化错误信息
                 formatted_resources = []
-                for e in spelling_errors[:3]:
+                for e in valid_spelling_errors[:3]:
                     # 截断上下文，最多显示50个字符
                     context = e.context.strip()
                     if len(context) > 50:
@@ -654,29 +841,17 @@ class ContentChecker(BaseChecker):
                 self.add_issue(
                     category="Content",
                     issue="Spelling Errors",
-                    description=f"发现{len(spelling_errors)}个拼写错误，这可能影响用户体验和SEO表现。",
+                    description=f"发现{len(valid_spelling_errors)}个拼写错误，这可能影响用户体验和SEO表现。",
                     priority="medium",
                     affected_resources=formatted_resources,
                     issue_type="issues"
                 )
             
             # 语法错误
-            grammar_errors = [m for m in matches if not m.ruleId.startswith(('MORFOLOGIK_', 'SPELLING'))]
-            for error in grammar_errors:
-                error_data = {
-                    "text": error.context,
-                    "offset": error.offsetInContext,
-                    "length": error.errorLength,
-                    "message": error.message,
-                    "replacements": error.replacements[:5] if error.replacements else [],
-                    "rule_id": error.ruleId
-                }
-                self.extracted_content["grammar_errors"].append(error_data)
-            
-            if grammar_errors and len(grammar_errors) > 2:  # 忽略少量可能的误报
+            if valid_grammar_errors and len(valid_grammar_errors) > 2:  # 忽略少量可能的误报
                 # 格式化错误信息
                 formatted_resources = []
-                for e in grammar_errors[:3]:
+                for e in valid_grammar_errors[:3]:
                     # 截断上下文，最多显示50个字符
                     context = e.context.strip()
                     if len(context) > 50:
@@ -689,14 +864,14 @@ class ContentChecker(BaseChecker):
                 self.add_issue(
                     category="Content",
                     issue="Grammar Errors",
-                    description=f"发现{len(grammar_errors)}个语法或风格错误，这可能降低内容质量。",
+                    description=f"发现{len(valid_grammar_errors)}个语法或风格错误，这可能降低内容质量。",
                     priority="medium",
                     affected_resources=formatted_resources,
                     issue_type="issues"
                 )
             
             # 执行可读性分析（主要针对英文内容）
-            if not is_chinese:
+            if not is_chinese and len(sample_text) > 100:
                 # Flesch Reading Ease评分
                 reading_ease = textstat.flesch_reading_ease(sample_text)
                 
@@ -774,6 +949,7 @@ class ContentChecker(BaseChecker):
             )
         except Exception as e:
             # 捕获其他可能的异常，以免影响主要功能
+            self.logger.warning(f"执行高级内容分析时出错：{str(e)}")
             self.add_issue(
                 category="Content",
                 issue="Content Analysis Error",
