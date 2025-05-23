@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 from fastapi import UploadFile
 
 from .checkers.meta_checker import MetaChecker
-from .checkers.content_checker import ContentChecker
+from .checkers.content.content_checker import ContentChecker
 from .checkers.link_checker import LinkChecker
 from .checkers.structure_checker import StructureChecker
 from .checkers.technical_checker import TechnicalChecker

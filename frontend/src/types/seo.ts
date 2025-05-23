@@ -1,7 +1,7 @@
 //frontend-new/src/types/seo.ts
 
 // SEO问题类型
-export type SEOIssueType = 'issue' | 'warning' | 'opportunity';
+export type SEOIssueType = 'issues' | 'warnings' | 'opportunities';
 
 // SEO问题优先级
 export type SEOIssuePriority = 'high' | 'medium' | 'low';
@@ -39,15 +39,28 @@ export interface GrammarError {
 }
 
 /**
+ * HTML结构元素
+ */
+export interface StructureElement {
+  type: string;        // 元素类型，如 h1, h2, strong, emphasis 等
+  text: string;        // 元素文本内容
+  start: number;       // 在纯文本中的起始位置
+  end: number;         // 在纯文本中的结束位置
+}
+
+/**
  * 提取的内容结构
  */
 export interface ExtractedContent {
-  text: string;                   // 提取的文本内容
+  text: string;                     // 提取的文本内容
   spelling_errors: SpellingError[]; // 拼写错误列表
   grammar_errors: GrammarError[];   // 语法错误列表
-  word_count?: number;            // 字数统计
-  character_count?: number;       // 字符数统计
-  readability_score?: number;     // 可读性评分
+  title: string;                    // 页面标题
+  description: string;              // 页面描述
+  structure: StructureElement[];    // 结构化内容元素
+  word_count?: number;              // 字数统计（可选）
+  character_count?: number;         // 字符数统计（可选）
+  readability_score?: number;       // 可读性评分（可选）
 }
 
 /**
@@ -61,6 +74,7 @@ export interface SEOIssue {
   affected_element?: string;      // 受影响的元素
   affected_resources?: string[];  // 受影响的资源
   recommendation?: string;        // 解决建议
+  issue_type?: SEOIssueType;      // 问题类型（可选，用于内部分类）
 }
 
 /**
@@ -82,6 +96,25 @@ export interface SEOIssueCount {
 }
 
 /**
+ * SEO页面元数据
+ */
+export interface SEOPageMetadata {
+  title?: string;                  // 页面标题
+  meta_description?: string;       // 元描述
+  canonical_url?: string;          // 规范URL
+  h1_count?: number;               // H1标签数量
+  h2_count?: number;               // H2标签数量
+  h3_count?: number;               // H3标签数量
+  image_count?: number;            // 图片数量
+  internal_links_count?: number;   // 内部链接数量
+  external_links_count?: number;   // 外部链接数量
+  word_count?: number;             // 总字数
+  page_size?: number;              // 页面大小(字节)
+  load_time?: number;              // 加载时间(毫秒)
+  structure_elements_count?: number; // 结构元素数量
+}
+
+/**
  * SEO上传响应
  */
 export interface SEOUploadResponse {
@@ -90,23 +123,9 @@ export interface SEOUploadResponse {
   issues_count: SEOIssueCount;      // 问题数量统计
   issues: SEOIssueGroups;           // 问题分组
   extracted_content: ExtractedContent; // 提取的内容
-  metadata?: SEOPageMetadata;       // 页面元数据
-}
-
-/**
- * SEO页面元数据
- */
-export interface SEOPageMetadata {
-  title?: string;                  // 页面标题
-  meta_description?: string;       // 元描述
-  canonical_url?: string;          // 规范URL
-  h1_count?: number;               // H1标签数量
-  image_count?: number;            // 图片数量
-  internal_links_count?: number;   // 内部链接数量
-  external_links_count?: number;   // 外部链接数量
-  word_count?: number;             // 总字数
-  page_size?: number;              // 页面大小(字节)
-  load_time?: number;              // 加载时间(毫秒)
+  metadata?: SEOPageMetadata;       // 页面元数据（可选）
+  analysis_time?: number;           // 分析耗时（毫秒）
+  extractor_used?: ContentExtractor; // 实际使用的提取器
 }
 
 /**
@@ -117,6 +136,14 @@ export interface SEOCategory {
   name: string;         // 类别名称
   description: string;  // 类别描述
   icon?: string;        // 类别图标
+  color?: string;       // 类别颜色
+}
+
+/**
+ * SEO类别响应
+ */
+export interface SEOCategoriesResponse {
+  categories: SEOCategory[];
 }
 
 /**
@@ -136,6 +163,8 @@ export interface FilterSEOIssuesRequest {
   priority?: SEOIssuePriority;  // 按优先级筛选
   type?: SEOIssueType;          // 按类型筛选
   search_term?: string;         // 搜索词
+  limit?: number;               // 结果限制数量
+  offset?: number;              // 分页偏移量
 }
 
 /**
@@ -145,6 +174,7 @@ export interface FilteredSEOIssues {
   filtered_issues: SEOIssueGroups;       // 筛选后的问题
   filtered_count: SEOIssueCount;         // 筛选后的问题数量
   filter_applied: FilterSEOIssuesRequest; // 应用的筛选条件
+  total_count: SEOIssueCount;            // 总问题数量
 }
 
 /**
@@ -165,4 +195,117 @@ export interface SEOAnalysisError {
   message: string;      // 错误消息
   code?: string;        // 错误代码
   details?: unknown;    // 错误详情
+  timestamp?: number;   // 错误时间戳
 }
+
+/**
+ * SEO分析配置
+ */
+export interface SEOAnalysisConfig {
+  contentExtractor: ContentExtractor;     // 内容提取器
+  enableAdvancedAnalysis: boolean;        // 是否启用高级分析
+  maxFileSize?: number;                   // 最大文件大小（字节）
+  timeout?: number;                       // 分析超时时间（毫秒）
+}
+
+/**
+ * SEO分析进度
+ */
+export interface SEOAnalysisProgress {
+  stage: string;                          // 当前阶段
+  progress: number;                       // 进度百分比 (0-100)
+  message?: string;                       // 进度消息
+  eta?: number;                          // 预计剩余时间（毫秒）
+}
+
+/**
+ * SEO分析会话
+ */
+export interface SEOAnalysisSession {
+  id: string;                            // 会话ID
+  fileName: string;                      // 文件名
+  status: SEOAnalysisStatus;             // 分析状态
+  config: SEOAnalysisConfig;             // 分析配置
+  progress?: SEOAnalysisProgress;        // 分析进度
+  result?: SEOUploadResponse;            // 分析结果
+  error?: SEOAnalysisError;              // 错误信息
+  startTime: number;                     // 开始时间戳
+  endTime?: number;                      // 结束时间戳
+}
+
+/**
+ * SEO报告导出格式
+ */
+export type SEOReportFormat = 'pdf' | 'html' | 'json' | 'csv';
+
+/**
+ * SEO报告导出请求
+ */
+export interface SEOReportExportRequest {
+  format: SEOReportFormat;               // 导出格式
+  includeContent?: boolean;              // 是否包含内容
+  includeStructure?: boolean;            // 是否包含结构信息
+  includeErrors?: boolean;               // 是否包含错误信息
+  categories?: string[];                 // 包含的类别
+  priorities?: SEOIssuePriority[];       // 包含的优先级
+}
+
+/**
+ * 内容高亮选项
+ */
+export interface ContentHighlightOptions {
+  highlightStructure: boolean;           // 是否高亮结构元素
+  highlightErrors: boolean;              // 是否高亮错误
+  showTooltips: boolean;                 // 是否显示提示信息
+  maxErrorsToShow?: number;              // 最大错误显示数量
+}
+
+/**
+ * SEO建议
+ */
+export interface SEORecommendation {
+  id: string;                            // 建议ID
+  category: string;                      // 所属类别
+  title: string;                         // 建议标题
+  description: string;                   // 建议描述
+  priority: SEOIssuePriority;            // 建议优先级
+  effort: 'low' | 'medium' | 'high';     // 实施难度
+  impact: 'low' | 'medium' | 'high';     // 预期影响
+  resources?: string[];                  // 相关资源链接
+}
+
+/**
+ * SEO性能分数
+ */
+export interface SEOPerformanceScore {
+  overall: number;                       // 总体得分 (0-100)
+  technical: number;                     // 技术得分
+  content: number;                       // 内容得分
+  accessibility: number;                 // 无障碍得分
+  mobile: number;                        // 移动端得分
+  recommendations: SEORecommendation[];  // 改进建议
+}
+
+/**
+ * 健康检查响应
+ */
+export interface HealthCheckResponse {
+  status: string;                        // 服务状态
+  service: string;                       // 服务名称
+  timestamp: number;                     // 时间戳
+  version?: string;                      // 版本信息
+}
+
+// 导出所有类型的联合类型，便于类型检查
+export type SEOTypes = 
+  | SEOIssue
+  | SEOIssueGroups
+  | SEOUploadResponse
+  | ExtractedContent
+  | StructureElement
+  | SpellingError
+  | GrammarError
+  | SEOCategory
+  | SEOAnalysisSession
+  | SEORecommendation
+  | SEOPerformanceScore;

@@ -129,17 +129,6 @@ def parse_url_parts(url: str) -> Dict[str, Any]:
             'params': {}
         }
 
-def is_valid_hreflang(code: str) -> bool:
-    """
-    检查hreflang值是否有效
-    有效的格式: 语言代码(如'en')或语言-区域代码(如'en-US')或'x-default'
-    """
-    if code == 'x-default':
-        return True
-        
-    pattern = re.compile(r'^([a-z]{2,3})(-[A-Z]{2})?$')
-    return bool(pattern.match(code))
-
 def extract_text_from_html(html_content: str) -> str:
     """
     从HTML内容中提取纯文本

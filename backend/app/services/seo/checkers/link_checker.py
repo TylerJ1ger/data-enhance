@@ -456,6 +456,9 @@ class LinkChecker(BaseChecker):
     
     def check_hreflang(self):
         """检查hreflang相关问题"""
+        # 导入优化后的验证函数
+        from app.utils.utils_hreflang import get_hreflang_validation_result, validate_hreflang_list
+        
         # 查找所有hreflang标签
         all_hreflang_tags = self.soup.find_all('link', attrs={'rel': 'alternate', 'hreflang': True})
         
@@ -499,29 +502,69 @@ class LinkChecker(BaseChecker):
                 issue_type="warnings"
             )
         
-        # 检查hreflang值的正确性
-        valid_language_pattern = re.compile(r'^([a-z]{2,3})(-[A-Z]{2})?$')
-        for tag in all_hreflang_tags:
-            hreflang_value = tag.get('hreflang')
-            if hreflang_value != 'x-default' and not valid_language_pattern.match(hreflang_value):
-                self.add_issue(
-                    "Hreflang",
-                    "Incorrect Language & Region Codes",
-                    f"hreflang值 '{hreflang_value}' 不符合ISO语言和区域代码标准(例如'en'、'en-US'或'x-default')。",
-                    "high",
-                    affected_element=str(tag)[:100] + ('...' if len(str(tag)) > 100 else ''),
-                    issue_type="issues"
-                )
+        # 优化后的hreflang值检查逻辑 - 使用批量验证
+        hreflang_codes = [tag.get('hreflang') for tag in all_hreflang_tags]
+        validation_results = validate_hreflang_list(hreflang_codes)
+        
+        # 报告完全无效的hreflang值
+        if validation_results['invalid']:
+            invalid_examples = validation_results['invalid'][:3]  # 只显示前3个例子
+            example_text = "、".join([f"'{code}'" for code in invalid_examples])
+            if len(validation_results['invalid']) > 3:
+                example_text += f" 等{len(validation_results['invalid'])}个"
+            
+            # 找到第一个无效标签用于显示
+            first_invalid_tag = None
+            for tag in all_hreflang_tags:
+                if tag.get('hreflang') in validation_results['invalid']:
+                    first_invalid_tag = tag
+                    break
+            
+            self.add_issue(
+                "Hreflang",
+                "Invalid Language & Region Codes",
+                f"检测到{len(validation_results['invalid'])}个无效的hreflang值：{example_text}。请使用有效的ISO语言代码（如'en'、'zh'）和区域代码（如'US'、'CN'），或使用'x-default'。",
+                "high",
+                affected_element=str(first_invalid_tag)[:100] + ('...' if len(str(first_invalid_tag)) > 100 else '') if first_invalid_tag else None,
+                issue_type="issues"
+            )
+        
+        # 报告格式不标准但有效的hreflang值
+        if validation_results['valid_non_standard']:
+            # 获取格式建议示例
+            format_examples = []
+            for code in validation_results['valid_non_standard'][:3]:  # 只显示前3个例子
+                validation = get_hreflang_validation_result(code)
+                if validation['suggested_format']:
+                    format_examples.append(f"'{code}' → '{validation['suggested_format']}'")
+            
+            example_text = "，例如：" + "、".join(format_examples) if format_examples else ""
+            
+            # 找到第一个非标准格式标签用于显示
+            first_non_standard_tag = None
+            for tag in all_hreflang_tags:
+                if tag.get('hreflang') in validation_results['valid_non_standard']:
+                    first_non_standard_tag = tag
+                    break
+            
+            self.add_issue(
+                "Hreflang",
+                "Non-Standard Format",
+                f"检测到{len(validation_results['valid_non_standard'])}个hreflang值使用了非标准格式。虽然这些值有效，但建议使用标准格式（语言代码小写，区域代码大写）以确保最佳兼容性{example_text}。",
+                "low",
+                affected_element=str(first_non_standard_tag)[:100] + ('...' if len(str(first_non_standard_tag)) > 100 else '') if first_non_standard_tag else None,
+                issue_type="opportunities"
+            )
         
         # 检查重复的hreflang条目
-        hreflang_values = [tag.get('hreflang') for tag in all_hreflang_tags]
-        duplicates = set()
-        for value in hreflang_values:
-            if hreflang_values.count(value) > 1 and value not in duplicates:
-                duplicates.add(value)
-        
-        if duplicates:
-            duplicate_list = [f"'{code}'({hreflang_values.count(code)}次)" for code in duplicates]
+        if validation_results['duplicates']:
+            # 统计每个重复值的出现次数
+            duplicate_counts = {}
+            for code in hreflang_codes:
+                if code in validation_results['duplicates']:
+                    duplicate_counts[code] = hreflang_codes.count(code)
+            
+            duplicate_list = [f"'{code}'({count}次)" for code, count in duplicate_counts.items()]
             self.add_issue(
                 "Hreflang",
                 "Multiple Entries",

@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from 'react';
-import { FileText, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react';
+import { FileText, ChevronDown, ChevronUp, AlertCircle, Brackets } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -38,6 +38,137 @@ export function ContentDisplay({ content, isLoading = false }: ContentDisplayPro
     return null;
   }
 
+  // 渲染带有结构高亮的内容
+  const renderStructuredContent = () => {
+    // 如果没有结构信息，直接返回纯文本
+    if (!content.structure || content.structure.length === 0) {
+      return <div className="whitespace-pre-line">{content.text}</div>;
+    }
+
+    // 按段落分割内容，便于显示
+    const paragraphs = content.text.split(/\n+/);
+    
+    return (
+      <div className="space-y-4">
+        {/* 添加标题和描述区域 */}
+        {(content.title || content.description) && (
+          <div className="mb-6 p-4 bg-primary/5 rounded-md border">
+            {content.title && (
+              <div className="mb-2">
+                <span className="text-xs font-semibold text-muted-foreground mr-2">页面标题:</span>
+                <h3 className="text-lg font-bold">{content.title}</h3>
+              </div>
+            )}
+            {content.description && (
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground mr-2">页面描述:</span>
+                <p className="text-sm italic">{content.description}</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 渲染段落内容 */}
+        {paragraphs.map((paragraph, pIndex) => {
+          if (!paragraph.trim()) return null;
+          
+          // 提取当前段落中的结构元素
+          const paragraphStructures = content.structure.filter(item => {
+            return paragraph.includes(item.text);
+          });
+          
+          if (paragraphStructures.length === 0) {
+            return <p key={pIndex} className="whitespace-pre-line">{paragraph}</p>;
+          }
+          
+          // 对段落进行结构标记
+          let lastPos = 0;
+          const parts = [];
+          
+          // 根据开始位置排序结构元素
+          const sortedStructures = [...paragraphStructures].sort((a, b) => {
+            const aPos = paragraph.indexOf(a.text);
+            const bPos = paragraph.indexOf(b.text);
+            return aPos - bPos;
+          });
+          
+          for (const item of sortedStructures) {
+            // 找到元素在当前段落中的位置
+            const itemPos = paragraph.indexOf(item.text, lastPos);
+            if (itemPos === -1) continue;
+            
+            // 添加元素前的文本
+            if (itemPos > lastPos) {
+              parts.push(
+                <span key={`${pIndex}-${lastPos}-text`}>
+                  {paragraph.substring(lastPos, itemPos)}
+                </span>
+              );
+            }
+            
+            // 添加带样式的结构元素
+            const getStyleForType = (type: string) => {
+              switch (type) {
+                case 'h1':
+                  return "text-2xl font-bold text-primary";
+                case 'h2':
+                  return "text-xl font-bold text-primary/90";
+                case 'h3':
+                  return "text-lg font-bold text-primary/80";
+                case 'h4':
+                  return "text-base font-bold text-primary/70";
+                case 'h5':
+                case 'h6':
+                  return "text-sm font-bold text-primary/60";
+                case 'strong':
+                case 'bold':
+                  return "font-bold";
+                case 'emphasis':
+                case 'italic':
+                  return "italic";
+                default:
+                  return "";
+              }
+            };
+            
+            parts.push(
+              <TooltipProvider key={`${pIndex}-${itemPos}-structure`}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span 
+                      className={cn(
+                        "bg-primary/10 px-1 rounded cursor-help",
+                        getStyleForType(item.type)
+                      )}
+                    >
+                      {item.text}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>HTML {item.type} 标签</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            );
+            
+            lastPos = itemPos + item.text.length;
+          }
+          
+          // 添加段落剩余部分
+          if (lastPos < paragraph.length) {
+            parts.push(
+              <span key={`${pIndex}-${lastPos}-end`}>
+                {paragraph.substring(lastPos)}
+              </span>
+            );
+          }
+          
+          return <p key={pIndex} className="whitespace-pre-line">{parts}</p>;
+        })}
+      </div>
+    );
+  };
+
   // 高亮拼写和语法错误的内容显示
   const renderHighlightedContent = () => {
     // 合并所有错误，并按照位置排序
@@ -52,7 +183,7 @@ export function ContentDisplay({ content, isLoading = false }: ContentDisplayPro
     });
 
     if (allErrors.length === 0) {
-      return <div className="whitespace-pre-line">{content.text}</div>;
+      return renderStructuredContent();
     }
 
     // 按段落分割内容，便于显示
@@ -60,7 +191,27 @@ export function ContentDisplay({ content, isLoading = false }: ContentDisplayPro
     
     return (
       <div className="space-y-4">
+        {/* 添加标题和描述区域 */}
+        {(content.title || content.description) && (
+          <div className="mb-6 p-4 bg-primary/5 rounded-md border">
+            {content.title && (
+              <div className="mb-2">
+                <span className="text-xs font-semibold text-muted-foreground mr-2">页面标题:</span>
+                <h3 className="text-lg font-bold">{content.title}</h3>
+              </div>
+            )}
+            {content.description && (
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground mr-2">页面描述:</span>
+                <p className="text-sm italic">{content.description}</p>
+              </div>
+            )}
+          </div>
+        )}
+
         {paragraphs.map((paragraph, pIndex) => {
+          if (!paragraph.trim()) return null;
+          
           // 找出当前段落中的错误
           const paragraphErrors = allErrors.filter(err => 
             paragraph.includes(err.text.substring(err.offset, err.offset + err.length))
@@ -200,7 +351,51 @@ export function ContentDisplay({ content, isLoading = false }: ContentDisplayPro
     );
   };
 
+  // 增加结构信息和HTML视图选项
+  const renderHTMLStructure = () => {
+    if (!content.structure || content.structure.length === 0) {
+      return (
+        <div className="py-8 text-center text-muted-foreground">
+          <Brackets className="mx-auto mb-2 h-8 w-8" />
+          <p>未找到HTML结构信息</p>
+        </div>
+      );
+    }
+    
+    // 按类型分组显示结构元素
+    const structureByType = content.structure.reduce((acc, item) => {
+      if (!acc[item.type]) {
+        acc[item.type] = [];
+      }
+      acc[item.type].push(item);
+      return acc;
+    }, {} as Record<string, typeof content.structure>);
+    
+    return (
+      <div className="space-y-6">
+        {Object.entries(structureByType).map(([type, items]) => (
+          <div key={type}>
+            <h3 className="font-medium text-primary mb-2">{type.toUpperCase()} 标签 ({items.length})</h3>
+            <div className="space-y-2">
+              {items.map((item, idx) => (
+                <div key={`${type}-${idx}`} className="bg-muted p-3 rounded-md border">
+                  <div className="font-medium mb-1">
+                    {item.text.length > 100 ? `${item.text.substring(0, 100)}...` : item.text}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    在文本中的位置: {item.start} - {item.end}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const totalErrors = content.spelling_errors.length + content.grammar_errors.length;
+  const totalStructures = content.structure ? content.structure.length : 0;
 
   return (
     <Card>
@@ -216,6 +411,11 @@ export function ContentDisplay({ content, isLoading = false }: ContentDisplayPro
               {totalErrors} 个问题
             </Badge>
           )}
+          {totalStructures > 0 && (
+            <Badge variant="secondary">
+              {totalStructures} 个结构元素
+            </Badge>
+          )}
         </div>
         <Button variant="ghost" size="icon" className="h-8 w-8 p-0">
           {isExpanded ? <ChevronUp /> : <ChevronDown />}
@@ -225,10 +425,18 @@ export function ContentDisplay({ content, isLoading = false }: ContentDisplayPro
       {isExpanded && (
         <CardContent>
           <Tabs defaultValue="text" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="text">内容预览</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="text">
+                <FileText className="w-4 h-4 mr-2" />
+                内容预览
+              </TabsTrigger>
               <TabsTrigger value="errors">
+                <AlertCircle className="w-4 h-4 mr-2" />
                 错误列表 ({totalErrors})
+              </TabsTrigger>
+              <TabsTrigger value="structure">
+                <Brackets className="w-4 h-4 mr-2" />
+                HTML结构 ({totalStructures})
               </TabsTrigger>
             </TabsList>
             
@@ -241,6 +449,12 @@ export function ContentDisplay({ content, isLoading = false }: ContentDisplayPro
             <TabsContent value="errors" className="mt-4">
               <div className="p-4 bg-card rounded-md border max-h-96 overflow-y-auto">
                 {renderErrorList()}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="structure" className="mt-4">
+              <div className="p-4 bg-card rounded-md border max-h-96 overflow-y-auto">
+                {renderHTMLStructure()}
               </div>
             </TabsContent>
           </Tabs>

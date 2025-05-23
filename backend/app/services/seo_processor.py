@@ -5,7 +5,7 @@ from fastapi import UploadFile
 from bs4 import BeautifulSoup
 
 from app.services.seo.checkers.meta_checker import MetaChecker
-from app.services.seo.checkers.content_checker import ContentChecker
+from app.services.seo.checkers.content.content_checker import ContentChecker
 from app.services.seo.checkers.link_checker import LinkChecker
 from app.services.seo.checkers.structure_checker import StructureChecker
 from app.services.seo.checkers.technical_checker import TechnicalChecker
