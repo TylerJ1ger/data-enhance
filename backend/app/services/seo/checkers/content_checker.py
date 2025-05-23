@@ -1,5 +1,3 @@
-# 修复版完整的content_checker.py文件（主要修改部分）
-
 from .base_checker import BaseChecker
 from typing import Dict, Any, List, Optional
 import re
@@ -29,7 +27,10 @@ class ContentChecker(BaseChecker):
         self.extracted_content = {
             "text": "",
             "spelling_errors": [],
-            "grammar_errors": []
+            "grammar_errors": [],
+            "title": "",             # 新增：页面标题
+            "description": "",       # 新增：页面描述
+            "structure": []          # 新增：结构化内容
         }
         
         # 初始化日志
@@ -41,11 +42,159 @@ class ContentChecker(BaseChecker):
     
     def check(self) -> Dict[str, List[Dict[str, Any]]]:
         """执行所有内容相关检查"""
+        # 修改为使用新的提取方法
+        self.extract_content_with_structure()
         self.check_content()
         self.check_images()
         self.check_mobile()
         
         return self.get_issues()
+    
+    def extract_structure_info(self):
+        """
+        提取页面的结构化信息，包括标题、描述和HTML结构标签
+        """
+        self.logger.info("开始提取页面结构化信息...")
+        
+        # 1. 提取页面标题
+        title_tag = self.soup.find('title')
+        if title_tag and title_tag.string:
+            self.extracted_content["title"] = title_tag.string.strip()
+            self.logger.info(f"提取到页面标题: {self.extracted_content['title']}")
+    
+        # 2. 提取页面描述
+        meta_desc = self.soup.find('meta', attrs={'name': 'description'})
+        if meta_desc and meta_desc.get('content'):
+            self.extracted_content["description"] = meta_desc.get('content').strip()
+            self.logger.info(f"提取到页面描述: {self.extracted_content['description'][:50]}...")
+        
+        # 3. 提取OG标题和描述作为备选
+        og_title = self.soup.find('meta', attrs={'property': 'og:title'})
+        if og_title and og_title.get('content') and not self.extracted_content["title"]:
+            self.extracted_content["title"] = og_title.get('content').strip()
+            self.logger.info(f"提取到OG标题: {self.extracted_content['title']}")
+            
+        og_desc = self.soup.find('meta', attrs={'property': 'og:description'})
+        if og_desc and og_desc.get('content') and not self.extracted_content["description"]:
+            self.extracted_content["description"] = og_desc.get('content').strip()
+            self.logger.info(f"提取到OG描述: {self.extracted_content['description'][:50]}...")
+        
+        # 4. 提取Twitter卡片标题和描述作为备选
+        twitter_title = self.soup.find('meta', attrs={'name': 'twitter:title'})
+        if twitter_title and twitter_title.get('content') and not self.extracted_content["title"]:
+            self.extracted_content["title"] = twitter_title.get('content').strip()
+            self.logger.info(f"提取到Twitter标题: {self.extracted_content['title']}")
+            
+        twitter_desc = self.soup.find('meta', attrs={'name': 'twitter:description'})
+        if twitter_desc and twitter_desc.get('content') and not self.extracted_content["description"]:
+            self.extracted_content["description"] = twitter_desc.get('content').strip()
+            self.logger.info(f"提取到Twitter描述: {self.extracted_content['description'][:50]}...")
+        
+        # 5. 如果仍未找到title，尝试找h1
+        if not self.extracted_content["title"]:
+            h1_tag = self.soup.find('h1')
+            if h1_tag:
+                self.extracted_content["title"] = h1_tag.get_text(strip=True)
+                self.logger.info(f"使用H1作为标题: {self.extracted_content['title']}")
+
+    def extract_content_with_structure(self):
+        """
+        提取内容并保留结构信息
+        """
+        # 先提取标题和描述等元数据
+        self.extract_structure_info()
+        
+        # 提取主要内容文本
+        main_text = self.extract_main_content()
+        self.extracted_content["text"] = main_text
+        
+        # 现在提取HTML结构标签
+        self.extract_html_structure()
+        
+        return main_text
+
+    def extract_html_structure(self):
+        """
+        从页面中提取HTML结构标签（如h1-h6）及其在纯文本中的位置
+        """
+        self.logger.info("提取HTML结构标签...")
+        
+        # 检测当前纯文本内容
+        text_content = self.extracted_content["text"]
+        if not text_content:
+            self.logger.warning("没有提取到文本内容，无法标记结构")
+            return
+        
+        # 结构标签列表
+        structure = []
+        
+        # 使用更智能的方法提取标题标签
+        # 1. 查找可能的主内容区域
+        main_content = None
+        for selector in ['article', 'main', '[role="main"]', '.content', '#content', '.post', '.entry', '.body']:
+            elements = self.soup.select(selector)
+            if elements:
+                main_content = elements[0]
+                self.logger.info(f"找到可能的主内容区域: {selector}")
+                break
+        
+        # 如果没找到主内容区域，使用整个body
+        if not main_content:
+            main_content = self.soup.body
+        
+        if not main_content:
+            self.logger.warning("无法找到主内容区域")
+            return
+        
+        # 2. 从主内容区域中提取标题标签
+        heading_tags = main_content.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+        self.logger.info(f"找到 {len(heading_tags)} 个标题标签")
+        
+        # 3. 将标题标签文本与纯文本内容对应
+        for htag in heading_tags:
+            heading_text = htag.get_text(strip=True)
+            if not heading_text:
+                continue
+                
+            tag_type = htag.name  # h1, h2, etc.
+            
+            # 检查这个标题文本是否出现在提取的纯文本中
+            if heading_text in text_content:
+                # 找到标题在纯文本中的位置
+                start_pos = text_content.find(heading_text)
+                end_pos = start_pos + len(heading_text)
+                
+                # 添加到结构信息中
+                structure.append({
+                    "type": tag_type,
+                    "text": heading_text,
+                    "start": start_pos,
+                    "end": end_pos
+                })
+                self.logger.info(f"找到{tag_type}标签: {heading_text[:30]}...")
+        
+        # 4. 添加其他需要突出显示的元素（如强调文本）
+        for tag_name, type_name in [('strong', 'strong'), ('em', 'emphasis'), ('b', 'bold'), ('i', 'italic')]:
+            emphasis_tags = main_content.find_all(tag_name)
+            for tag in emphasis_tags:
+                tag_text = tag.get_text(strip=True)
+                if not tag_text or len(tag_text) < 5:  # 忽略过短的强调文本
+                    continue
+                    
+                if tag_text in text_content:
+                    start_pos = text_content.find(tag_text)
+                    end_pos = start_pos + len(tag_text)
+                    
+                    structure.append({
+                        "type": type_name,
+                        "text": tag_text,
+                        "start": start_pos,
+                        "end": end_pos
+                    })
+        
+        # 保存结构信息
+        self.extracted_content["structure"] = structure
+        self.logger.info(f"总共提取了 {len(structure)} 个结构元素")
     
     def extract_json_content_from_scripts(self, soup):
         """
@@ -120,7 +269,6 @@ class ContentChecker(BaseChecker):
         script_content = self.extract_json_content_from_scripts(self.soup)
         if script_content and len(script_content) > 500:
             self.logger.info(f"使用脚本标签中的JSON内容作为主要内容，长度: {len(script_content)}")
-            self.extracted_content["text"] = script_content
             return script_content
         
         # 根据选择的提取引擎选择不同的提取方法
@@ -131,7 +279,6 @@ class ContentChecker(BaseChecker):
                     content = trafilatura.extract(html_content)
                     if content and len(content) > 100:
                         self.logger.info("成功使用Trafilatura提取内容，长度: %d", len(content))
-                        self.extracted_content["text"] = content
                         return content
                 except Exception as e:
                     self.logger.warning("Trafilatura内容提取失败: %s", str(e))
@@ -140,7 +287,6 @@ class ContentChecker(BaseChecker):
             if self.content_extractor != "auto":
                 self.logger.warning("指定的Trafilatura提取引擎不可用，回退到自定义算法")
                 content = self._fallback_extract_content()
-                self.extracted_content["text"] = content
                 return content
         
         if self.content_extractor == "auto" or self.content_extractor == "newspaper":
@@ -151,7 +297,6 @@ class ContentChecker(BaseChecker):
                     content = fulltext(html_content)
                     if content and len(content) > 100:
                         self.logger.info("成功使用Newspaper提取内容，长度: %d", len(content))
-                        self.extracted_content["text"] = content
                         return content
                 except Exception as e:
                     self.logger.warning("Newspaper3k内容提取失败: %s", str(e))
@@ -164,7 +309,6 @@ class ContentChecker(BaseChecker):
                         content = article.text
                         if content and len(content) > 100:
                             self.logger.info("成功使用Newspaper Article提取内容，长度: %d", len(content))
-                            self.extracted_content["text"] = content
                             return content
                     except Exception as e2:
                         self.logger.warning("Newspaper3k备用方法提取失败: %s", str(e2))
@@ -173,7 +317,6 @@ class ContentChecker(BaseChecker):
             if self.content_extractor != "auto":
                 self.logger.warning("指定的Newspaper提取引擎不可用，回退到自定义算法")
                 content = self._fallback_extract_content()
-                self.extracted_content["text"] = content
                 return content
         
         if self.content_extractor == "auto" or self.content_extractor == "readability":
@@ -188,7 +331,6 @@ class ContentChecker(BaseChecker):
                     text_content = soup.get_text(separator=' ', strip=True)
                     if text_content and len(text_content) > 100:
                         self.logger.info("成功使用Readability提取内容，长度: %d", len(text_content))
-                        self.extracted_content["text"] = text_content
                         return text_content
                 except Exception as e:
                     self.logger.warning("Readability-lxml内容提取失败: %s", str(e))
@@ -197,7 +339,6 @@ class ContentChecker(BaseChecker):
             if self.content_extractor != "auto":
                 self.logger.warning("指定的Readability提取引擎不可用，回退到自定义算法")
                 content = self._fallback_extract_content()
-                self.extracted_content["text"] = content
                 return content
         
         # Goose3 处理部分的增强版本
@@ -208,7 +349,6 @@ class ContentChecker(BaseChecker):
                 self.logger.warning("Goose3库不可用")
                 if self.content_extractor != "auto":
                     content = self._fallback_extract_content()
-                    self.extracted_content["text"] = content
                     return content
             else:
                 try:
@@ -336,7 +476,6 @@ class ContentChecker(BaseChecker):
                             # 清理资源
                             g.close()
                             
-                            self.extracted_content["text"] = content
                             return content
                         
                         # 如果从脚本中提取内容不足，再使用自定义方法提取主要内容
@@ -350,7 +489,6 @@ class ContentChecker(BaseChecker):
                             # 清理资源
                             g.close()
                             
-                            self.extracted_content["text"] = content
                             return content
                     
                     # 组合所有部分
@@ -366,7 +504,6 @@ class ContentChecker(BaseChecker):
                         self.logger.info(f"自定义方法提取的内容长度: {len(content)}")
                     
                     self.logger.info(f"最终内容长度: {len(content)}")
-                    self.extracted_content["text"] = content
                     return content
                     
                 except Exception as e:
@@ -376,13 +513,11 @@ class ContentChecker(BaseChecker):
             if self.content_extractor != "auto":
                 self.logger.warning("指定的Goose3提取引擎不可用或提取内容为空，回退到自定义算法")
                 content = self._fallback_extract_content()
-                self.extracted_content["text"] = content
                 return content
 
         # 如果所有引擎都失败或用户选择自定义算法
         if self.content_extractor == "custom" or not content:
             content = self._fallback_extract_content()
-            self.extracted_content["text"] = content
             return content
         
         return content
@@ -429,7 +564,7 @@ class ContentChecker(BaseChecker):
     def check_content(self):
         """检查内容相关问题"""
         # 智能提取主要内容区域文本
-        text_content = self.extract_main_content()
+        text_content = self.extracted_content["text"]
         
         # 检查内容长度
         if len(text_content) < 300:
