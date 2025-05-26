@@ -1,13 +1,5 @@
 """
 数据处理工具模块
-
-提供数据文件读取、DataFrame处理、统计分析等通用功能。
-支持关键词分析和外链分析的数据处理需求。
-
-重构说明：
-- 原文件：app/utils/helpers.py
-- 新位置：app/shared/utils/data_utils.py
-- 保持所有原有功能不变，优化代码组织和文档
 """
 
 import os
@@ -21,43 +13,11 @@ import numpy as np
 # ========================================
 
 def allowed_file(filename: str, allowed_extensions: Set[str]) -> bool:
-    """
-    检查文件是否具有允许的扩展名。
-    
-    Args:
-        filename: 文件名
-        allowed_extensions: 允许的扩展名集合
-        
-    Returns:
-        bool: 文件扩展名是否被允许
-        
-    Example:
-        >>> allowed_file("data.csv", {"csv", "xlsx"})
-        True
-        >>> allowed_file("data.txt", {"csv", "xlsx"}) 
-        False
-    """
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in allowed_extensions
 
 
 def read_file(file_path: str) -> pd.DataFrame:
-    """
-    读取CSV或XLSX文件并返回DataFrame。
-    
-    Args:
-        file_path: 文件路径
-        
-    Returns:
-        pd.DataFrame: 读取的数据
-        
-    Raises:
-        ValueError: 不支持的文件格式
-        
-    Example:
-        >>> df = read_file("data.csv")
-        >>> df = read_file("data.xlsx")
-    """
     if file_path.endswith('.csv'):
         return pd.read_csv(file_path)
     elif file_path.endswith('.xlsx'):
@@ -67,20 +27,6 @@ def read_file(file_path: str) -> pd.DataFrame:
 
 
 def merge_dataframes(dataframes: List[pd.DataFrame]) -> pd.DataFrame:
-    """
-    将多个DataFrame合并为一个，并去除重复行。
-    
-    Args:
-        dataframes: 要合并的DataFrame列表
-        
-    Returns:
-        pd.DataFrame: 合并后的DataFrame
-        
-    Example:
-        >>> df1 = pd.DataFrame({"A": [1, 2], "B": [3, 4]})
-        >>> df2 = pd.DataFrame({"A": [5, 6], "B": [7, 8]})
-        >>> merged = merge_dataframes([df1, df2])
-    """
     if not dataframes:
         return pd.DataFrame()
     
@@ -98,20 +44,6 @@ def merge_dataframes(dataframes: List[pd.DataFrame]) -> pd.DataFrame:
 # ========================================
 
 def count_keywords(df: pd.DataFrame) -> Dict[str, int]:
-    """
-    统计DataFrame中每个关键词的出现次数。
-    
-    Args:
-        df: 包含Keyword列的DataFrame
-        
-    Returns:
-        Dict[str, int]: 关键词及其出现次数的字典
-        
-    Example:
-        >>> df = pd.DataFrame({"Keyword": ["python", "java", "python"]})
-        >>> count_keywords(df)
-        {"python": 2, "java": 1}
-    """
     if df.empty or 'Keyword' not in df.columns:
         return {}
     
@@ -128,23 +60,6 @@ def filter_dataframe(
     cpc_range: Optional[Tuple[float, float]] = None,
     keyword_frequency_range: Optional[Tuple[float, float]] = None
 ) -> pd.DataFrame:
-    """
-    基于指定范围过滤关键词数据的DataFrame。
-    
-    Args:
-        df: 要过滤的DataFrame
-        position_range: 排名范围 (min, max)
-        search_volume_range: 搜索量范围 (min, max)
-        keyword_difficulty_range: 关键词难度范围 (min, max)
-        cpc_range: CPC范围 (min, max)
-        keyword_frequency_range: 关键词频率范围 (min, max)
-        
-    Returns:
-        pd.DataFrame: 过滤后的DataFrame
-        
-    Example:
-        >>> filtered_df = filter_dataframe(df, position_range=(1, 10))
-    """
     if df.empty:
         return df
     
@@ -184,19 +99,6 @@ def filter_dataframe(
 
 
 def calculate_brand_keyword_overlap(df: pd.DataFrame) -> Dict[str, Dict[str, int]]:
-    """
-    计算不同品牌之间的关键词重叠情况。
-    
-    Args:
-        df: 包含Keyword和Brand列的DataFrame
-        
-    Returns:
-        Dict[str, Dict[str, int]]: 品牌间关键词重叠矩阵
-        
-    Example:
-        >>> overlap = calculate_brand_keyword_overlap(df)
-        >>> # overlap["brand1"]["brand2"] 表示brand1和brand2共同的关键词数量
-    """
     if df.empty or 'Keyword' not in df.columns or 'Brand' not in df.columns:
         return {}
     
@@ -228,20 +130,6 @@ def calculate_brand_keyword_overlap(df: pd.DataFrame) -> Dict[str, Dict[str, int
 # ========================================
 
 def count_domains(df: pd.DataFrame) -> Dict[str, int]:
-    """
-    统计DataFrame中每个域名的出现次数。
-    
-    Args:
-        df: 包含Domain列的DataFrame
-        
-    Returns:
-        Dict[str, int]: 域名及其出现次数的字典
-        
-    Example:
-        >>> df = pd.DataFrame({"Domain": ["example.com", "test.com", "example.com"]})
-        >>> count_domains(df)
-        {"example.com": 2, "test.com": 1}
-    """
     if df.empty or 'Domain' not in df.columns:
         return {}
     
@@ -256,21 +144,6 @@ def filter_backlink_dataframe(
     backlinks_range: Optional[Tuple[float, float]] = None,
     domain_frequency_range: Optional[Tuple[float, float]] = None
 ) -> pd.DataFrame:
-    """
-    基于指定范围过滤外链数据的DataFrame。
-    
-    Args:
-        df: 要过滤的DataFrame
-        domain_ascore_range: 域名权重范围 (min, max)
-        backlinks_range: 反链数量范围 (min, max)
-        domain_frequency_range: 域名频率范围 (min, max)
-        
-    Returns:
-        pd.DataFrame: 过滤后的DataFrame
-        
-    Example:
-        >>> filtered_df = filter_backlink_dataframe(df, domain_ascore_range=(50, 100))
-    """
     if df.empty:
         return df
     
@@ -300,19 +173,6 @@ def filter_backlink_dataframe(
 
 
 def calculate_brand_domain_overlap(df: pd.DataFrame) -> Dict[str, Dict[str, int]]:
-    """
-    计算不同品牌之间的域名重叠情况。
-    
-    Args:
-        df: 包含Domain和Brand列的DataFrame
-        
-    Returns:
-        Dict[str, Dict[str, int]]: 品牌间域名重叠矩阵
-        
-    Example:
-        >>> overlap = calculate_brand_domain_overlap(df)
-        >>> # overlap["brand1"]["brand2"] 表示brand1和brand2共同的域名数量
-    """
     if df.empty or 'Domain' not in df.columns or 'Brand' not in df.columns:
         return {}
     
@@ -344,26 +204,6 @@ def calculate_brand_domain_overlap(df: pd.DataFrame) -> Dict[str, Dict[str, int]
 # ========================================
 
 def get_dataframe_stats(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    获取DataFrame的统计信息，支持关键词和域名数据。
-    
-    Args:
-        df: 要分析的DataFrame
-        
-    Returns:
-        Dict[str, Any]: 包含统计信息的字典
-        
-    统计信息包括：
-        - total_rows: 总行数
-        - keyword_count/domain_count: 关键词/域名总数
-        - unique_keywords/unique_domains: 唯一关键词/域名数
-        - brands: 品牌列表
-        - min_values/max_values: 数值列的最小值和最大值
-        
-    Example:
-        >>> stats = get_dataframe_stats(df)
-        >>> print(f"总行数: {stats['total_rows']}")
-    """
     if df.empty:
         return {
             "total_rows": 0,
@@ -425,21 +265,6 @@ def get_dataframe_stats(df: pd.DataFrame) -> Dict[str, Any]:
 # ========================================
 
 def validate_dataframe_columns(df: pd.DataFrame, required_columns: List[str]) -> Tuple[bool, List[str]]:
-    """
-    验证DataFrame是否包含必需的列。
-    
-    Args:
-        df: 要验证的DataFrame
-        required_columns: 必需的列名列表
-        
-    Returns:
-        Tuple[bool, List[str]]: (是否有效, 缺失的列名列表)
-        
-    Example:
-        >>> is_valid, missing = validate_dataframe_columns(df, ["Keyword", "Position"])
-        >>> if not is_valid:
-        ...     print(f"缺失列: {missing}")
-    """
     if df.empty:
         return False, required_columns
     
@@ -448,20 +273,6 @@ def validate_dataframe_columns(df: pd.DataFrame, required_columns: List[str]) ->
 
 
 def clean_dataframe(df: pd.DataFrame, drop_empty_rows: bool = True, drop_duplicates: bool = True) -> pd.DataFrame:
-    """
-    清理DataFrame，移除空行和重复行。
-    
-    Args:
-        df: 要清理的DataFrame
-        drop_empty_rows: 是否删除空行
-        drop_duplicates: 是否删除重复行
-        
-    Returns:
-        pd.DataFrame: 清理后的DataFrame
-        
-    Example:
-        >>> cleaned_df = clean_dataframe(df, drop_empty_rows=True, drop_duplicates=True)
-    """
     if df.empty:
         return df
     
@@ -483,20 +294,6 @@ def clean_dataframe(df: pd.DataFrame, drop_empty_rows: bool = True, drop_duplica
 # ========================================
 
 def dataframe_to_csv_bytes(df: pd.DataFrame, include_index: bool = False) -> bytes:
-    """
-    将DataFrame转换为CSV字节数据。
-    
-    Args:
-        df: 要转换的DataFrame
-        include_index: 是否包含索引
-        
-    Returns:
-        bytes: CSV格式的字节数据
-        
-    Example:
-        >>> csv_bytes = dataframe_to_csv_bytes(df)
-        >>> # 可用于文件下载或存储
-    """
     if df.empty:
         return b"No data to export"
     
@@ -504,26 +301,6 @@ def dataframe_to_csv_bytes(df: pd.DataFrame, include_index: bool = False) -> byt
 
 
 def get_dataframe_summary(df: pd.DataFrame) -> Dict[str, Any]:
-    """
-    获取DataFrame的摘要信息。
-    
-    Args:
-        df: 要分析的DataFrame
-        
-    Returns:
-        Dict[str, Any]: 摘要信息字典
-        
-    包含信息：
-        - shape: DataFrame形状 (行数, 列数)
-        - columns: 列名列表
-        - dtypes: 列数据类型
-        - memory_usage: 内存使用情况
-        - null_counts: 每列的空值数量
-        
-    Example:
-        >>> summary = get_dataframe_summary(df)
-        >>> print(f"数据形状: {summary['shape']}")
-    """
     if df.empty:
         return {
             "shape": (0, 0),

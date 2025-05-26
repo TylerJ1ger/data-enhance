@@ -14,16 +14,6 @@ from app.core.seo.checkers.accessibility_checker import AccessibilityChecker
 
 
 class SEOProcessor:
-    """
-    SEO处理器主类，处理文件上传、协调检查器执行和整合结果
-    
-    这是重构后的SEO处理器，整合了原有的所有功能：
-    - 支持多种内容提取引擎
-    - 高级内容分析（拼写检查、语法检查、可读性分析）
-    - 全面的SEO检查（技术、内容、链接、结构化数据、无障碍性）
-    - 灵活的问题分类和统计
-    """
-    
     def __init__(self):
         """初始化SEO处理器"""
         self.html_content = None
@@ -49,17 +39,6 @@ class SEOProcessor:
         content_extractor: str = "auto", 
         enable_advanced_analysis: bool = True
     ) -> Dict[str, Any]:
-        """
-        处理上传的HTML文件并执行SEO分析
-        
-        Args:
-            file: 上传的HTML文件对象
-            content_extractor: 内容提取引擎（auto, trafilatura, newspaper, readability, goose3, custom）
-            enable_advanced_analysis: 是否开启高级内容分析
-            
-        Returns:
-            Dict包含分析结果，包括文件名、URL、问题计数和分类问题列表
-        """
         # 创建临时文件存储上传内容
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
             # 写入上传文件内容到临时文件
@@ -118,13 +97,6 @@ class SEOProcessor:
             self.page_url = base.get('href')
     
     async def check_all_seo_issues(self, content_extractor: str = "auto", enable_advanced_analysis: bool = True) -> None:
-        """
-        执行所有SEO检查，使用各个专门的检查器
-        
-        Args:
-            content_extractor: 内容提取引擎（auto, trafilatura, newspaper, readability, goose3, custom）
-            enable_advanced_analysis: 是否开启高级内容分析
-        """
         # 清空之前的检查结果
         self.issues = {
             "issues": [],
@@ -166,18 +138,6 @@ class SEOProcessor:
     def add_issue(self, category: str, issue: str, description: str, priority: str, 
                   affected_element: Optional[str] = None, affected_resources: Optional[List[str]] = None,
                   issue_type: str = "issues"):
-        """
-        添加一个SEO问题到结果列表
-        
-        Args:
-            category: 问题类别
-            issue: 问题简短描述
-            description: 问题详细描述
-            priority: 优先级（high, medium, low）
-            affected_element: 受影响的HTML元素
-            affected_resources: 受影响的资源列表
-            issue_type: 问题类型（issues, warnings, opportunities）
-        """
         if issue_type not in ["issues", "warnings", "opportunities"]:
             issue_type = "issues"
             
@@ -196,31 +156,13 @@ class SEOProcessor:
         self.issues[issue_type].append(issue_data)
             
     def merge_issues(self, other_issues: Dict[str, List[Dict[str, Any]]]) -> None:
-        """
-        合并其他检查器的问题结果到主问题列表
-        
-        Args:
-            other_issues: 另一个检查器的问题字典
-        """
         for issue_type in ["issues", "warnings", "opportunities"]:
             self.issues[issue_type].extend(other_issues.get(issue_type, []))
             
     def get_extracted_content(self) -> Dict[str, Any]:
-        """
-        获取提取的页面内容及标记的错误
-        
-        Returns:
-            包含提取文本和标记的错误的字典
-        """
         return self.extracted_content
             
     def get_issue_categories(self) -> Set[str]:
-        """
-        获取所有已发现问题的类别
-        
-        Returns:
-            包含所有不同类别的集合
-        """
         categories = set()
         for issue_type in ["issues", "warnings", "opportunities"]:
             for issue in self.issues[issue_type]:
@@ -229,15 +171,6 @@ class SEOProcessor:
         return categories
     
     def filter_issues_by_category(self, category: str) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        按类别筛选问题
-        
-        Args:
-            category: 要筛选的类别名称
-            
-        Returns:
-            仅包含指定类别问题的字典
-        """
         filtered_issues = {
             "issues": [],
             "warnings": [],
@@ -253,12 +186,6 @@ class SEOProcessor:
         return filtered_issues
     
     def get_issue_stats(self) -> Dict[str, Dict[str, int]]:
-        """
-        获取按类别和优先级分类的问题统计
-        
-        Returns:
-            嵌套字典，包含每个类别和优先级的问题计数
-        """
         stats = {}
         
         # 初始化统计字典
@@ -337,13 +264,6 @@ class SEOProcessor:
         return False
     
     def calculate_seo_score(self) -> int:
-        """
-        计算SEO评分（0-100）
-        基于问题数量和严重程度
-        
-        Returns:
-            int: SEO评分，0-100之间
-        """
         # 问题权重
         weights = {
             "issues": {"high": 15, "medium": 8, "low": 3},
@@ -365,12 +285,6 @@ class SEOProcessor:
         return round(score)
     
     def get_seo_summary(self) -> Dict[str, Any]:
-        """
-        获取SEO分析摘要
-        
-        Returns:
-            包含综合分析摘要的字典
-        """
         return {
             "seo_score": self.calculate_seo_score(),
             "total_issues": sum(len(self.issues[t]) for t in ["issues", "warnings", "opportunities"]),
@@ -384,12 +298,6 @@ class SEOProcessor:
         }
     
     def export_issues_csv(self) -> bytes:
-        """
-        导出问题列表为CSV格式
-        
-        Returns:
-            CSV格式的字节数据
-        """
         import csv
         import io
         

@@ -1,17 +1,5 @@
 """
 URL和域名处理的工具函数模块
-
-提供对URL和域名进行处理的工具函数，包括：
-- 域名规范化和提取
-- URL验证和解析
-- 域名匹配和比较
-- URL路径处理
-- 安全检查等功能
-
-重构说明：
-- 合并了原 url_helpers.py 和 seo/utils.py 中的URL相关功能
-- 统一了函数命名和参数规范
-- 增加了完整的类型注解和文档
 """
 
 import re
@@ -20,21 +8,6 @@ from urllib.parse import urlparse, parse_qs
 
 
 def normalize_domain(domain: str) -> str:
-    """
-    规范化域名格式，移除www前缀并转为小写
-    
-    Args:
-        domain: 需要规范化的域名
-        
-    Returns:
-        规范化后的域名字符串，如果输入无效则返回空字符串
-        
-    Examples:
-        >>> normalize_domain("WWW.Example.COM")
-        "example.com"
-        >>> normalize_domain("example.com")
-        "example.com"
-    """
     if not isinstance(domain, str):
         return ""
             
@@ -48,21 +21,6 @@ def normalize_domain(domain: str) -> str:
 
 
 def extract_domain(url: str) -> str:
-    """
-    从URL中提取域名（基本版本）
-    
-    Args:
-        url: 需要提取域名的URL
-        
-    Returns:
-        提取出的域名，如果解析失败则返回空字符串
-        
-    Examples:
-        >>> extract_domain("https://www.example.com/path")
-        "example.com"
-        >>> extract_domain("http://subdomain.example.com:8080/path")
-        "subdomain.example.com"
-    """
     try:
         domain = urlparse(url).netloc.lower()
         
@@ -80,35 +38,11 @@ def extract_domain(url: str) -> str:
 
 
 def get_domain_from_url(url: str) -> Optional[str]:
-    """
-    从URL中提取域名（兼容原有接口）
-    
-    Args:
-        url: 需要提取域名的URL
-        
-    Returns:
-        提取出的域名，如果解析失败则返回None
-    """
     domain = extract_domain(url)
     return domain if domain else None
 
 
 def extract_root_domain(url: str) -> str:
-    """
-    更健壮的从URL中提取根域名的方法，处理各种特殊情况
-    
-    Args:
-        url: 需要提取根域名的URL
-        
-    Returns:
-        提取出的根域名，如果解析失败则尝试从字符串中提取类似域名的部分
-        
-    Examples:
-        >>> extract_root_domain("https://app.leonardo.ai/path")
-        "leonardo.ai"
-        >>> extract_root_domain("https://subdomain.example.co.uk/path")
-        "example.co.uk"
-    """
     try:
         url_obj = urlparse(url)
         hostname = url_obj.netloc.lower()
@@ -180,22 +114,6 @@ def extract_root_domain(url: str) -> str:
 
 
 def check_domain_match(source_domain: str, domain_cache: Set[str]) -> bool:
-    """
-    检查源域名是否与已缓存的域名匹配，支持子域名匹配
-    
-    Args:
-        source_domain: 要检查的源域名
-        domain_cache: 已缓存的域名集合
-        
-    Returns:
-        如果域名匹配返回True，否则返回False
-        
-    Examples:
-        >>> check_domain_match("sub.example.com", {"example.com"})
-        True
-        >>> check_domain_match("other.com", {"example.com"})
-        False
-    """
     if not source_domain or not domain_cache:
         return False
     
@@ -212,21 +130,6 @@ def check_domain_match(source_domain: str, domain_cache: Set[str]) -> bool:
 
 
 def is_valid_url(url: str) -> bool:
-    """
-    检查URL是否有效
-    
-    Args:
-        url: 要检查的URL
-        
-    Returns:
-        如果URL有效返回True，否则返回False
-        
-    Examples:
-        >>> is_valid_url("https://example.com")
-        True
-        >>> is_valid_url("not-a-url")
-        False
-    """
     try:
         result = urlparse(url)
         return all([result.scheme, result.netloc])
@@ -235,21 +138,6 @@ def is_valid_url(url: str) -> bool:
 
 
 def get_url_path_parts(url: str) -> List[str]:
-    """
-    从URL中提取路径部分并分割为列表
-    
-    Args:
-        url: 要处理的URL
-        
-    Returns:
-        路径部分的列表，不包含空元素
-        
-    Examples:
-        >>> get_url_path_parts("https://example.com/path/to/page")
-        ["path", "to", "page"]
-        >>> get_url_path_parts("https://example.com/")
-        []
-    """
     try:
         parsed = urlparse(url)
         path = parsed.path
@@ -260,22 +148,6 @@ def get_url_path_parts(url: str) -> List[str]:
 
 
 def is_internal_url(url: str, base_url: Optional[str]) -> bool:
-    """
-    判断URL是否为内部链接
-    
-    Args:
-        url: 要检查的URL
-        base_url: 基础URL（用于比较的基准URL）
-        
-    Returns:
-        如果是内部链接返回True，否则返回False
-        
-    Examples:
-        >>> is_internal_url("/path/to/page", "https://example.com")
-        True
-        >>> is_internal_url("https://other.com/page", "https://example.com")
-        False
-    """
     if not base_url:
         return False
         
@@ -291,26 +163,6 @@ def is_internal_url(url: str, base_url: Optional[str]) -> bool:
 
 
 def parse_url_parts(url: str) -> Dict[str, Any]:
-    """
-    解析URL的各个部分
-    
-    Args:
-        url: 要解析的URL
-        
-    Returns:
-        包含域名、路径、查询参数等的字典
-        
-    Examples:
-        >>> parse_url_parts("https://example.com/path?param=value#fragment")
-        {
-            'scheme': 'https',
-            'domain': 'example.com',
-            'path': '/path',
-            'query': 'param=value',
-            'fragment': 'fragment',
-            'params': {'param': ['value']}
-        }
-    """
     try:
         parsed = urlparse(url)
         return {
@@ -333,22 +185,6 @@ def parse_url_parts(url: str) -> Dict[str, Any]:
 
 
 def has_mixed_content(page_url: str, resource_url: str) -> bool:
-    """
-    检查是否是混合内容（当页面是HTTPS但资源是HTTP时）
-    
-    Args:
-        page_url: 页面URL
-        resource_url: 资源URL
-        
-    Returns:
-        如果是混合内容返回True，否则返回False
-        
-    Examples:
-        >>> has_mixed_content("https://example.com", "http://example.com/image.jpg")
-        True
-        >>> has_mixed_content("https://example.com", "https://example.com/image.jpg")
-        False
-    """
     if not page_url or not resource_url:
         return False
         
@@ -356,22 +192,6 @@ def has_mixed_content(page_url: str, resource_url: str) -> bool:
 
 
 def is_same_domain(url1: str, url2: str) -> bool:
-    """
-    检查两个URL是否属于同一域名
-    
-    Args:
-        url1: 第一个URL
-        url2: 第二个URL
-        
-    Returns:
-        如果属于同一域名返回True，否则返回False
-        
-    Examples:
-        >>> is_same_domain("https://example.com/page1", "https://example.com/page2")
-        True
-        >>> is_same_domain("https://example.com", "https://other.com")
-        False
-    """
     domain1 = extract_root_domain(url1)
     domain2 = extract_root_domain(url2)
     
@@ -379,19 +199,6 @@ def is_same_domain(url1: str, url2: str) -> bool:
 
 
 def get_url_without_params(url: str) -> str:
-    """
-    获取不包含查询参数的URL
-    
-    Args:
-        url: 原始URL
-        
-    Returns:
-        去除查询参数后的URL
-        
-    Examples:
-        >>> get_url_without_params("https://example.com/path?param=value")
-        "https://example.com/path"
-    """
     try:
         parsed = urlparse(url)
         return f"{parsed.scheme}://{parsed.netloc}{parsed.path}"
@@ -400,19 +207,6 @@ def get_url_without_params(url: str) -> str:
 
 
 def normalize_url(url: str) -> str:
-    """
-    规范化URL格式
-    
-    Args:
-        url: 要规范化的URL
-        
-    Returns:
-        规范化后的URL
-        
-    Examples:
-        >>> normalize_url("HTTP://WWW.EXAMPLE.COM/PATH/")
-        "https://example.com/path"
-    """
     try:
         parsed = urlparse(url.lower().strip())
         
@@ -440,21 +234,6 @@ def normalize_url(url: str) -> str:
 
 
 def is_absolute_url(url: str) -> bool:
-    """
-    检查URL是否为绝对URL
-    
-    Args:
-        url: 要检查的URL
-        
-    Returns:
-        如果是绝对URL返回True，否则返回False
-        
-    Examples:
-        >>> is_absolute_url("https://example.com/path")
-        True
-        >>> is_absolute_url("/relative/path")
-        False
-    """
     try:
         parsed = urlparse(url)
         return bool(parsed.scheme and parsed.netloc)
@@ -463,20 +242,6 @@ def is_absolute_url(url: str) -> bool:
 
 
 def join_urls(base_url: str, relative_url: str) -> str:
-    """
-    连接基础URL和相对URL
-    
-    Args:
-        base_url: 基础URL
-        relative_url: 相对URL
-        
-    Returns:
-        连接后的完整URL
-        
-    Examples:
-        >>> join_urls("https://example.com/base/", "../other/path")
-        "https://example.com/other/path"
-    """
     try:
         from urllib.parse import urljoin
         return urljoin(base_url, relative_url)
@@ -485,21 +250,6 @@ def join_urls(base_url: str, relative_url: str) -> str:
 
 
 def extract_subdomain(url: str) -> str:
-    """
-    提取URL的子域名部分
-    
-    Args:
-        url: 要处理的URL
-        
-    Returns:
-        子域名部分，如果没有子域名则返回空字符串
-        
-    Examples:
-        >>> extract_subdomain("https://app.example.com")
-        "app"
-        >>> extract_subdomain("https://example.com")
-        ""
-    """
     try:
         domain = extract_domain(url)
         root_domain = extract_root_domain(url)
@@ -518,21 +268,6 @@ def extract_subdomain(url: str) -> str:
 
 
 def is_nofollow_link(rel_attr) -> bool:
-    """
-    检查rel属性是否包含nofollow
-    
-    Args:
-        rel_attr: rel属性值，可能是字符串或列表
-        
-    Returns:
-        如果包含nofollow返回True，否则返回False
-        
-    Examples:
-        >>> is_nofollow_link("nofollow")
-        True
-        >>> is_nofollow_link(["nofollow", "noopener"])
-        True
-    """
     if not rel_attr:
         return False
         

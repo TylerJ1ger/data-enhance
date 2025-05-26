@@ -1,13 +1,5 @@
 """
 内容验证器模块
-
-提供内容检查过程中使用的各种验证工具和方法。
-包括库可用性检查、元素可见性验证、URL结构验证、内容模式检查等功能。
-
-重构说明：
-- 保持所有原有功能不变
-- 优化代码结构和注释
-- 确保与重构后的项目结构兼容
 """
 
 import importlib.util
@@ -18,18 +10,7 @@ from urllib.parse import urlparse
 from bs4 import Tag
 
 
-class ContentValidator:
-    """
-    内容验证器类
-    
-    提供内容检查过程中使用的各种验证工具方法，包括：
-    - 第三方库可用性检查
-    - HTML元素可见性判断
-    - URL结构验证
-    - 内容模式识别
-    - 文本质量评估
-    """
-    
+class ContentValidator:   
     def __init__(self):
         """初始化内容验证器"""
         # 配置日志记录
@@ -46,18 +27,6 @@ class ContentValidator:
     # ================== 库可用性检查 ==================
     
     def check_library_available(self, library_name: str) -> bool:
-        """
-        检查指定的库是否可用
-        
-        不仅检查库是否已安装，还会尝试导入以确保真正可用。
-        支持检查常用的内容分析库。
-        
-        Args:
-            library_name: 要检查的库名称
-            
-        Returns:
-            bool: 库是否可用
-        """
         try:
             # 针对常用库进行特殊检查
             if library_name == 'goose3':
@@ -93,18 +62,6 @@ class ContentValidator:
     # ================== HTML元素验证 ==================
     
     def is_element_visible(self, element: Tag) -> bool:
-        """
-        检查HTML元素是否对用户可见（启发式方法）
-        
-        通过检查常见的隐藏属性和样式来判断元素的可见性。
-        这是一个启发式方法，不能完全准确，但对大多数情况有效。
-        
-        Args:
-            element: BeautifulSoup Tag对象
-            
-        Returns:
-            bool: 元素是否可能对用户可见
-        """
         if not element:
             return False
             
@@ -126,19 +83,6 @@ class ContentValidator:
         return True
     
     def has_attr_containing(self, element: Tag, attr_name: str, value: str) -> bool:
-        """
-        检查元素属性是否包含特定值
-        
-        支持字符串和列表类型的属性（如class属性）。
-        
-        Args:
-            element: BeautifulSoup Tag对象
-            attr_name: 属性名称
-            value: 要搜索的值
-            
-        Returns:
-            bool: 属性是否包含指定值
-        """
         if not element or not element.has_attr(attr_name):
             return False
             
@@ -151,15 +95,6 @@ class ContentValidator:
             return value.lower() in attr_value.lower()
     
     def get_element_text(self, element: Optional[Tag]) -> str:
-        """
-        获取元素的文本内容，处理None情况
-        
-        Args:
-            element: BeautifulSoup Tag对象或None
-            
-        Returns:
-            str: 元素的文本内容或空字符串
-        """
         if not element:
             return ""
         return element.get_text(strip=True)
@@ -167,17 +102,6 @@ class ContentValidator:
     # ================== 文本分析工具 ==================
     
     def count_words(self, text: str) -> int:
-        """
-        计算文本中的单词数量
-        
-        会自动处理HTML标签的移除和空白字符的规范化。
-        
-        Args:
-            text: 要计算的文本
-            
-        Returns:
-            int: 单词数量
-        """
         if not text:
             return 0
             
@@ -192,20 +116,6 @@ class ContentValidator:
         return len(words)
     
     def estimate_pixel_width(self, text: str) -> int:
-        """
-        估算文本的像素宽度
-        
-        这是一个启发式方法，基于以下假设：
-        - 英文字母、数字平均约7像素宽
-        - 中文字符约14像素宽
-        - 空格约3像素宽
-        
-        Args:
-            text: 要估算的文本
-            
-        Returns:
-            int: 估计的像素宽度
-        """
         if not text:
             return 0
             
@@ -227,17 +137,6 @@ class ContentValidator:
     # ================== URL验证 ==================
     
     def validate_url_structure(self, url: str) -> Dict[str, Any]:
-        """
-        验证URL结构并返回验证结果
-        
-        分析URL的各个组成部分，包括协议、域名、路径等。
-        
-        Args:
-            url: 要验证的URL
-            
-        Returns:
-            dict: 包含各种验证结果的字典
-        """
         validation_results = {
             "is_valid": False,
             "has_scheme": False,
@@ -278,17 +177,6 @@ class ContentValidator:
     # ================== 内容模式检查 ==================
     
     def check_content_patterns(self, text: str) -> Dict[str, Any]:
-        """
-        检查各种可能表明内容问题的模式
-        
-        识别常见的内容问题，如占位符文本、错误信息、导航文本等。
-        
-        Args:
-            text: 要检查的文本内容
-            
-        Returns:
-            dict: 模式检查结果
-        """
         pattern_results = {
             "has_lorem_ipsum": False,
             "has_placeholder_text": False,
@@ -397,15 +285,6 @@ class ContentValidator:
     # ================== 内容质量评估 ==================
     
     def assess_content_quality(self, text: str) -> Dict[str, Any]:
-        """
-        评估内容的整体质量
-        
-        Args:
-            text: 要评估的文本内容
-            
-        Returns:
-            dict: 内容质量评估结果
-        """
         if not text:
             return {
                 "word_count": 0,
@@ -459,15 +338,6 @@ class ContentValidator:
         }
     
     def _get_quality_assessment(self, score: float) -> str:
-        """
-        根据质量分数返回评估结果
-        
-        Args:
-            score: 质量分数 (0-100)
-            
-        Returns:
-            str: 质量评估描述
-        """
         if score >= 80:
             return "优秀"
         elif score >= 60:

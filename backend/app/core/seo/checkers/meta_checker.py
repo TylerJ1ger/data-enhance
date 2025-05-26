@@ -17,13 +17,6 @@ class MetaChecker(BaseChecker):
         return self.get_issues()
     
     def estimate_pixel_width(self, text: str) -> int:
-        """
-        估算文本的像素宽度
-        这是一个简单的启发式方法，假设:
-        - 英文字母、数字、标点平均约7像素宽
-        - 中文字符约14像素宽
-        - 空格约3像素宽
-        """
         if not text:
             return 0
             

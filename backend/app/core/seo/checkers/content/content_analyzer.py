@@ -17,21 +17,7 @@ from typing import Dict, Any, List, Optional
 
 
 class ContentAnalyzer:
-    """
-    Handles advanced content analysis including grammar and spelling checks.
-    
-    This class provides comprehensive text analysis capabilities for SEO content evaluation,
-    including language detection, error checking, readability analysis, and content quality assessment.
-    """
-    
     def __init__(self, enable_advanced_analysis: bool = True):
-        """
-        Initialize content analyzer.
-        
-        Args:
-            enable_advanced_analysis: Whether to enable advanced content analysis
-                                    (requires language-tool-python and textstat)
-        """
         self.enable_advanced_analysis = enable_advanced_analysis
         
         # Initialize logging with module-specific logger
@@ -46,15 +32,6 @@ class ContentAnalyzer:
             self.logger.setLevel(logging.INFO)
     
     def perform_advanced_content_analysis(self, text_content: str) -> Dict[str, Any]:
-        """
-        Perform advanced content analysis using language-tool-python and textstat.
-        
-        Args:
-            text_content: The text content to analyze
-            
-        Returns:
-            Dictionary containing spelling errors, grammar errors, and readability metrics
-        """
         analysis_results = {
             "spelling_errors": [],
             "grammar_errors": [],
@@ -120,15 +97,6 @@ class ContentAnalyzer:
             return analysis_results
     
     def _safe_import(self, module_name: str) -> Optional[Any]:
-        """
-        Safely import a module with error handling.
-        
-        Args:
-            module_name: Name of the module to import
-            
-        Returns:
-            Imported module or None if import fails
-        """
         try:
             return __import__(module_name)
         except ImportError:
@@ -136,15 +104,6 @@ class ContentAnalyzer:
             return None
     
     def _detect_language(self, text_content: str) -> bool:
-        """
-        Detect if the text is primarily Chinese.
-        
-        Args:
-            text_content: Text to analyze
-            
-        Returns:
-            True if text is primarily Chinese, False otherwise
-        """
         if not text_content:
             return False
             
@@ -161,14 +120,6 @@ class ContentAnalyzer:
         return is_chinese
     
     def _process_language_errors(self, matches: List, sample_text: str, analysis_results: Dict[str, Any]) -> None:
-        """
-        Process and classify language errors from LanguageTool.
-        
-        Args:
-            matches: List of matches from LanguageTool
-            sample_text: The text that was analyzed
-            analysis_results: Dictionary to store results
-        """
         for match in matches:
             # Use validation method to filter false positives
             if not self.is_valid_error(match, sample_text):
@@ -190,15 +141,6 @@ class ContentAnalyzer:
     
     def _analyze_readability(self, sample_text: str, is_chinese: bool, textstat: Any, 
                            analysis_results: Dict[str, Any]) -> None:
-        """
-        Analyze text readability using appropriate metrics.
-        
-        Args:
-            sample_text: Text to analyze
-            is_chinese: Whether the text is primarily Chinese
-            textstat: The textstat module
-            analysis_results: Dictionary to store results
-        """
         try:
             if not is_chinese and len(sample_text) > 100:
                 # English readability analysis
@@ -240,17 +182,6 @@ class ContentAnalyzer:
             self.logger.warning(f"Readability analysis failed: {str(e)}")
     
     def is_valid_error(self, error: Any, text_content: str) -> bool:
-        """
-        Validate whether spelling or grammar error is a valid error.
-        Filter out false positives using comprehensive rules.
-        
-        Args:
-            error: Error object returned by language_tool_python
-            text_content: Complete text content
-            
-        Returns:
-            bool: Whether it's a valid error
-        """
         if not self._has_required_error_attributes(error):
             return False
         
@@ -419,15 +350,6 @@ class ContentAnalyzer:
         return False
     
     def check_soft_404_content(self, text_content: str) -> bool:
-        """
-        Check if content suggests this is a "soft 404" page.
-        
-        Args:
-            text_content: Text content to check
-            
-        Returns:
-            bool: Whether content suggests soft 404 page
-        """
         if not text_content:
             return False
             
@@ -447,15 +369,6 @@ class ContentAnalyzer:
         return False
     
     def check_lorem_ipsum(self, text_content: str) -> bool:
-        """
-        Check if text contains Lorem Ipsum placeholder text.
-        
-        Args:
-            text_content: Text content to check
-            
-        Returns:
-            bool: Whether text contains Lorem Ipsum
-        """
         if not text_content:
             return False
             
@@ -474,15 +387,6 @@ class ContentAnalyzer:
         return False
     
     def analyze_text_quality(self, text_content: str) -> Dict[str, Any]:
-        """
-        Analyze overall text quality with comprehensive metrics.
-        
-        Args:
-            text_content: Text content to analyze
-            
-        Returns:
-            Dictionary containing quality analysis results
-        """
         if not text_content:
             return {
                 "length": 0,

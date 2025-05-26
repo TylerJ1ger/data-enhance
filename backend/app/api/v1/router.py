@@ -356,14 +356,6 @@ async def upload_seo_file(
     content_extractor: Optional[str] = Form("auto"),
     enable_advanced_analysis: bool = Form(True)
 ):
-    """
-    上传和分析HTML文件的SEO问题
-    
-    Args:
-        file: 要分析的HTML文件
-        content_extractor: 要使用的内容提取引擎 (auto, trafilatura, newspaper, readability, goose3, custom)
-        enable_advanced_analysis: 是否启用使用language-tool-python和textstat的高级内容分析
-    """
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
     

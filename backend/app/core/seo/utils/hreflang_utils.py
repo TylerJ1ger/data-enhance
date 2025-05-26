@@ -1,19 +1,5 @@
 """
 Hreflang validation and processing utilities for SEO analysis.
-
-This module provides comprehensive support for validating and processing hreflang attributes
-according to HTML5 and Google's SEO guidelines. It includes validation for ISO 639-1/639-2 
-language codes and ISO 3166-1 alpha-2 country/region codes.
-
-Features:
-- Language and region code validation
-- Format standardization 
-- Recommended combination checking
-- Batch validation utilities
-- Detailed validation reporting
-
-Author: SEO Analysis Tool
-Version: 2.0.0 (Refactored)
 """
 
 from typing import Dict, Optional, Tuple, List, Set, Any

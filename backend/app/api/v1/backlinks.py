@@ -33,7 +33,6 @@ class CrossAnalysisExportRequest(BaseModel):
     comparison_data: Optional[Dict[str, Any]] = None
 
 async def check_file_size(files: List[UploadFile]):
-    """检查上传文件的大小是否超过限制"""
     for file in files:
         content = await file.read()
         if len(content) > MAX_FILE_SIZE:
@@ -46,9 +45,6 @@ async def check_file_size(files: List[UploadFile]):
 
 @router.post("/upload")
 async def upload_backlink_files(files: List[UploadFile] = File(...)):
-    """
-    Upload and process backlink CSV/XLSX files.
-    """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     
@@ -62,9 +58,6 @@ async def upload_backlink_files(files: List[UploadFile] = File(...)):
 
 @router.post("/filter")
 async def apply_backlink_filters(filter_ranges: BacklinkFilterRanges):
-    """
-    Apply filters to processed backlink data.
-    """
     # Convert list ranges to tuples
     domain_ascore_range = tuple(filter_ranges.domain_ascore_range) if filter_ranges.domain_ascore_range else None
     backlinks_range = tuple(filter_ranges.backlinks_range) if filter_ranges.backlinks_range else None
@@ -81,9 +74,6 @@ async def apply_backlink_filters(filter_ranges: BacklinkFilterRanges):
 
 @router.post("/search")
 async def filter_by_domain(request: DomainFilterRequest):
-    """
-    Filter data by a specific domain and return its information across different brands.
-    """
     if not request.domain:
         raise HTTPException(status_code=400, detail="No domain provided")
     
@@ -93,18 +83,12 @@ async def filter_by_domain(request: DomainFilterRequest):
 
 @router.get("/brand-overlap")
 async def get_backlink_brand_overlap():
-    """
-    Get brand domain overlap data.
-    """
     result = backlinks_processor.get_brand_overlap()
     
     return result
 
 @router.get("/export")
 async def export_backlink_data():
-    """
-    Export filtered backlink data as a CSV file.
-    """
     csv_data = backlinks_processor.export_filtered_data()
     
     return StreamingResponse(
@@ -115,9 +99,6 @@ async def export_backlink_data():
 
 @router.get("/export-unique")
 async def export_unique_backlink_data():
-    """
-    Export filtered unique domains as a CSV file.
-    """
     csv_data = backlinks_processor.export_unique_filtered_data()
     
     return StreamingResponse(
@@ -128,17 +109,11 @@ async def export_unique_backlink_data():
 
 @router.get("/filter-ranges")
 async def get_backlink_filter_ranges():
-    """
-    Get minimum and maximum values for filter sliders.
-    """
     return backlinks_processor.get_filter_ranges()
 
 # 交叉分析相关端点
 @router.post("/cross-analysis/upload-first")
 async def upload_cross_analysis_first_round(files: List[UploadFile] = File(...)):
-    """
-    上传交叉分析第一轮文件（包含Domain和Domain ascore字段）
-    """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     
@@ -152,9 +127,6 @@ async def upload_cross_analysis_first_round(files: List[UploadFile] = File(...))
 
 @router.post("/cross-analysis/upload-second")
 async def upload_cross_analysis_second_round(files: List[UploadFile] = File(...)):
-    """
-    上传交叉分析第二轮文件（包含Source url和Target url字段）并执行交叉分析
-    """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     
@@ -174,9 +146,6 @@ async def export_cross_analysis_results(
     sort_direction: str = "desc",
     cell_display_type: str = "target_url"
 ):
-    """
-    导出交叉分析结果为CSV文件,支持简单的URL参数筛选
-    """
     # 导出对应格式的数据 - 直接调用原方法作为默认导出
     if display_mode == "flat" and not search_term:
         csv_data = cross_analysis_processor.export_results()
@@ -203,9 +172,6 @@ async def export_cross_analysis_results(
 
 @router.post("/cross-analysis/export-filtered")
 async def export_filtered_cross_analysis_results(request: CrossAnalysisExportRequest):
-    """
-    导出交叉分析结果为CSV文件,支持复杂的筛选条件和对比视图数据
-    """
     # 导出对应格式的数据
     csv_data = cross_analysis_processor.export_filtered_results(
         display_mode=request.display_mode,
@@ -229,7 +195,4 @@ async def export_filtered_cross_analysis_results(request: CrossAnalysisExportReq
 
 @router.get("/health")
 async def health_check():
-    """
-    Backlinks API health check endpoint.
-    """
     return {"status": "healthy", "service": "Backlinks API v1"}

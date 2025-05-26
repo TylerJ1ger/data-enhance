@@ -10,13 +10,6 @@ class ContentExtractor:
     """Handles content extraction from HTML documents using various engines."""
     
     def __init__(self, soup: BeautifulSoup, content_extractor: str = "auto"):
-        """
-        Initialize content extractor.
-        
-        Args:
-            soup: BeautifulSoup parsed HTML document
-            content_extractor: Content extraction engine to use
-        """
         self.soup = soup
         self.content_extractor = content_extractor
         self.extracted_content = {
@@ -241,15 +234,6 @@ class ContentExtractor:
         return extracted_text
 
     def normalize_text(self, text: str) -> str:
-        """
-        Normalize text: handle HTML entities, clean special characters, etc.
-        
-        Args:
-            text: Original text
-            
-        Returns:
-            Normalized text
-        """
         if not text:
             return ""
         
@@ -875,10 +859,6 @@ class ContentExtractor:
         return content_text
     
     def _check_library_available(self, library_name: str) -> bool:
-        """
-        Check if specified library is available.
-        Not only check if library is installed, but also try to import to ensure it's really available.
-        """
         try:
             # Simplified check, only verify import
             if library_name == 'goose3':

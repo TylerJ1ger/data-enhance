@@ -45,18 +45,6 @@ async def check_file_size(files: List[UploadFile]):
 
 @router.post("/upload")
 async def upload_keywords_files(files: List[UploadFile] = File(...)):
-    """
-    上传并处理关键词CSV/XLSX文件
-    
-    Args:
-        files: 上传的文件列表，支持CSV和XLSX格式
-        
-    Returns:
-        Dict: 包含文件统计信息和合并后数据统计的字典
-        
-    Raises:
-        HTTPException: 当没有提供文件或文件超过大小限制时
-    """
     if not files:
         raise HTTPException(status_code=400, detail="No files provided")
     
@@ -76,15 +64,6 @@ async def upload_keywords_files(files: List[UploadFile] = File(...)):
 
 @router.post("/filter")
 async def apply_keywords_filters(filter_ranges: FilterRanges):
-    """
-    对关键词数据应用筛选条件
-    
-    Args:
-        filter_ranges: 筛选范围参数，包含位置、搜索量、关键词难度、CPC和关键词频率范围
-        
-    Returns:
-        Dict: 包含筛选后数据统计和关键词计数的字典
-    """
     try:
         # 转换列表范围为元组
         position_range = tuple(filter_ranges.position_range) if filter_ranges.position_range else None
@@ -112,18 +91,6 @@ async def apply_keywords_filters(filter_ranges: FilterRanges):
 
 @router.post("/search")
 async def filter_by_keyword(request: KeywordFilterRequest):
-    """
-    按特定关键词筛选数据，返回该关键词在不同品牌中的位置、URL和流量信息
-    
-    Args:
-        request: 包含要搜索的关键词的请求对象
-        
-    Returns:
-        Dict: 包含搜索结果的字典，每个结果包含关键词、品牌、位置、URL和流量信息
-        
-    Raises:
-        HTTPException: 当没有提供关键词时
-    """
     if not request.keyword:
         raise HTTPException(status_code=400, detail="No keyword provided")
     
@@ -139,14 +106,6 @@ async def filter_by_keyword(request: KeywordFilterRequest):
 
 @router.get("/brand-overlap")
 async def get_brand_overlap():
-    """
-    获取品牌关键词重叠数据
-    
-    Returns:
-        Dict: 包含重叠矩阵和品牌统计信息的字典
-        - overlap_matrix: 品牌间关键词重叠矩阵
-        - brand_stats: 每个品牌的总关键词数和唯一关键词数
-    """
     try:
         result = keywords_processor.get_brand_overlap()
         return result
@@ -159,12 +118,6 @@ async def get_brand_overlap():
 
 @router.get("/export")
 async def export_keywords_data():
-    """
-    导出筛选后的关键词数据为CSV文件
-    
-    Returns:
-        StreamingResponse: CSV格式的文件流
-    """
     try:
         csv_data = keywords_processor.export_filtered_data()
         
@@ -182,12 +135,6 @@ async def export_keywords_data():
 
 @router.get("/export-unique")
 async def export_unique_keywords_data():
-    """
-    导出筛选后的唯一关键词数据为CSV文件
-    
-    Returns:
-        StreamingResponse: CSV格式的文件流，包含去重后的关键词
-    """
     try:
         csv_data = keywords_processor.export_unique_filtered_data()
         
@@ -205,17 +152,6 @@ async def export_unique_keywords_data():
 
 @router.get("/filter-ranges")
 async def get_filter_ranges():
-    """
-    获取筛选器滑块的最小值和最大值范围
-    
-    Returns:
-        Dict: 包含各个筛选维度的最小值和最大值
-        - position: 位置范围
-        - search_volume: 搜索量范围  
-        - keyword_difficulty: 关键词难度范围
-        - cpc: CPC范围
-        - keyword_frequency: 关键词频率范围
-    """
     try:
         return keywords_processor.get_filter_ranges()
     except Exception as e:
@@ -227,12 +163,6 @@ async def get_filter_ranges():
 
 @router.get("/health")
 async def keywords_health_check():
-    """
-    关键词分析模块健康检查
-    
-    Returns:
-        Dict: 健康状态信息
-    """
     return {
         "status": "healthy",
         "module": "Keywords Analysis",

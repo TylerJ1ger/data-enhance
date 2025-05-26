@@ -232,51 +232,18 @@ def is_testing() -> bool:
     return ENVIRONMENT.lower() == "testing"
 
 def get_module_config(module_name: str) -> Dict[str, Any]:
-    """
-    Get configuration for a specific module.
-    
-    Args:
-        module_name: Name of the module (keywords, backlinks, seo, sitemaps)
-        
-    Returns:
-        Configuration dictionary for the module
-    """
     return app_config["modules"].get(module_name, {})
 
 def get_allowed_extensions(module_name: str = None) -> Set[str]:
-    """
-    Get allowed file extensions for a specific module or all modules.
-    
-    Args:
-        module_name: Name of the module, if None returns all extensions
-        
-    Returns:
-        Set of allowed file extensions
-    """
     if module_name is None:
         return LEGACY_ALLOWED_EXTENSIONS
     
     return ALLOWED_EXTENSIONS.get(module_name, set())
 
 def is_file_size_valid(file_size: int) -> bool:
-    """
-    Check if file size is within allowed limits.
-    
-    Args:
-        file_size: Size of the file in bytes
-        
-    Returns:
-        True if file size is valid, False otherwise
-    """
     return file_size <= MAX_FILE_SIZE
 
 def get_cors_settings() -> Dict[str, Any]:
-    """
-    Get CORS configuration settings.
-    
-    Returns:
-        Dictionary with CORS settings
-    """
     return {
         "allow_origins": CORS_ORIGINS,
         "allow_credentials": CORS_ALLOW_CREDENTIALS,
@@ -286,15 +253,6 @@ def get_cors_settings() -> Dict[str, Any]:
     }
 
 def get_api_prefix(version: str = None) -> str:
-    """
-    Get API prefix for specified version.
-    
-    Args:
-        version: API version (legacy, v1)
-        
-    Returns:
-        API prefix string
-    """
     if version == "legacy":
         return LEGACY_API_PREFIX
     elif version == "v1":
@@ -307,12 +265,6 @@ def get_api_prefix(version: str = None) -> str:
 # =====================================
 
 def validate_environment_config() -> Dict[str, Any]:
-    """
-    Validate the current environment configuration.
-    
-    Returns:
-        Dictionary with validation results
-    """
     validation_results = {
         "valid": True,
         "warnings": [],

@@ -11,15 +11,6 @@ class ContentChecker(BaseChecker):
     
     def __init__(self, soup: BeautifulSoup, page_url: Optional[str] = None, 
                  content_extractor: str = "auto", enable_advanced_analysis: bool = True):
-        """
-        初始化内容检查器
-        
-        Args:
-            soup: BeautifulSoup解析的HTML文档对象
-            page_url: 页面URL，可选
-            content_extractor: 内容提取引擎 ("auto", "trafilatura", "newspaper", "readability", "goose3", "custom")
-            enable_advanced_analysis: 是否启用高级内容分析
-        """
         super().__init__(soup, page_url)
         
         # Initialize component modules

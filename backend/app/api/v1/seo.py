@@ -29,14 +29,6 @@ async def upload_seo_file(
     content_extractor: Optional[str] = Form("auto"),
     enable_advanced_analysis: bool = Form(True)
 ):
-    """
-    Upload and analyze HTML file for SEO issues.
-    
-    Args:
-        file: The HTML file to analyze
-        content_extractor: The content extraction engine to use (auto, trafilatura, newspaper, readability, goose3, custom)
-        enable_advanced_analysis: Whether to enable advanced content analysis using language-tool-python and textstat
-    """
     if not file:
         raise HTTPException(status_code=400, detail="No file provided")
     

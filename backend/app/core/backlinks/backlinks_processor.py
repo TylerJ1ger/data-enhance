@@ -16,13 +16,6 @@ from app.shared.utils.data_utils import (
 
 
 class BacklinksProcessor:
-    """
-    外链数据处理器
-    
-    负责处理外链数据的上传、过滤、分析和导出功能。
-    支持CSV和XLSX格式的文件处理，提供品牌域名重叠分析等功能。
-    """
-    
     def __init__(self):
         """初始化外链处理器"""
         self.data = pd.DataFrame()
@@ -31,15 +24,6 @@ class BacklinksProcessor:
         self.filtered_data = pd.DataFrame()
     
     async def process_files(self, files: List[UploadFile]) -> Dict[str, Any]:
-        """
-        处理多个上传的文件
-        
-        Args:
-            files: 上传的文件列表
-            
-        Returns:
-            包含文件统计信息和合并统计信息的字典
-        """
         dataframes = []
         file_stats = []
         
@@ -86,17 +70,6 @@ class BacklinksProcessor:
         backlinks_range: Optional[Tuple[float, float]] = None,
         domain_frequency_range: Optional[Tuple[float, float]] = None
     ) -> Dict[str, Any]:
-        """
-        对合并数据应用筛选条件
-        
-        Args:
-            domain_ascore_range: 域名权重筛选范围
-            backlinks_range: 外链数量筛选范围 
-            domain_frequency_range: 域名频率筛选范围
-            
-        Returns:
-            包含筛选后统计信息和域名计数的字典
-        """
         self.filtered_data = filter_backlink_dataframe(
             self.merged_data,
             domain_ascore_range,
@@ -110,12 +83,6 @@ class BacklinksProcessor:
         }
     
     def get_brand_overlap(self) -> Dict[str, Any]:
-        """
-        获取品牌域名重叠数据
-        
-        Returns:
-            包含重叠矩阵和品牌统计信息的字典
-        """
         overlap_data = calculate_brand_domain_overlap(self.filtered_data)
         
         # 获取品牌统计信息
@@ -135,12 +102,6 @@ class BacklinksProcessor:
         }
     
     def export_filtered_data(self) -> bytes:
-        """
-        导出筛选后的数据为CSV格式
-        
-        Returns:
-            CSV格式的字节数据
-        """
         if self.filtered_data.empty:
             return b"No data to export"
         
@@ -149,12 +110,6 @@ class BacklinksProcessor:
         return csv_bytes
     
     def export_unique_filtered_data(self) -> bytes:
-        """
-        导出筛选后的唯一域名数据为CSV格式
-        
-        Returns:
-            包含唯一域名和重复次数的CSV格式字节数据
-        """
         if self.filtered_data.empty:
             return b"No data to export"
         
@@ -176,12 +131,6 @@ class BacklinksProcessor:
             return b"No domain column found in data"
     
     def get_filter_ranges(self) -> Dict[str, Any]:
-        """
-        获取筛选滑块的最小值和最大值
-        
-        Returns:
-            包含各筛选条件范围的字典
-        """
         if self.merged_data.empty:
             return {
                 "domain_ascore": [0, 100],
@@ -217,15 +166,6 @@ class BacklinksProcessor:
         }
         
     def filter_by_domain(self, domain: str) -> Dict[str, Any]:
-        """
-        根据特定域名筛选数据并返回其在不同品牌中的详细信息
-        
-        Args:
-            domain: 要筛选的域名
-            
-        Returns:
-            包含该域名在所有品牌中详细信息的字典
-        """
         if self.filtered_data.empty:
             return {"results": []}
         

@@ -22,19 +22,6 @@ import re
 
 
 def parse_xml_file(file_path: str) -> Tuple[ET.Element, List[str]]:
-    """
-    解析XML文件并提取URLs
-    
-    Args:
-        file_path: XML文件路径
-        
-    Returns:
-        Tuple[ET.Element, List[str]]: XML根元素和提取的URL列表
-        
-    Raises:
-        ET.ParseError: XML解析错误
-        FileNotFoundError: 文件不存在
-    """
     tree = ET.parse(file_path)
     root = tree.getroot()
     
@@ -48,15 +35,6 @@ def parse_xml_file(file_path: str) -> Tuple[ET.Element, List[str]]:
 
 
 def extract_urls_from_sitemap(root: ET.Element) -> List[str]:
-    """
-    从sitemap中提取所有URL
-    
-    Args:
-        root: XML根元素
-        
-    Returns:
-        List[str]: 提取的URL列表
-    """
     urls = []
     
     # 处理urlset（常规sitemap）
@@ -79,16 +57,6 @@ def extract_urls_from_sitemap(root: ET.Element) -> List[str]:
 
 
 def extract_urls_from_csv(df: pd.DataFrame, url_column: str) -> List[str]:
-    """
-    从CSV/Excel文件中提取URL
-    
-    Args:
-        df: pandas DataFrame对象
-        url_column: 包含URL的列名
-        
-    Returns:
-        List[str]: 提取的URL列表
-    """
     urls = []
     
     if url_column in df.columns:
@@ -111,16 +79,6 @@ def extract_urls_from_csv(df: pd.DataFrame, url_column: str) -> List[str]:
 
 
 def merge_sitemaps(sitemaps: List[Dict[str, Any]], filename_mapping: Dict[str, bytes]) -> Set[str]:
-    """
-    合并多个sitemap文件的URL
-    
-    Args:
-        sitemaps: sitemap文件信息列表
-        filename_mapping: 文件名到内容的映射
-        
-    Returns:
-        Set[str]: 合并后的所有唯一URL集合
-    """
     all_urls = set()
     queue = list(sitemaps)  # 使用队列处理嵌套的sitemap
     processed_files = set()
@@ -181,15 +139,6 @@ def merge_sitemaps(sitemaps: List[Dict[str, Any]], filename_mapping: Dict[str, b
 
 
 def create_url_hierarchy(urls: Set[str]) -> Dict[str, Any]:
-    """
-    创建URL的层次结构
-    
-    Args:
-        urls: URL集合
-        
-    Returns:
-        Dict[str, Any]: URL的层次结构字典
-    """
     hierarchy = {}
     
     for url in urls:
@@ -218,15 +167,6 @@ def create_url_hierarchy(urls: Set[str]) -> Dict[str, Any]:
 
 
 def validate_sitemap(content: bytes) -> Dict[str, Any]:
-    """
-    验证sitemap XML是否合法
-    
-    Args:
-        content: XML内容的字节数据
-        
-    Returns:
-        Dict[str, Any]: 验证结果，包含是否有效、类型、计数等信息
-    """
     try:
         root = ET.fromstring(content)
         
@@ -265,15 +205,6 @@ def validate_sitemap(content: bytes) -> Dict[str, Any]:
 
 
 def generate_url_tree(urls: Set[str]) -> Dict[str, Any]:
-    """
-    生成URL树，用于可视化
-    
-    Args:
-        urls: URL集合
-        
-    Returns:
-        Dict[str, Any]: 可视化用的URL树结构
-    """
     tree = {"name": "root", "children": []}
     domains = {}
     
@@ -328,16 +259,6 @@ def generate_url_tree(urls: Set[str]) -> Dict[str, Any]:
 
 
 def normalize_sitemap_url(url: str, base_url: Optional[str] = None) -> str:
-    """
-    规范化sitemap中的URL
-    
-    Args:
-        url: 原始URL
-        base_url: 基础URL，用于相对路径补全
-        
-    Returns:
-        str: 规范化后的URL
-    """
     if not url:
         return ""
     
@@ -360,15 +281,6 @@ def normalize_sitemap_url(url: str, base_url: Optional[str] = None) -> str:
 
 
 def extract_sitemap_metadata(root: ET.Element) -> Dict[str, Any]:
-    """
-    从sitemap XML中提取元数据信息
-    
-    Args:
-        root: XML根元素
-        
-    Returns:
-        Dict[str, Any]: 包含元数据的字典
-    """
     metadata = {
         "type": root.tag,
         "urls_with_metadata": [],
@@ -415,32 +327,11 @@ def extract_sitemap_metadata(root: ET.Element) -> Dict[str, Any]:
 
 
 class BytesIO:
-    """
-    BytesIO模拟类，用于处理字节数据
-    
-    这是一个简化的BytesIO实现，主要用于XML解析时的内存操作
-    """
-    
     def __init__(self, content: bytes):
-        """
-        初始化BytesIO对象
-        
-        Args:
-            content: 字节内容
-        """
         self.content = content
         self._position = 0
     
     def read(self, size: int = -1) -> bytes:
-        """
-        读取字节数据
-        
-        Args:
-            size: 读取的字节数，-1表示读取全部
-            
-        Returns:
-            bytes: 读取的字节数据
-        """
         if size == -1:
             result = self.content[self._position:]
             self._position = len(self.content)
@@ -451,21 +342,9 @@ class BytesIO:
         return result
     
     def seek(self, position: int) -> None:
-        """
-        设置读取位置
-        
-        Args:
-            position: 新的读取位置
-        """
         self._position = max(0, min(position, len(self.content)))
     
     def tell(self) -> int:
-        """
-        获取当前读取位置
-        
-        Returns:
-            int: 当前位置
-        """
         return self._position
 
 

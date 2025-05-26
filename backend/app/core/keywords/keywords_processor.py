@@ -1,14 +1,5 @@
 """
 Keywords Analysis Processor
-
-This module handles the processing and analysis of keyword data from CSV/XLSX files.
-It provides functionality for data upload, filtering, overlap analysis, and export.
-
-重构说明:
-- 原文件: app/services/csv_processor.py  
-- 新文件: app/core/keywords/keywords_processor.py
-- 类名: CSVProcessor -> KeywordsProcessor
-- 更新了导入路径以适应新的文件结构
 """
 
 import os
@@ -28,16 +19,6 @@ from app.shared.utils.data_utils import (
 
 
 class KeywordsProcessor:
-    """
-    关键词数据处理器
-    
-    负责处理关键词相关的CSV/XLSX文件，包括：
-    - 文件上传和数据合并
-    - 数据筛选和过滤
-    - 品牌关键词重叠分析  
-    - 数据导出功能
-    """
-    
     def __init__(self):
         """初始化关键词处理器"""
         self.data = pd.DataFrame()
@@ -46,15 +27,6 @@ class KeywordsProcessor:
         self.filtered_data = pd.DataFrame()
     
     async def process_files(self, files: List[UploadFile]) -> Dict[str, Any]:
-        """
-        处理多个上传的关键词文件
-        
-        Args:
-            files: 上传的文件列表，支持CSV和XLSX格式
-            
-        Returns:
-            包含文件统计信息和合并后数据统计的字典
-        """
         dataframes = []
         file_stats = []
         
@@ -103,19 +75,6 @@ class KeywordsProcessor:
         cpc_range: Optional[Tuple[float, float]] = None,
         keyword_frequency_range: Optional[Tuple[float, float]] = None
     ) -> Dict[str, Any]:
-        """
-        应用筛选条件到合并后的数据
-        
-        Args:
-            position_range: 排名范围筛选 (最小值, 最大值)
-            search_volume_range: 搜索量范围筛选 (最小值, 最大值)
-            keyword_difficulty_range: 关键词难度范围筛选 (最小值, 最大值)
-            cpc_range: CPC范围筛选 (最小值, 最大值)
-            keyword_frequency_range: 关键词频率范围筛选 (最小值, 最大值)
-            
-        Returns:
-            包含筛选后统计信息和关键词计数的字典
-        """
         self.filtered_data = filter_dataframe(
             self.merged_data,
             position_range,
@@ -131,12 +90,6 @@ class KeywordsProcessor:
         }
     
     def get_brand_overlap(self) -> Dict[str, Any]:
-        """
-        获取品牌关键词重叠数据
-        
-        Returns:
-            包含重叠矩阵和品牌统计信息的字典
-        """
         overlap_data = calculate_brand_keyword_overlap(self.filtered_data)
         
         # 获取品牌统计信息
@@ -156,12 +109,6 @@ class KeywordsProcessor:
         }
     
     def export_filtered_data(self) -> bytes:
-        """
-        导出筛选后的数据为CSV格式
-        
-        Returns:
-            CSV格式的字节数据
-        """
         if self.filtered_data.empty:
             return b"No data to export"
         
@@ -170,12 +117,6 @@ class KeywordsProcessor:
         return csv_bytes
     
     def export_unique_filtered_data(self) -> bytes:
-        """
-        导出筛选后的唯一关键词为CSV格式
-        
-        Returns:
-            包含唯一关键词的CSV格式字节数据
-        """
         if self.filtered_data.empty:
             return b"No data to export"
         
@@ -190,12 +131,6 @@ class KeywordsProcessor:
             return b"No keyword column found in data"
     
     def get_filter_ranges(self) -> Dict[str, Any]:
-        """
-        获取筛选滑块的最小值和最大值
-        
-        Returns:
-            包含各字段取值范围的字典
-        """
         if self.merged_data.empty:
             return {
                 "position": [0, 100],
@@ -241,15 +176,6 @@ class KeywordsProcessor:
         }
         
     def filter_by_keyword(self, keyword: str) -> Dict[str, Any]:
-        """
-        根据特定关键词筛选数据，返回该关键词在不同品牌中的排名、URL和流量信息
-        
-        Args:
-            keyword: 要筛选的关键词
-            
-        Returns:
-            包含关键词在各品牌中详细信息的字典
-        """
         if self.filtered_data.empty:
             return {"results": []}
         
@@ -309,12 +235,6 @@ class KeywordsProcessor:
         return {"results": results}
     
     def get_data_summary(self) -> Dict[str, Any]:
-        """
-        获取数据摘要信息
-        
-        Returns:
-            包含数据概览的字典
-        """
         return {
             "total_rows": len(self.merged_data) if not self.merged_data.empty else 0,
             "filtered_rows": len(self.filtered_data) if not self.filtered_data.empty else 0,

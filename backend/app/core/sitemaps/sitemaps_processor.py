@@ -21,13 +21,6 @@ from app.core.sitemaps.utils.xml_utils import (
 
 
 class SitemapsProcessor:
-    """
-    站点地图处理器
-    
-    负责处理XML和CSV格式的站点地图文件，提供URL提取、过滤、
-    可视化数据生成和分析功能。
-    """
-    
     def __init__(self):
         """初始化站点地图处理器"""
         self.sitemaps = []  # 存储上传的sitemap文件信息
@@ -37,15 +30,6 @@ class SitemapsProcessor:
         self.filename_mapping = {}  # 文件名到内容的映射，用于处理引用
     
     async def process_files(self, files: List[UploadFile]) -> Dict[str, Any]:
-        """
-        处理上传的Sitemap文件
-        
-        Args:
-            files: 上传的文件列表
-            
-        Returns:
-            处理结果统计信息
-        """
         sitemap_files = []
         file_stats = []
         
@@ -177,25 +161,6 @@ class SitemapsProcessor:
         return depth_counts
     
     def get_visualization_data(self, visualization_type: str = "tree", max_depth: int = 3, max_nodes: int = 500) -> Dict[str, Any]:
-        """
-        获取用于可视化的数据结构，增加深度和最大节点数限制
-        
-        Args:
-            visualization_type: 可视化类型
-            max_depth: 最大深度限制
-            max_nodes: 最大节点数限制
-            
-        Returns:
-            可视化数据结构
-            
-        支持的可视化类型:
-        - tree: 标准树形图
-        - tree-radial: 径向树形图
-        - graph-label-overlap: 标签网络图
-        - graph-circular-layout: 环形布局图
-        - graph-webkit-dep: 依赖关系图
-        - graph-npm: 箭头流向图
-        """
         # 判断可视化类型，将前端支持的所有类型映射到后端处理函数
         if visualization_type.startswith("tree"):
             # 所有树形图类型都使用相同的数据结构，前端会处理不同的布局
@@ -221,18 +186,6 @@ class SitemapsProcessor:
             return data
     
     def get_filtered_visualization_data(self, visualization_type: str = "tree", urls: List[str] = None, max_depth: int = 3, max_nodes: int = 500) -> Dict[str, Any]:
-        """
-        获取筛选后的URL的可视化数据，增加深度和最大节点数限制
-        
-        Args:
-            visualization_type: 可视化类型
-            urls: 要可视化的URL列表
-            max_depth: 最大深度限制
-            max_nodes: 最大节点数限制
-            
-        Returns:
-            筛选后的可视化数据结构
-        """
         if not urls or len(urls) == 0:
             # 如果没有提供URLs，返回所有URL的可视化
             return self.get_visualization_data(visualization_type, max_depth, max_nodes)
@@ -576,15 +529,6 @@ class SitemapsProcessor:
         }
     
     def generate_merged_sitemap(self, format: str = "xml") -> bytes:
-        """
-        生成合并后的Sitemap文件
-        
-        Args:
-            format: 输出格式 ("xml" 或 "csv")
-            
-        Returns:
-            生成的文件内容（字节格式）
-        """
         if format.lower() == "xml":
             # 创建XML sitemap
             root = ET.Element("{http://www.sitemaps.org/schemas/sitemap/0.9}urlset")
@@ -613,15 +557,6 @@ class SitemapsProcessor:
             return b"Unsupported format"
     
     def filter_urls(self, filters: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        根据筛选条件过滤URL
-        
-        Args:
-            filters: 筛选条件字典
-            
-        Returns:
-            筛选结果
-        """
         filtered_urls = set()
         
         domain_filter = filters.get("domain")
@@ -711,15 +646,6 @@ class SitemapsProcessor:
         }
     
     def get_common_paths(self, min_count: int = 5) -> List[str]:
-        """
-        提取常见路径，至少出现min_count次的路径
-        
-        Args:
-            min_count: 最小出现次数
-            
-        Returns:
-            常见路径列表
-        """
         if not self.merged_urls:
             return []
         
@@ -749,12 +675,6 @@ class SitemapsProcessor:
         return common_paths[:50]  # 限制返回数量
     
     def analyze_sitemap(self) -> Dict[str, Any]:
-        """
-        分析Sitemap的结构和特性
-        
-        Returns:
-            分析结果
-        """
         if not self.merged_urls:
             return {"error": "No URLs to analyze"}
         
@@ -809,15 +729,6 @@ class SitemapsProcessor:
         }
     
     def analyze_url_structure(self, detailed: bool = False) -> Dict[str, Any]:
-        """
-        分析URL的结构并提供可视化数据
-        
-        Args:
-            detailed: 是否提供详细分析
-            
-        Returns:
-            URL结构分析结果
-        """
         if not self.merged_urls:
             return {"error": "No URLs to analyze"}
         

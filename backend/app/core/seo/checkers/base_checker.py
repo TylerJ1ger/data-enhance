@@ -6,13 +6,6 @@ class BaseChecker:
     """SEO检查器的基类，提供通用功能和接口"""
     
     def __init__(self, soup: BeautifulSoup, page_url: Optional[str] = None):
-        """
-        初始化检查器
-        
-        Args:
-            soup: BeautifulSoup解析的HTML文档对象
-            page_url: 页面URL，可选
-        """
         self.soup = soup
         self.page_url = page_url
         self.issues = {
@@ -22,12 +15,6 @@ class BaseChecker:
         }
     
     def check(self) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        执行所有检查并返回问题列表
-        
-        Returns:
-            包含issues, warnings和opportunities列表的字典
-        """
         # 子类应该覆盖此方法
         raise NotImplementedError("Subclasses must implement check()")
     
@@ -39,18 +26,6 @@ class BaseChecker:
                  affected_element: Optional[Union[str, Tag]] = None,
                  affected_resources: Optional[List[str]] = None,
                  issue_type: str = "issues"):
-        """
-        添加一个SEO问题到结果列表
-        
-        Args:
-            category: 问题类别，如'Page Titles', 'Meta Description'等
-            issue: 问题简短描述
-            description: 问题详细描述
-            priority: 优先级，如'high', 'medium', 'low'
-            affected_element: 受影响的HTML元素或其字符串表示
-            affected_resources: 受影响的资源列表，如URL
-            issue_type: 问题类型，可以是'issues', 'warnings', 或'opportunities'
-        """
         # 验证issue_type合法性
         if issue_type not in ["issues", "warnings", "opportunities"]:
             issue_type = "issues"  # 默认为issues
@@ -79,25 +54,9 @@ class BaseChecker:
         self.issues[issue_type].append(issue_data)
         
     def get_issues(self) -> Dict[str, List[Dict[str, Any]]]:
-        """
-        获取所有已发现的问题
-        
-        Returns:
-            包含issues, warnings和opportunities列表的字典
-        """
         return self.issues
     
     def truncate_element(self, element: Tag, max_length: int = 100) -> str:
-        """
-        截断HTML元素字符串表示
-        
-        Args:
-            element: BeautifulSoup Tag对象
-            max_length: 最大字符长度，默认为100
-            
-        Returns:
-            截断后的字符串
-        """
         if not element:
             return ""
             
@@ -107,15 +66,6 @@ class BaseChecker:
         return element_str[:max_length] + '...'
     
     def is_element_visible(self, element: Tag) -> bool:
-        """
-        检查HTML元素是否可见(启发式方法)
-        
-        Args:
-            element: BeautifulSoup Tag对象
-            
-        Returns:
-            元素是否可能对用户可见
-        """
         # 检查常见的隐藏属性
         style = element.get('style', '').lower()
         if 'display: none' in style or 'visibility: hidden' in style:
@@ -134,17 +84,6 @@ class BaseChecker:
         return True
     
     def has_attr_containing(self, element: Tag, attr_name: str, value: str) -> bool:
-        """
-        检查元素属性是否包含特定值
-        
-        Args:
-            element: BeautifulSoup Tag对象
-            attr_name: 属性名称
-            value: 要搜索的值
-            
-        Returns:
-            属性是否包含指定值
-        """
         if not element.has_attr(attr_name):
             return False
             
@@ -157,15 +96,6 @@ class BaseChecker:
             return value.lower() in attr_value.lower()
     
     def count_words(self, text: str) -> int:
-        """
-        计算文本中的单词数量
-        
-        Args:
-            text: 要计算的文本
-            
-        Returns:
-            单词数量
-        """
         if not text:
             return 0
             
@@ -180,19 +110,6 @@ class BaseChecker:
         return len(words)
     
     def estimate_pixel_width(self, text: str) -> int:
-        """
-        估算文本的像素宽度
-        这是一个启发式方法，假设:
-        - 英文字母、数字平均约7像素宽
-        - 中文字符约14像素宽
-        - 空格约3像素宽
-        
-        Args:
-            text: 要估算的文本
-            
-        Returns:
-            估计的像素宽度
-        """
         if not text:
             return 0
             
@@ -212,15 +129,6 @@ class BaseChecker:
         return pixel_width
     
     def get_element_text(self, element: Optional[Tag]) -> str:
-        """
-        获取元素的文本内容，处理None情况
-        
-        Args:
-            element: BeautifulSoup Tag对象或None
-            
-        Returns:
-            元素的文本内容或空字符串
-        """
         if not element:
             return ""
         return element.get_text(strip=True)
