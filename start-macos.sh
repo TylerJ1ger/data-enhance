@@ -100,6 +100,13 @@ start_backend() {
         return 1
     }
     
+    # Check if app/main.py exists
+    if [ ! -f "app/main.py" ]; then
+        echo -e "${RED}Error: app/main.py not found in backend directory${NC}"
+        log_with_timestamp "$BACKEND_LOG" "ERROR: app/main.py not found in backend directory"
+        return 1
+    fi
+    
     # Create virtual environment if it doesn't exist
     if [ ! -d "venv" ]; then
         echo -e "${YELLOW}Creating Python virtual environment...${NC}"
@@ -130,12 +137,12 @@ start_backend() {
         log_with_timestamp "$BACKEND_LOG" "Backend dependencies installed successfully"
     fi
     
-    # Start the FastAPI server
-    echo -e "${GREEN}Starting FastAPI server...${NC}"
-    log_with_timestamp "$BACKEND_LOG" "Starting FastAPI server"
+    # Start the FastAPI server using module startup
+    echo -e "${GREEN}Starting FastAPI server using module startup...${NC}"
+    log_with_timestamp "$BACKEND_LOG" "Starting FastAPI server using python -m app.main"
     
-    # Run Python with output redirected to log file
-    python main.py >> "$BACKEND_LOG" 2>&1 &
+    # Run Python as module and output redirected to log file
+    python -m app.main >> "$BACKEND_LOG" 2>&1 &
     BACKEND_PID=$!
     
     # Check if process is running
