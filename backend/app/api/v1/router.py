@@ -17,6 +17,7 @@ from app.core.sitemaps.sitemaps_processor import SitemapsProcessor
 from app.core.seo.seo_processor import SEOProcessor
 from app.core.backlinks.backlinks_processor import BacklinksProcessor
 from app.core.backlinks.cross_analysis_processor import CrossAnalysisProcessor
+from app.core.orders.orders_processor import OrdersProcessor
 
 # 创建主路由器
 router = APIRouter(tags=["API v1"])
@@ -30,6 +31,7 @@ sitemaps_processor = SitemapsProcessor()
 seo_processor = SEOProcessor()
 backlinks_processor = BacklinksProcessor()
 cross_analysis_processor = CrossAnalysisProcessor()
+orders_processor = OrdersProcessor()
 
 # ================================
 # Pydantic 模型定义
@@ -71,6 +73,22 @@ class CrossAnalysisExportRequest(BaseModel):
     sort_direction: str = "desc"
     cell_display_type: str = "target_url" 
     comparison_data: Optional[Dict[str, Any]] = None
+
+class VirtualDataGenerateRequest(BaseModel):
+    """虚拟数据生成请求模型"""
+    count: int = 100
+
+class OrderFilterRequest(BaseModel):
+    """订单筛选请求模型"""
+    date_range: Optional[List[str]] = None  # ["start_date", "end_date"]
+    order_types: Optional[List[str]] = None
+    license_ids: Optional[List[int]] = None
+    currencies: Optional[List[str]] = None
+    payment_platforms: Optional[List[str]] = None
+    order_statuses: Optional[List[str]] = None
+    sales_amount_range: Optional[List[float]] = None  # [min_amount, max_amount]
+    has_coupon: Optional[bool] = None
+    ab_test_filter: Optional[str] = None  # "with", "without", None
 
 # ================================
 # 通用辅助函数
@@ -528,6 +546,152 @@ async def export_filtered_sitemaps_urls(format: str = "csv"):
     )
 
 # ================================
+# 虚拟订单分析相关路由 (Orders)
+# ================================
+
+@router.post("/orders/generate", tags=["Orders"])
+async def generate_virtual_orders(request: VirtualDataGenerateRequest):
+    """
+    生成虚拟订单数据
+    """
+    try:
+        if request.count <= 0 or request.count > 10000:
+            raise HTTPException(
+                status_code=400, 
+                detail="数据条数必须在1到10000之间"
+            )
+        
+        result = orders_processor.generate_virtual_data(request.count)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=500,
+                detail=result.get("message", "生成虚拟数据失败")
+            )
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"生成虚拟订单数据时发生错误: {str(e)}"
+        )
+
+@router.post("/orders/filter", tags=["Orders"])
+async def apply_order_filters(filter_request: OrderFilterRequest):
+    """
+    应用订单筛选条件
+    """
+    try:
+        # 转换筛选参数
+        date_range = tuple(filter_request.date_range) if filter_request.date_range else None
+        sales_amount_range = tuple(filter_request.sales_amount_range) if filter_request.sales_amount_range else None
+        
+        result = orders_processor.apply_filters(
+            date_range=date_range,
+            order_types=filter_request.order_types,
+            license_ids=filter_request.license_ids,
+            currencies=filter_request.currencies,
+            payment_platforms=filter_request.payment_platforms,
+            order_statuses=filter_request.order_statuses,
+            sales_amount_range=sales_amount_range,
+            has_coupon=filter_request.has_coupon,
+            ab_test_filter=filter_request.ab_test_filter
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("message", "应用筛选条件失败")
+            )
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"应用筛选条件时发生错误: {str(e)}"
+        )
+
+@router.get("/orders/charts", tags=["Orders"])
+async def get_order_charts():
+    """
+    获取订单图表数据
+    """
+    try:
+        result = orders_processor.get_chart_data()
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取图表数据时发生错误: {str(e)}"
+        )
+
+@router.get("/orders/export", tags=["Orders"])
+async def export_order_data():
+    """
+    导出筛选后的订单数据为CSV文件
+    """
+    try:
+        csv_data = orders_processor.export_filtered_data()
+        
+        return StreamingResponse(
+            io.BytesIO(csv_data),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=virtual_orders.csv"}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"导出数据时发生错误: {str(e)}"
+        )
+
+@router.get("/orders/filter-ranges", tags=["Orders"])
+async def get_order_filter_ranges():
+    """
+    获取订单筛选范围
+    """
+    try:
+        return orders_processor.get_filter_ranges()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取筛选范围时发生错误: {str(e)}"
+        )
+
+@router.get("/orders/summary", tags=["Orders"])
+async def get_order_summary():
+    """
+    获取订单数据摘要
+    """
+    try:
+        return orders_processor.get_data_summary()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取数据摘要时发生错误: {str(e)}"
+        )
+
+@router.post("/orders/reset", tags=["Orders"])
+async def reset_order_data():
+    """
+    重置所有订单数据
+    """
+    try:
+        orders_processor.reset_data()
+        return {
+            "success": True,
+            "message": "订单数据已重置"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"重置数据时发生错误: {str(e)}"
+        )
+
+# ================================
 # 健康检查和通用路由
 # ================================
 
@@ -550,6 +714,7 @@ async def api_info():
         "endpoints": {
             "keywords": "/v1/keywords/",
             "backlinks": "/v1/backlinks/", 
+            "orders": "/v1/orders/",
             "seo": "/v1/seo/",
             "sitemaps": "/v1/sitemaps/",
             "health": "/v1/health"

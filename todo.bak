@@ -1,65 +1,173 @@
 python3 model/ref/combined-tree-formatter.py "." "model/ref/structure/file-structure.txt" "model/ref/structure/formatted-tree.txt"
 
-backend/
-├── app/
-│   ├── __init__.py
-│   ├── config.py
-│   ├── main.py  # 从根目录移动到这里
-│   ├── api/
-│   │   ├── __init__.py
-│   │   ├── legacy.py  # 原有的api.py，保持兼容性
-│   │   └── v1/
-│   │       ├── __init__.py
-│   │       ├── router.py  # 主路由集成
-│   │       ├── keywords.py  # 关键词分析接口
-│   │       ├── backlinks.py  # 外链分析接口
-│   │       ├── seo.py  # SEO检查接口
-│   │       └── sitemaps.py  # 站点地图接口
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── keywords/
-│   │   │   ├── __init__.py
-│   │   │   └── keywords_processor.py  # 原csv_processor.py
-│   │   ├── backlinks/
-│   │   │   ├── __init__.py
-│   │   │   ├── backlinks_processor.py  # 原backlink_processor.py
-│   │   │   └── cross_analysis_processor.py
-│   │   ├── seo/
-│   │   │   ├── __init__.py
-│   │   │   ├── seo_processor.py
-│   │   │   ├── checkers/
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── base_checker.py
-│   │   │   │   ├── accessibility_checker.py
-│   │   │   │   ├── link_checker.py
-│   │   │   │   ├── meta_checker.py
-│   │   │   │   ├── structure_checker.py
-│   │   │   │   ├── technical_checker.py
-│   │   │   │   └── content/
-│   │   │   │       ├── __init__.py
-│   │   │   │       ├── content_analyzer.py
-│   │   │   │       ├── content_checker.py
-│   │   │   │       ├── content_extractor.py
-│   │   │   │       └── content_validator.py
-│   │   │   └── utils/
-│   │   │       ├── __init__.py
-│   │   │       ├── seo_utils.py  # 原seo/utils.py
-│   │   │       └── hreflang_utils.py  # 原utils_hreflang.py
-│   │   └── sitemaps/
-│   │       ├── __init__.py
-│   │       ├── sitemaps_processor.py  # 原sitemap_processor.py
-│   │       └── utils/
-│   │           ├── __init__.py
-│   │           └── xml_utils.py  # 原xml_helpers.py
-│   ├── shared/
-│   │   ├── __init__.py
-│   │   ├── utils/
-│   │   │   ├── __init__.py
-│   │   │   ├── data_utils.py  # 原helpers.py
-│   │   │   └── url_utils.py   # 原url_helpers.py
-│   │   └── exceptions/
-│   │       ├── __init__.py
-│   │       └── custom_exceptions.py  # 新增
-│   └── static/
-├── requirements.txt
-└── README.md
+# 虚拟订单分析功能部署指南
+
+## 功能概述
+
+虚拟订单分析功能允许用户：
+- 生成指定数量的虚拟订单数据（1-10000条）
+- 通过多维度筛选条件进行数据细分分析
+- 使用ECharts进行数据可视化展示
+- 导出筛选后的数据为CSV格式
+
+## 部署步骤
+
+### 1. 后端文件部署
+
+在 `backend/app/` 目录下创建以下文件结构：
+
+```
+backend/app/core/orders/
+├── __init__.py
+├── virtual_data_generator.py  # 虚拟数据生成器
+└── orders_processor.py        # 订单数据处理器
+```
+
+### 2. 前端文件部署
+
+在 `frontend/src/` 目录下创建以下文件结构：
+
+```
+frontend/src/
+├── app/(dashboard)/orders/
+│   ├── page.tsx              # 主页面组件
+│   └── loading.tsx           # 加载页面组件
+├── components/orders/
+│   ├── order-generator.tsx   # 数据生成器组件
+│   ├── order-stats.tsx       # 统计组件
+│   ├── order-filter-panel.tsx # 筛选面板组件
+│   └── order-charts.tsx      # 图表组件
+├── hooks/
+│   └── use-orders-api.ts     # API Hook
+└── lib/api/
+    └── orders-api.ts         # API客户端
+```
+
+### 3. 更新现有文件
+
+需要更新以下现有文件：
+
+#### 后端文件：
+- `backend/app/api/v1/router.py` - 添加订单路由
+- `backend/app/api/v1/__init__.py` - 导入订单模块
+
+#### 前端文件：
+- `frontend/src/app/page.tsx` - 添加订单分析入口
+- `frontend/src/components/site-header.tsx` - 添加导航链接
+- `frontend/src/types/index.ts` - 添加订单类型定义
+
+### 4. 依赖检查
+
+确保以下依赖已安装：
+
+#### 后端依赖：
+- pandas
+- hashlib (Python标准库)
+- datetime (Python标准库)
+
+#### 前端依赖：
+- echarts (已在package.json中)
+- 所有shadcn/ui组件 (已存在)
+
+### 5. 环境变量
+
+确保以下环境变量正确配置：
+
+```bash
+# frontend/.env.local
+NEXT_PUBLIC_API_URL=http://localhost:8000/api
+```
+
+## 数据字段说明
+
+虚拟订单数据包含以下字段：
+
+| 字段名 | 类型 | 说明 | 示例 |
+|--------|------|------|------|
+| 订单号 | string | 10位hash值，唯一 | 7fa1b0c2e9 |
+| 订单类型 | string | 新单/续费 | 新单 |
+| 用户ID | string | 10位hash值，可重复 | 9c8d7f2a1b |
+| 日期 | timestamp | 2025年4-5月 | 2025-04-03 12:21:45 |
+| 产品（PID） | number | 固定10001 | 10001 |
+| LicenseID | number | 1-5种类型 | 1 |
+| SKU | number | PID+LicenseID组合 | 10001001 |
+| CouponID | number | 601/602/603或空 | 601 |
+| 购物车来源 | string | spellai.art/spellai.ai | spellai.art |
+| 支付平台 | string | paypal/stripe | stripe |
+| 支付币种 | string | usd/cny/eur | usd |
+| 支付方式 | string | paypal/credit card | credit card |
+| AB实验ID | string | abtest0001a/abtest0002或空 | abtest0001a |
+| 销售总额 | number | 根据价格计算 | 8.99 |
+| 订单状态 | string | 已付款/已退款/取消付款/付款失败 | 已付款 |
+
+## License价格对照
+
+| LicenseID | 产品名称 | 价格 |
+|-----------|----------|------|
+| 1 | 月度订阅 | 9.99 |
+| 2 | 季度订阅 | 19.99 |
+| 3 | 年度订阅 | 46.99 |
+| 4 | 1000 Credit | 4.99 |
+| 5 | 5000 Credit | 14.99 |
+
+## 优惠券折扣
+
+| CouponID | 折扣比例 |
+|----------|----------|
+| 601 | 10% |
+| 602 | 20% |
+| 603 | 30% |
+
+## 图表类型
+
+功能提供8种图表类型：
+
+1. **订单类型分布**（饼图）- 新单vs续费比例
+2. **每日订单量趋势**（折线图）- 时间序列分析
+3. **License类型销售分布**（柱状图）- 产品销售对比
+4. **币种收入分布**（饼图）- 不同币种收入占比
+5. **支付平台统计**（柱状图）- 平台订单数和收入
+6. **订单状态分布**（饼图）- 成功/失败订单比例
+7. **优惠券使用情况**（柱状图）- 有无优惠券对比
+8. **AB测试参与情况**（饼图）- 实验组参与度
+
+## 筛选功能
+
+支持以下筛选维度：
+
+- **日期范围**：自定义起止日期
+- **订单类型**：新单/续费多选
+- **License类型**：1-5种产品多选
+- **销售总额**：滑块范围选择
+- **支付币种**：USD/CNY/EUR多选
+- **支付平台**：PayPal/Stripe多选
+- **订单状态**：成功/失败状态多选
+- **优惠券使用**：有/无/全部
+- **AB测试参与**：参与/未参与/全部
+
+## 启动测试
+
+1. 启动后端服务：`python -m uvicorn app.main:app --reload --port 8000`
+2. 启动前端服务：`npm run dev`
+3. 访问 `http://localhost:3000/orders`
+4. 生成测试数据并验证功能
+
+## API端点
+
+新增的API端点：
+
+- `POST /api/v1/orders/generate` - 生成虚拟数据
+- `POST /api/v1/orders/filter` - 应用筛选条件
+- `GET /api/v1/orders/charts` - 获取图表数据
+- `GET /api/v1/orders/export` - 导出数据
+- `GET /api/v1/orders/filter-ranges` - 获取筛选范围
+- `GET /api/v1/orders/summary` - 获取数据摘要
+- `POST /api/v1/orders/reset` - 重置数据
+
+## 注意事项
+
+1. 生成数据量建议控制在1000条以内，以保证响应速度
+2. 图表使用ECharts渲染，首次加载可能需要稍等片刻
+3. 数据仅存储在内存中，重启服务会丢失
+4. 所有金额计算考虑了优惠券折扣和币种转换
+5. 用户ID会重复，模拟真实用户多次购买场景

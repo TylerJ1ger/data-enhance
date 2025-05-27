@@ -1,0 +1,533 @@
+"""
+订单数据处理器 - 修复numpy类型序列化问题
+backend/app/core/orders/orders_processor.py
+"""
+
+import pandas as pd
+from typing import List, Dict, Any, Tuple, Optional
+from datetime import datetime
+from .virtual_data_generator import VirtualOrderDataGenerator
+
+
+class OrdersProcessor:
+    """订单数据处理器"""
+    
+    def __init__(self):
+        """初始化订单处理器"""
+        self.data = pd.DataFrame()
+        self.filtered_data = pd.DataFrame()
+        self.generator = VirtualOrderDataGenerator()
+        self._last_generation_params = {}
+    
+    def _ensure_json_serializable(self, data: Any) -> Any:
+        """确保数据是JSON可序列化的，处理numpy类型"""
+        import numpy as np
+        
+        if isinstance(data, dict):
+            return {k: self._ensure_json_serializable(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._ensure_json_serializable(item) for item in data]
+        elif isinstance(data, (np.integer, np.int64, np.int32)):
+            return int(data)
+        elif isinstance(data, (np.floating, np.float64, np.float32)):
+            return float(data)
+        elif isinstance(data, np.ndarray):
+            return data.tolist()
+        elif pd.isna(data):
+            return None
+        else:
+            return data
+    
+    def generate_virtual_data(self, count: int) -> Dict[str, Any]:
+        """生成虚拟订单数据"""
+        try:
+            # 验证输入参数
+            if count <= 0:
+                return {
+                    "success": False,
+                    "message": "数据条数必须大于0"
+                }
+            
+            if count > 10000:
+                return {
+                    "success": False,
+                    "message": "数据条数不能超过10000"
+                }
+            
+            # 生成数据
+            self.data = self.generator.generate_orders_batch(count)
+            self.filtered_data = self.data.copy()
+            
+            # 保存生成参数
+            self._last_generation_params = {"count": count}
+            
+            # 获取统计信息
+            stats = self.generator.get_generation_stats(self.data)
+            
+            # 确保所有数据都是JSON可序列化的
+            serializable_stats = self._ensure_json_serializable(stats)
+            
+            return {
+                "success": True,
+                "generated_count": len(self.data),
+                "stats": serializable_stats,
+                "message": f"成功生成 {len(self.data)} 条虚拟订单数据"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "生成虚拟订单数据失败"
+            }
+    
+    def apply_filters(
+        self,
+        date_range: Optional[Tuple[str, str]] = None,
+        order_types: Optional[List[str]] = None,
+        license_ids: Optional[List[int]] = None,
+        currencies: Optional[List[str]] = None,
+        payment_platforms: Optional[List[str]] = None,
+        order_statuses: Optional[List[str]] = None,
+        sales_amount_range: Optional[Tuple[float, float]] = None,
+        has_coupon: Optional[bool] = None,
+        ab_test_filter: Optional[str] = None  # "with", "without", None
+    ) -> Dict[str, Any]:
+        """应用筛选条件"""
+        try:
+            if self.data.empty:
+                return {
+                    "success": False,
+                    "message": "没有数据可以筛选，请先生成虚拟数据"
+                }
+            
+            filtered_df = self.data.copy()
+            
+            # 日期范围筛选
+            if date_range:
+                start_date, end_date = date_range
+                try:
+                    filtered_df = filtered_df[
+                        (pd.to_datetime(filtered_df["日期"]) >= pd.to_datetime(start_date)) &
+                        (pd.to_datetime(filtered_df["日期"]) <= pd.to_datetime(end_date))
+                    ]
+                except Exception as e:
+                    return {
+                        "success": False,
+                        "message": f"日期范围筛选失败: {str(e)}"
+                    }
+            
+            # 订单类型筛选
+            if order_types:
+                filtered_df = filtered_df[filtered_df["订单类型"].isin(order_types)]
+            
+            # License ID筛选
+            if license_ids:
+                filtered_df = filtered_df[filtered_df["LicenseID"].isin(license_ids)]
+            
+            # 币种筛选
+            if currencies:
+                filtered_df = filtered_df[filtered_df["支付币种"].isin(currencies)]
+            
+            # 支付平台筛选
+            if payment_platforms:
+                filtered_df = filtered_df[filtered_df["支付平台"].isin(payment_platforms)]
+            
+            # 订单状态筛选
+            if order_statuses:
+                filtered_df = filtered_df[filtered_df["订单状态"].isin(order_statuses)]
+            
+            # 销售总额范围筛选
+            if sales_amount_range:
+                min_amount, max_amount = sales_amount_range
+                filtered_df = filtered_df[
+                    (filtered_df["销售总额"] >= min_amount) &
+                    (filtered_df["销售总额"] <= max_amount)
+                ]
+            
+            # 优惠券筛选
+            if has_coupon is not None:
+                if has_coupon:
+                    filtered_df = filtered_df[filtered_df["CouponID"].notna()]
+                else:
+                    filtered_df = filtered_df[filtered_df["CouponID"].isna()]
+            
+            # AB测试筛选
+            if ab_test_filter == "with":
+                filtered_df = filtered_df[filtered_df["AB实验ID"].notna()]
+            elif ab_test_filter == "without":
+                filtered_df = filtered_df[filtered_df["AB实验ID"].isna()]
+            
+            self.filtered_data = filtered_df
+            
+            # 计算筛选后的统计信息
+            filtered_stats = self.generator.get_generation_stats(self.filtered_data)
+            
+            # 确保所有数据都是JSON可序列化的
+            serializable_stats = self._ensure_json_serializable(filtered_stats)
+            
+            return {
+                "success": True,
+                "filtered_count": len(self.filtered_data),
+                "filtered_stats": serializable_stats,
+                "message": f"筛选完成，共 {len(self.filtered_data)} 条记录"
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "应用筛选条件失败"
+            }
+    
+    def get_chart_data(self) -> Dict[str, Any]:
+        """获取图表数据 - 修复numpy类型序列化问题"""
+        if self.filtered_data.empty:
+            return {"charts": {}}
+        
+        try:
+            df = self.filtered_data.copy()
+            
+            # 1. 订单类型分布（饼图）
+            order_type_data = {str(k): int(v) for k, v in df["订单类型"].value_counts().to_dict().items()}
+            
+            # 2. 每日订单量趋势（折线图）
+            df["日期_date"] = pd.to_datetime(df["日期"]).dt.date
+            daily_orders = df.groupby("日期_date").size().reset_index(name="订单数量")
+            daily_orders["日期"] = daily_orders["日期_date"].astype(str)
+            # 确保数据类型转换
+            daily_orders_data = []
+            for _, row in daily_orders.iterrows():
+                daily_orders_data.append({
+                    "日期": str(row["日期"]),
+                    "订单数量": int(row["订单数量"])
+                })
+            
+            # 3. License类型销售分布（柱状图）
+            license_stats = df.groupby("LicenseID").agg({
+                "订单号": "count",
+                "销售总额": "sum"
+            }).reset_index()
+            license_stats.columns = ["LicenseID", "订单数量", "销售总额"]
+            # 确保数据类型转换
+            license_stats_data = []
+            for _, row in license_stats.iterrows():
+                license_stats_data.append({
+                    "LicenseID": int(row["LicenseID"]),
+                    "订单数量": int(row["订单数量"]),
+                    "销售总额": float(row["销售总额"])
+                })
+            
+            # 4. 币种收入分布（饼图）
+            currency_revenue = {str(k): float(v) for k, v in df.groupby("支付币种")["销售总额"].sum().to_dict().items()}
+            
+            # 5. 支付平台分布（柱状图）
+            platform_stats = df.groupby("支付平台").agg({
+                "订单号": "count",
+                "销售总额": "sum"
+            }).reset_index()
+            platform_stats.columns = ["支付平台", "订单数量", "销售总额"]
+            # 确保数据类型转换
+            platform_stats_data = []
+            for _, row in platform_stats.iterrows():
+                platform_stats_data.append({
+                    "支付平台": str(row["支付平台"]),
+                    "订单数量": int(row["订单数量"]),
+                    "销售总额": float(row["销售总额"])
+                })
+            
+            # 6. 订单状态分布（饼图）
+            status_distribution = {str(k): int(v) for k, v in df["订单状态"].value_counts().to_dict().items()}
+            
+            # 7. 优惠券使用情况（柱状图）
+            coupon_usage_data = [
+                {"category": "有优惠券", "count": int(len(df[df["CouponID"].notna()]))},
+                {"category": "无优惠券", "count": int(len(df[df["CouponID"].isna()]))}
+            ]
+            
+            # 8. AB测试参与情况
+            ab_test_participation = {
+                "参与AB测试": int(len(df[df["AB实验ID"].notna()])),
+                "未参与AB测试": int(len(df[df["AB实验ID"].isna()]))
+            }
+            
+            return {
+                "charts": {
+                    "order_type_distribution": {
+                        "type": "pie",
+                        "title": "订单类型分布",
+                        "data": order_type_data
+                    },
+                    "daily_orders_trend": {
+                        "type": "line",
+                        "title": "每日订单量趋势",
+                        "data": daily_orders_data
+                    },
+                    "license_sales_distribution": {
+                        "type": "bar",
+                        "title": "License类型销售分布",
+                        "data": license_stats_data
+                    },
+                    "currency_revenue_distribution": {
+                        "type": "pie",
+                        "title": "币种收入分布",
+                        "data": currency_revenue
+                    },
+                    "payment_platform_stats": {
+                        "type": "bar",
+                        "title": "支付平台统计",
+                        "data": platform_stats_data
+                    },
+                    "order_status_distribution": {
+                        "type": "pie",
+                        "title": "订单状态分布",
+                        "data": status_distribution
+                    },
+                    "coupon_usage": {
+                        "type": "bar",
+                        "title": "优惠券使用情况",
+                        "data": coupon_usage_data
+                    },
+                    "ab_test_participation": {
+                        "type": "pie",
+                        "title": "AB测试参与情况",
+                        "data": ab_test_participation
+                    }
+                }
+            }
+        except Exception as e:
+            return {
+                "charts": {},
+                "error": str(e)
+            }
+    
+    def export_filtered_data(self) -> bytes:
+        """导出筛选后的数据为CSV"""
+        if self.filtered_data.empty:
+            return b"No data to export"
+        
+        try:
+            # 使用UTF-8编码并添加BOM以确保Excel正确显示中文
+            csv_bytes = self.filtered_data.to_csv(index=False, encoding='utf-8-sig').encode('utf-8')
+            return csv_bytes
+        except Exception as e:
+            error_msg = f"导出失败: {str(e)}"
+            return error_msg.encode('utf-8')
+    
+    def get_filter_ranges(self) -> Dict[str, Any]:
+        """获取筛选范围"""
+        if self.data.empty:
+            return {
+                "date_range": {
+                    "min": "2025-04-01",
+                    "max": "2025-05-31"
+                },
+                "sales_amount_range": {
+                    "min": 0,
+                    "max": 100
+                },
+                "available_options": {
+                    "order_types": ["新单", "续费"],
+                    "license_ids": [1, 2, 3, 4, 5],
+                    "currencies": ["usd", "cny", "eur"],
+                    "payment_platforms": ["paypal", "stripe"],
+                    "order_statuses": ["已付款", "已退款", "取消付款", "付款失败"]
+                }
+            }
+        
+        try:
+            # 确保所有数据都转换为Python原生类型
+            unique_order_types = [str(x) for x in self.data["订单类型"].unique().tolist()]
+            unique_license_ids = [int(x) for x in self.data["LicenseID"].unique().tolist()]
+            unique_currencies = [str(x) for x in self.data["支付币种"].unique().tolist()]
+            unique_payment_platforms = [str(x) for x in self.data["支付平台"].unique().tolist()]
+            unique_order_statuses = [str(x) for x in self.data["订单状态"].unique().tolist()]
+            
+            return {
+                "date_range": {
+                    "min": str(self.data["日期"].min()),
+                    "max": str(self.data["日期"].max())
+                },
+                "sales_amount_range": {
+                    "min": float(self.data["销售总额"].min()),
+                    "max": float(self.data["销售总额"].max())
+                },
+                "available_options": {
+                    "order_types": sorted(unique_order_types),
+                    "license_ids": sorted(unique_license_ids),
+                    "currencies": sorted(unique_currencies),
+                    "payment_platforms": sorted(unique_payment_platforms),
+                    "order_statuses": sorted(unique_order_statuses)
+                }
+            }
+        except Exception as e:
+            return {
+                "error": str(e),
+                "date_range": {"min": "", "max": ""},
+                "sales_amount_range": {"min": 0, "max": 100},
+                "available_options": {
+                    "order_types": [],
+                    "license_ids": [],
+                    "currencies": [],
+                    "payment_platforms": [],
+                    "order_statuses": []
+                }
+            }
+    
+    def get_data_summary(self) -> Dict[str, Any]:
+        """获取数据摘要"""
+        return {
+            "total_orders": int(len(self.data)) if not self.data.empty else 0,
+            "filtered_orders": int(len(self.filtered_data)) if not self.filtered_data.empty else 0,
+            "has_data": not self.data.empty,
+            "last_generation_params": self._last_generation_params
+        }
+    
+    def reset_data(self) -> None:
+        """重置所有数据"""
+        self.data = pd.DataFrame()
+        self.filtered_data = pd.DataFrame()
+        self._last_generation_params = {}
+    
+    def get_detailed_statistics(self) -> Dict[str, Any]:
+        """获取详细统计信息（可选的额外功能）"""
+        if self.filtered_data.empty:
+            return {}
+        
+        try:
+            df = self.filtered_data
+            
+            # 基础统计
+            basic_stats = {
+                "total_orders": int(len(df)),
+                "unique_users": int(df["用户ID"].nunique()),
+                "date_range": {
+                    "start": str(df["日期"].min()),
+                    "end": str(df["日期"].max())
+                }
+            }
+            
+            # 收入统计
+            revenue_stats = {}
+            for currency in df["支付币种"].unique():
+                currency_df = df[df["支付币种"] == currency]
+                revenue_stats[str(currency)] = {
+                    "total_revenue": float(currency_df["销售总额"].sum()),
+                    "avg_order_value": float(currency_df["销售总额"].mean()),
+                    "order_count": int(len(currency_df)),
+                    "max_order": float(currency_df["销售总额"].max()),
+                    "min_order": float(currency_df["销售总额"].min())
+                }
+            
+            # License统计
+            license_stats = {}
+            for license_id in df["LicenseID"].unique():
+                license_df = df[df["LicenseID"] == license_id]
+                license_stats[int(license_id)] = {
+                    "order_count": int(len(license_df)),
+                    "total_revenue": float(license_df["销售总额"].sum()),
+                    "avg_revenue": float(license_df["销售总额"].mean())
+                }
+            
+            # 时间分析
+            df_time = df.copy()
+            df_time["日期_datetime"] = pd.to_datetime(df_time["日期"])
+            df_time["hour"] = df_time["日期_datetime"].dt.hour
+            df_time["weekday"] = df_time["日期_datetime"].dt.dayofweek
+            
+            time_stats = {
+                "hourly_distribution": {str(k): int(v) for k, v in df_time["hour"].value_counts().sort_index().to_dict().items()},
+                "weekday_distribution": {str(k): int(v) for k, v in df_time["weekday"].value_counts().sort_index().to_dict().items()},
+                "peak_hour": int(df_time["hour"].mode().iloc[0]) if not df_time["hour"].mode().empty else 0,
+                "peak_weekday": int(df_time["weekday"].mode().iloc[0]) if not df_time["weekday"].mode().empty else 0
+            }
+            
+            # 优惠券效果分析
+            coupon_stats = {
+                "coupon_usage_rate": float(len(df[df["CouponID"].notna()]) / len(df) * 100),
+                "avg_discount_amount": 0.0,
+                "coupon_revenue_impact": 0.0
+            }
+            
+            # AB测试分析
+            ab_test_stats = {
+                "participation_rate": float(len(df[df["AB实验ID"].notna()]) / len(df) * 100),
+                "ab_test_groups": {str(k): int(v) for k, v in df["AB实验ID"].value_counts().to_dict().items()}
+            }
+            
+            return {
+                "basic": basic_stats,
+                "revenue": revenue_stats,
+                "license": license_stats,
+                "time": time_stats,
+                "coupon": coupon_stats,
+                "ab_test": ab_test_stats
+            }
+            
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def validate_data_integrity(self) -> Dict[str, Any]:
+        """验证数据完整性（可选的质量检查功能）"""
+        if self.data.empty:
+            return {"is_valid": True, "issues": []}
+        
+        issues = []
+        
+        try:
+            # 检查必需字段
+            required_fields = [
+                "订单号", "订单类型", "用户ID", "日期", "产品（PID）", 
+                "LicenseID", "SKU", "购物车来源", "支付平台", "支付币种", 
+                "支付方式", "销售总额", "订单状态"
+            ]
+            
+            for field in required_fields:
+                if field not in self.data.columns:
+                    issues.append(f"缺少必需字段: {field}")
+                elif self.data[field].isna().any():
+                    null_count = int(self.data[field].isna().sum())
+                    issues.append(f"字段 {field} 有 {null_count} 个空值")
+            
+            # 检查订单号唯一性
+            if "订单号" in self.data.columns:
+                duplicate_orders = int(self.data["订单号"].duplicated().sum())
+                if duplicate_orders > 0:
+                    issues.append(f"发现 {duplicate_orders} 个重复订单号")
+            
+            # 检查日期格式
+            if "日期" in self.data.columns:
+                try:
+                    pd.to_datetime(self.data["日期"])
+                except:
+                    issues.append("日期格式不正确")
+            
+            # 检查销售总额
+            if "销售总额" in self.data.columns:
+                negative_amounts = int((self.data["销售总额"] < 0).sum())
+                if negative_amounts > 0:
+                    issues.append(f"发现 {negative_amounts} 个负的销售总额")
+            
+            # 检查SKU格式
+            if "SKU" in self.data.columns and "产品（PID）" in self.data.columns and "LicenseID" in self.data.columns:
+                invalid_sku = 0
+                for _, row in self.data.iterrows():
+                    expected_sku = f"{row['产品（PID）']}{row['LicenseID']:03d}"
+                    if str(row["SKU"]) != expected_sku:
+                        invalid_sku += 1
+                
+                if invalid_sku > 0:
+                    issues.append(f"发现 {invalid_sku} 个无效的SKU格式")
+            
+            return {
+                "is_valid": len(issues) == 0,
+                "issues": issues,
+                "total_records": int(len(self.data)),
+                "validation_time": datetime.now().isoformat()
+            }
+            
+        except Exception as e:
+            return {
+                "is_valid": False,
+                "issues": [f"验证过程中发生错误: {str(e)}"],
+                "total_records": int(len(self.data)),
+                "validation_time": datetime.now().isoformat()
+            }
