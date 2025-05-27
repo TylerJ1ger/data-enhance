@@ -1,11 +1,36 @@
 """
-数据处理工具模块
+数据处理工具模块 - 完整更新版本
 """
 
 import os
 import pandas as pd
 from typing import List, Dict, Any, Tuple, Optional, Set
 import numpy as np
+
+# 导入新的列名映射工具
+try:
+    from app.shared.utils.column_name_utils import find_column_name, find_multiple_column_names
+except ImportError:
+    # 如果导入失败，提供回退机制
+    def find_column_name(df: pd.DataFrame, concept: str) -> Optional[str]:
+        """回退版本的列名查找"""
+        concept_mappings = {
+            'traffic': ['Traffic', 'Search Volume'],
+            'keyword': ['Keyword'],
+            'brand': ['Brand'],
+            'position': ['Position'],
+            'url': ['URL'],
+            'keyword_difficulty': ['Keyword Difficulty'],
+            'cpc': ['CPC']
+        }
+        for col_name in concept_mappings.get(concept, []):
+            if col_name in df.columns:
+                return col_name
+        return None
+    
+    def find_multiple_column_names(df: pd.DataFrame, concepts: List[str]) -> Dict[str, Optional[str]]:
+        """回退版本的多列名查找"""
+        return {concept: find_column_name(df, concept) for concept in concepts}
 
 
 # ========================================
@@ -40,15 +65,29 @@ def merge_dataframes(dataframes: List[pd.DataFrame]) -> pd.DataFrame:
 
 
 # ========================================
-# 关键词分析相关函数
+# 关键词分析相关函数 - 更新版本
 # ========================================
 
-def count_keywords(df: pd.DataFrame) -> Dict[str, int]:
-    if df.empty or 'Keyword' not in df.columns:
+def count_keywords(df: pd.DataFrame, column_mappings: Optional[Dict[str, str]] = None) -> Dict[str, int]:
+    if df.empty:
         return {}
     
+    # 获取关键词列名
+    keyword_column = None
+    if column_mappings and 'keyword' in column_mappings:
+        keyword_column = column_mappings['keyword']
+    else:
+        keyword_column = find_column_name(df, 'keyword')
+    
+    if not keyword_column or keyword_column not in df.columns:
+        # 回退到原始逻辑
+        if 'Keyword' in df.columns:
+            keyword_column = 'Keyword'
+        else:
+            return {}
+    
     # 确保返回的是Python原生类型的字典
-    counts = df['Keyword'].value_counts().to_dict()
+    counts = df[keyword_column].value_counts().to_dict()
     return {str(k): int(v) for k, v in counts.items()}
 
 
@@ -58,59 +97,137 @@ def filter_dataframe(
     search_volume_range: Optional[Tuple[float, float]] = None,
     keyword_difficulty_range: Optional[Tuple[float, float]] = None,
     cpc_range: Optional[Tuple[float, float]] = None,
-    keyword_frequency_range: Optional[Tuple[float, float]] = None
+    keyword_frequency_range: Optional[Tuple[float, float]] = None,
+    column_mappings: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
+    """
+    筛选DataFrame，支持动态列名映射
+    """
     if df.empty:
         return df
     
     filtered_df = df.copy()
     
-    # 应用位置过滤
-    if position_range and 'Position' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['Position'] >= position_range[0]) & 
-                                 (filtered_df['Position'] <= position_range[1])]
+    # 获取实际列名，优先使用传入的映射，否则自动查找
+    def get_actual_column(concept: str) -> Optional[str]:
+        if column_mappings and concept in column_mappings:
+            return column_mappings[concept]
+        return find_column_name(df, concept)
     
-    # 应用搜索量过滤
-    if search_volume_range and 'Search Volume' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['Search Volume'] >= search_volume_range[0]) & 
-                                 (filtered_df['Search Volume'] <= search_volume_range[1])]
+    # 应用位置过滤
+    if position_range:
+        position_column = get_actual_column('position')
+        if not position_column and 'Position' in filtered_df.columns:
+            position_column = 'Position'
+        
+        if position_column and position_column in filtered_df.columns:
+            filtered_df = filtered_df[
+                (filtered_df[position_column] >= position_range[0]) & 
+                (filtered_df[position_column] <= position_range[1])
+            ]
+    
+    # 应用搜索量过滤 - 优先使用search_volume，如果没有则使用traffic
+    if search_volume_range:
+        search_volume_column = get_actual_column('search_volume')
+        if not search_volume_column:
+            search_volume_column = get_actual_column('traffic')
+        if not search_volume_column and 'Search Volume' in filtered_df.columns:
+            search_volume_column = 'Search Volume'
+        
+        if search_volume_column and search_volume_column in filtered_df.columns:
+            filtered_df = filtered_df[
+                (filtered_df[search_volume_column] >= search_volume_range[0]) & 
+                (filtered_df[search_volume_column] <= search_volume_range[1])
+            ]
     
     # 应用关键词难度过滤
-    if keyword_difficulty_range and 'Keyword Difficulty' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['Keyword Difficulty'] >= keyword_difficulty_range[0]) & 
-                                 (filtered_df['Keyword Difficulty'] <= keyword_difficulty_range[1])]
+    if keyword_difficulty_range:
+        kd_column = get_actual_column('keyword_difficulty')
+        if not kd_column and 'Keyword Difficulty' in filtered_df.columns:
+            kd_column = 'Keyword Difficulty'
+        
+        if kd_column and kd_column in filtered_df.columns:
+            filtered_df = filtered_df[
+                (filtered_df[kd_column] >= keyword_difficulty_range[0]) & 
+                (filtered_df[kd_column] <= keyword_difficulty_range[1])
+            ]
     
     # 应用CPC过滤
-    if cpc_range and 'CPC' in filtered_df.columns:
-        filtered_df = filtered_df[(filtered_df['CPC'] >= cpc_range[0]) & 
-                                 (filtered_df['CPC'] <= cpc_range[1])]
+    if cpc_range:
+        cpc_column = get_actual_column('cpc')
+        if not cpc_column and 'CPC' in filtered_df.columns:
+            cpc_column = 'CPC'
+        
+        if cpc_column and cpc_column in filtered_df.columns:
+            filtered_df = filtered_df[
+                (filtered_df[cpc_column] >= cpc_range[0]) & 
+                (filtered_df[cpc_column] <= cpc_range[1])
+            ]
     
     # 应用关键词频率过滤
-    if keyword_frequency_range and 'Keyword' in filtered_df.columns:
-        # 计算每个关键词出现的次数
-        keyword_counts = filtered_df['Keyword'].value_counts()
-        # 获取频率在范围内的关键词
-        valid_keywords = keyword_counts[(keyword_counts >= keyword_frequency_range[0]) & 
-                                       (keyword_counts <= keyword_frequency_range[1])].index
-        # 筛选包含这些关键词的行
-        filtered_df = filtered_df[filtered_df['Keyword'].isin(valid_keywords)]
+    if keyword_frequency_range:
+        keyword_column = get_actual_column('keyword')
+        if not keyword_column and 'Keyword' in filtered_df.columns:
+            keyword_column = 'Keyword'
+        
+        if keyword_column and keyword_column in filtered_df.columns:
+            # 计算每个关键词出现的次数
+            keyword_counts = filtered_df[keyword_column].value_counts()
+            # 获取频率在范围内的关键词
+            valid_keywords = keyword_counts[
+                (keyword_counts >= keyword_frequency_range[0]) & 
+                (keyword_counts <= keyword_frequency_range[1])
+            ].index
+            # 筛选包含这些关键词的行
+            filtered_df = filtered_df[filtered_df[keyword_column].isin(valid_keywords)]
     
     return filtered_df
 
 
-def calculate_brand_keyword_overlap(df: pd.DataFrame) -> Dict[str, Dict[str, int]]:
-    if df.empty or 'Keyword' not in df.columns or 'Brand' not in df.columns:
+def calculate_brand_keyword_overlap(
+    df: pd.DataFrame, 
+    column_mappings: Optional[Dict[str, str]] = None
+) -> Dict[str, Dict[str, int]]:
+    """
+    计算品牌关键词重叠，支持动态列名映射
+    """
+    if df.empty:
+        return {}
+    
+    # 获取实际列名
+    keyword_column = None
+    brand_column = None
+    
+    if column_mappings:
+        keyword_column = column_mappings.get('keyword')
+        brand_column = column_mappings.get('brand')
+    else:
+        keyword_column = find_column_name(df, 'keyword')
+        brand_column = find_column_name(df, 'brand')
+    
+    # 回退到原始列名
+    if not keyword_column and 'Keyword' in df.columns:
+        keyword_column = 'Keyword'
+    if not brand_column and 'Brand' in df.columns:
+        brand_column = 'Brand'
+    
+    if not keyword_column or not brand_column:
+        return {}
+    
+    if keyword_column not in df.columns or brand_column not in df.columns:
         return {}
     
     # 移除Brand值为空的行
-    df_with_brand = df[df['Brand'].notna() & (df['Brand'] != '')]
+    df_with_brand = df[df[brand_column].notna() & (df[brand_column] != '')]
     
     # 获取唯一品牌和关键词
-    brands = df_with_brand['Brand'].unique()
+    brands = df_with_brand[brand_column].unique()
     
     # 创建字典存储每个品牌的关键词集合
-    brand_keywords = {str(brand): set(df_with_brand[df_with_brand['Brand'] == brand]['Keyword']) 
-                      for brand in brands}
+    brand_keywords = {
+        str(brand): set(df_with_brand[df_with_brand[brand_column] == brand][keyword_column]) 
+        for brand in brands
+    }
     
     # 计算重叠矩阵
     overlap_matrix = {}
@@ -200,10 +317,13 @@ def calculate_brand_domain_overlap(df: pd.DataFrame) -> Dict[str, Dict[str, int]
 
 
 # ========================================
-# 通用统计分析函数
+# 通用统计分析函数 - 更新版本
 # ========================================
 
-def get_dataframe_stats(df: pd.DataFrame) -> Dict[str, Any]:
+def get_dataframe_stats(df: pd.DataFrame, column_mappings: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+    """
+    获取DataFrame统计信息，支持动态列名映射
+    """
     if df.empty:
         return {
             "total_rows": 0,
@@ -216,23 +336,42 @@ def get_dataframe_stats(df: pd.DataFrame) -> Dict[str, Any]:
             "max_values": {}
         }
     
+    # 获取实际列名
+    def get_actual_column(concept: str) -> Optional[str]:
+        if column_mappings and concept in column_mappings:
+            return column_mappings[concept]
+        return find_column_name(df, concept)
+    
+    keyword_column = get_actual_column('keyword')
+    brand_column = get_actual_column('brand')
+    
+    # 回退到原始列名
+    if not keyword_column and 'Keyword' in df.columns:
+        keyword_column = 'Keyword'
+    if not brand_column and 'Brand' in df.columns:
+        brand_column = 'Brand'
+    
     # 确保返回Python原生类型的值
     stats = {
         "total_rows": int(len(df)),
-        "brands": [str(brand) for brand in df['Brand'].unique().tolist()] if 'Brand' in df.columns else [],
+        "brands": [],
         "min_values": {},
         "max_values": {}
     }
     
-    # 根据DataFrame包含的列添加相应的统计信息
-    if 'Keyword' in df.columns:
-        stats["keyword_count"] = int(df['Keyword'].count())
-        stats["unique_keywords"] = int(df['Keyword'].nunique())
+    # 品牌信息
+    if brand_column and brand_column in df.columns:
+        stats["brands"] = [str(brand) for brand in df[brand_column].unique().tolist() if pd.notna(brand)]
+    
+    # 关键词统计
+    if keyword_column and keyword_column in df.columns:
+        stats["keyword_count"] = int(df[keyword_column].count())
+        stats["unique_keywords"] = int(df[keyword_column].nunique())
     else:
         stats["keyword_count"] = 0
         stats["unique_keywords"] = 0
     
-    # 添加域名统计支持
+    # 域名统计（用于外链分析）
     if 'Domain' in df.columns:
         stats["domain_count"] = int(df['Domain'].count())
         stats["unique_domains"] = int(df['Domain'].nunique())
@@ -256,6 +395,17 @@ def get_dataframe_stats(df: pd.DataFrame) -> Dict[str, Any]:
             # 确保转换为Python原生的float类型
             stats["min_values"][col] = float(df[col].min())
             stats["max_values"][col] = float(df[col].max())
+    
+    # 处理新的列名映射
+    if column_mappings:
+        numeric_concepts = ['position', 'search_volume', 'traffic', 'keyword_difficulty', 'cpc']
+        for concept in numeric_concepts:
+            actual_column = get_actual_column(concept)
+            if actual_column and actual_column in df.columns:
+                # 检查列是否为数值类型
+                if pd.api.types.is_numeric_dtype(df[actual_column]):
+                    stats["min_values"][actual_column] = float(df[actual_column].min())
+                    stats["max_values"][actual_column] = float(df[actual_column].max())
     
     return stats
 
