@@ -1,17 +1,26 @@
 """
-数据处理工具模块 - 完整更新版本
+数据处理工具模块 - 使用Logger的正确版本
 """
 
 import os
 import pandas as pd
 from typing import List, Dict, Any, Tuple, Optional, Set
 import numpy as np
+import logging
 
-# 导入新的列名映射工具
+# 设置日志记录器
+logger = logging.getLogger(__name__)
+
+# 导入新的列名映射工具 - 添加日志记录
 try:
     from app.shared.utils.column_name_utils import find_column_name, find_multiple_column_names
-except ImportError:
-    # 如果导入失败，提供回退机制
+    COLUMN_MAPPING_AVAILABLE = True
+    logger.info("列名映射模块导入成功 - 使用映射方案")
+except ImportError as e:
+    COLUMN_MAPPING_AVAILABLE = False
+    logger.info("列名映射模块导入失败 - 使用回退方案")
+    
+    # 回退版本的列名查找
     def find_column_name(df: pd.DataFrame, concept: str) -> Optional[str]:
         """回退版本的列名查找"""
         concept_mappings = {
@@ -72,17 +81,23 @@ def count_keywords(df: pd.DataFrame, column_mappings: Optional[Dict[str, str]] =
     if df.empty:
         return {}
     
-    # 获取关键词列名
+    # 获取关键词列名 - 添加调试日志
     keyword_column = None
     if column_mappings and 'keyword' in column_mappings:
         keyword_column = column_mappings['keyword']
+        logger.debug(f"关键词计数: 使用传入映射 -> {keyword_column}")
     else:
         keyword_column = find_column_name(df, 'keyword')
+        if COLUMN_MAPPING_AVAILABLE:
+            logger.debug(f"关键词计数: 使用映射方案 -> {keyword_column}")
+        else:
+            logger.debug(f"关键词计数: 使用回退方案 -> {keyword_column}")
     
     if not keyword_column or keyword_column not in df.columns:
         # 回退到原始逻辑
         if 'Keyword' in df.columns:
             keyword_column = 'Keyword'
+            logger.debug(f"关键词计数: 使用硬编码回退 -> {keyword_column}")
         else:
             return {}
     
@@ -101,11 +116,19 @@ def filter_dataframe(
     column_mappings: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
-    筛选DataFrame，支持动态列名映射
+    筛选DataFrame，支持动态列名映射 - 添加状态日志
     """
     if df.empty:
         return df
-    
+
+    # 添加状态日志 - 使用INFO级别确保能看到
+    if column_mappings:
+        logger.info("数据筛选: 使用传入列映射")
+    elif COLUMN_MAPPING_AVAILABLE:
+        logger.info("数据筛选: 使用映射方案")
+    else:
+        logger.info("数据筛选: 使用回退方案")
+
     filtered_df = df.copy()
     
     # 获取实际列名，优先使用传入的映射，否则自动查找
@@ -119,56 +142,82 @@ def filter_dataframe(
         position_column = get_actual_column('position')
         if not position_column and 'Position' in filtered_df.columns:
             position_column = 'Position'
+            logger.debug("位置筛选: 使用硬编码回退 -> Position")
+        elif position_column:
+            logger.debug(f"位置筛选: 使用映射列名 -> {position_column}")
         
         if position_column and position_column in filtered_df.columns:
             filtered_df = filtered_df[
                 (filtered_df[position_column] >= position_range[0]) & 
                 (filtered_df[position_column] <= position_range[1])
             ]
+        else:
+            logger.debug("位置筛选: 跳过 - 未找到对应列")
     
     # 应用搜索量过滤 - 优先使用search_volume，如果没有则使用traffic
     if search_volume_range:
         search_volume_column = get_actual_column('search_volume')
         if not search_volume_column:
             search_volume_column = get_actual_column('traffic')
+            if search_volume_column:
+                logger.debug(f"搜索量筛选: 回退到流量列 -> {search_volume_column}")
+        elif search_volume_column:
+            logger.debug(f"搜索量筛选: 使用搜索量列 -> {search_volume_column}")
+            
         if not search_volume_column and 'Search Volume' in filtered_df.columns:
             search_volume_column = 'Search Volume'
+            logger.debug("搜索量筛选: 使用硬编码回退 -> Search Volume")
         
         if search_volume_column and search_volume_column in filtered_df.columns:
             filtered_df = filtered_df[
                 (filtered_df[search_volume_column] >= search_volume_range[0]) & 
                 (filtered_df[search_volume_column] <= search_volume_range[1])
             ]
+        else:
+            logger.debug("搜索量筛选: 跳过 - 未找到对应列")
     
     # 应用关键词难度过滤
     if keyword_difficulty_range:
         kd_column = get_actual_column('keyword_difficulty')
         if not kd_column and 'Keyword Difficulty' in filtered_df.columns:
             kd_column = 'Keyword Difficulty'
+            logger.debug("关键词难度筛选: 使用硬编码回退 -> Keyword Difficulty")
+        elif kd_column:
+            logger.debug(f"关键词难度筛选: 使用映射列名 -> {kd_column}")
         
         if kd_column and kd_column in filtered_df.columns:
             filtered_df = filtered_df[
                 (filtered_df[kd_column] >= keyword_difficulty_range[0]) & 
                 (filtered_df[kd_column] <= keyword_difficulty_range[1])
             ]
+        else:
+            logger.debug("关键词难度筛选: 跳过 - 未找到对应列")
     
     # 应用CPC过滤
     if cpc_range:
         cpc_column = get_actual_column('cpc')
         if not cpc_column and 'CPC' in filtered_df.columns:
             cpc_column = 'CPC'
+            logger.debug("CPC筛选: 使用硬编码回退 -> CPC")
+        elif cpc_column:
+            logger.debug(f"CPC筛选: 使用映射列名 -> {cpc_column}")
         
         if cpc_column and cpc_column in filtered_df.columns:
             filtered_df = filtered_df[
                 (filtered_df[cpc_column] >= cpc_range[0]) & 
                 (filtered_df[cpc_column] <= cpc_range[1])
             ]
+        else:
+            logger.debug("CPC筛选: 跳过 - 未找到对应列")
     
     # 应用关键词频率过滤
     if keyword_frequency_range:
         keyword_column = get_actual_column('keyword')
         if not keyword_column and 'Keyword' in filtered_df.columns:
             keyword_column = 'Keyword'
+            logger.debug("关键词频率筛选: 使用硬编码回退 -> Keyword")
+        elif keyword_column:
+            logger.debug(f"关键词频率筛选: 使用映射列名 -> {keyword_column}")
         
         if keyword_column and keyword_column in filtered_df.columns:
             # 计算每个关键词出现的次数
@@ -180,6 +229,8 @@ def filter_dataframe(
             ].index
             # 筛选包含这些关键词的行
             filtered_df = filtered_df[filtered_df[keyword_column].isin(valid_keywords)]
+        else:
+            logger.debug("关键词频率筛选: 跳过 - 未找到对应列")
     
     return filtered_df
 
@@ -201,9 +252,14 @@ def calculate_brand_keyword_overlap(
     if column_mappings:
         keyword_column = column_mappings.get('keyword')
         brand_column = column_mappings.get('brand')
+        logger.debug("品牌重叠计算: 使用传入映射")
     else:
         keyword_column = find_column_name(df, 'keyword')
         brand_column = find_column_name(df, 'brand')
+        if COLUMN_MAPPING_AVAILABLE:
+            logger.debug("品牌重叠计算: 使用映射方案")
+        else:
+            logger.debug("品牌重叠计算: 使用回退方案")
     
     # 回退到原始列名
     if not keyword_column and 'Keyword' in df.columns:
@@ -336,7 +392,7 @@ def get_dataframe_stats(df: pd.DataFrame, column_mappings: Optional[Dict[str, st
             "max_values": {}
         }
     
-    # 获取实际列名
+    # 获取实际列名的辅助函数
     def get_actual_column(concept: str) -> Optional[str]:
         if column_mappings and concept in column_mappings:
             return column_mappings[concept]
@@ -350,6 +406,14 @@ def get_dataframe_stats(df: pd.DataFrame, column_mappings: Optional[Dict[str, st
         keyword_column = 'Keyword'
     if not brand_column and 'Brand' in df.columns:
         brand_column = 'Brand'
+    
+    # 记录使用的方案
+    if column_mappings:
+        logger.debug("统计信息: 使用传入映射")
+    elif COLUMN_MAPPING_AVAILABLE:
+        logger.debug("统计信息: 使用映射方案") 
+    else:
+        logger.debug("统计信息: 使用回退方案")
     
     # 确保返回Python原生类型的值
     stats = {
