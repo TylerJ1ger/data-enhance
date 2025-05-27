@@ -2,14 +2,22 @@
 "use client";
 
 import { useState, useEffect } from 'react';
-import { Filter, ChevronDown, ChevronUp } from 'lucide-react';
+import { Filter, ChevronDown, ChevronUp, Info } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider"; // 导入 shadcn UI 的 Slider 组件
+import { Slider } from "@/components/ui/slider";
 import { Separator } from "@/components/ui/separator";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { FilterRanges, FilterRangeValues } from '@/types';
-import { Label } from '@/components/ui/label';
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { FilterRanges, FilterRangeValues, FilterConfigs } from '@/types';
 import { cn } from '@/lib/utils';
 
 interface FilterPanelProps {
@@ -26,39 +34,141 @@ export function FilterPanel({
   disabled = false,
 }: FilterPanelProps) {
   const [isOpen, setIsOpen] = useState(true);
-  const [positionRange, setPositionRange] = useState<[number, number]>(filterRanges.position);
-  const [searchVolumeRange, setSearchVolumeRange] = useState<[number, number]>(filterRanges.search_volume);
-  const [keywordDifficultyRange, setKeywordDifficultyRange] = useState<[number, number]>(filterRanges.keyword_difficulty);
-  const [cpcRange, setCpcRange] = useState<[number, number]>(filterRanges.cpc);
-  const [keywordFrequencyRange, setKeywordFrequencyRange] = useState<[number, number]>(filterRanges.keyword_frequency || [1, 100]);
+  
+  // 筛选配置状态
+  const [filterConfigs, setFilterConfigs] = useState<FilterConfigs>({
+    position: {
+      enabled: true,
+      range: filterRanges.position,
+    },
+    search_volume: {
+      enabled: true,
+      range: filterRanges.search_volume,
+    },
+    keyword_difficulty: {
+      enabled: true,
+      range: filterRanges.keyword_difficulty,
+    },
+    cpc: {
+      enabled: true,
+      range: filterRanges.cpc,
+    },
+    keyword_frequency: {
+      enabled: true,
+      range: filterRanges.keyword_frequency || [1, 100],
+    },
+  });
 
   // Update local state when props change
   useEffect(() => {
-    setPositionRange(filterRanges.position);
-    setSearchVolumeRange(filterRanges.search_volume);
-    setKeywordDifficultyRange(filterRanges.keyword_difficulty);
-    setCpcRange(filterRanges.cpc);
-    if (filterRanges.keyword_frequency) {
-      setKeywordFrequencyRange(filterRanges.keyword_frequency);
-    }
+    setFilterConfigs(prev => ({
+      position: {
+        ...prev.position,
+        range: filterRanges.position,
+      },
+      search_volume: {
+        ...prev.search_volume,
+        range: filterRanges.search_volume,
+      },
+      keyword_difficulty: {
+        ...prev.keyword_difficulty,
+        range: filterRanges.keyword_difficulty,
+      },
+      cpc: {
+        ...prev.cpc,
+        range: filterRanges.cpc,
+      },
+      keyword_frequency: {
+        ...prev.keyword_frequency,
+        range: filterRanges.keyword_frequency || [1, 100],
+      },
+    }));
   }, [filterRanges]);
 
+  // 更新特定筛选项的启用状态
+  const updateFilterEnabled = (filterKey: keyof FilterConfigs, enabled: boolean) => {
+    setFilterConfigs(prev => ({
+      ...prev,
+      [filterKey]: {
+        ...prev[filterKey],
+        enabled,
+      },
+    }));
+  };
+
+  // 更新特定筛选项的范围值
+  const updateFilterRange = (filterKey: keyof FilterConfigs, range: [number, number]) => {
+    setFilterConfigs(prev => ({
+      ...prev,
+      [filterKey]: {
+        ...prev[filterKey],
+        range,
+      },
+    }));
+  };
+
+  // 更新单个范围值（从输入框）
+  const updateSingleRangeValue = (filterKey: keyof FilterConfigs, index: 0 | 1, value: number) => {
+    const currentRange = filterConfigs[filterKey].range;
+    const newRange: [number, number] = [...currentRange] as [number, number];
+    newRange[index] = value;
+    
+    // 确保最小值不大于最大值
+    if (index === 0 && newRange[0] > newRange[1]) {
+      newRange[1] = newRange[0];
+    } else if (index === 1 && newRange[1] < newRange[0]) {
+      newRange[0] = newRange[1];
+    }
+    
+    updateFilterRange(filterKey, newRange);
+  };
+
   const handleApplyFilter = () => {
-    onApplyFilter({
-      position_range: positionRange,
-      search_volume_range: searchVolumeRange,
-      keyword_difficulty_range: keywordDifficultyRange,
-      cpc_range: cpcRange,
-      keyword_frequency_range: keywordFrequencyRange,
-    });
+    const filters: FilterRanges = {};
+    
+    // 只包含启用的筛选项
+    if (filterConfigs.position.enabled) {
+      filters.position_range = filterConfigs.position.range;
+    }
+    if (filterConfigs.search_volume.enabled) {
+      filters.search_volume_range = filterConfigs.search_volume.range;
+    }
+    if (filterConfigs.keyword_difficulty.enabled) {
+      filters.keyword_difficulty_range = filterConfigs.keyword_difficulty.range;
+    }
+    if (filterConfigs.cpc.enabled) {
+      filters.cpc_range = filterConfigs.cpc.range;
+    }
+    if (filterConfigs.keyword_frequency.enabled) {
+      filters.keyword_frequency_range = filterConfigs.keyword_frequency.range;
+    }
+    
+    onApplyFilter(filters);
   };
 
   const handleResetFilters = () => {
-    setPositionRange(filterRanges.position);
-    setSearchVolumeRange(filterRanges.search_volume);
-    setKeywordDifficultyRange(filterRanges.keyword_difficulty);
-    setCpcRange(filterRanges.cpc);
-    setKeywordFrequencyRange(filterRanges.keyword_frequency || [1, 100]);
+    setFilterConfigs({
+      position: {
+        enabled: true,
+        range: filterRanges.position,
+      },
+      search_volume: {
+        enabled: true,
+        range: filterRanges.search_volume,
+      },
+      keyword_difficulty: {
+        enabled: true,
+        range: filterRanges.keyword_difficulty,
+      },
+      cpc: {
+        enabled: true,
+        range: filterRanges.cpc,
+      },
+      keyword_frequency: {
+        enabled: true,
+        range: filterRanges.keyword_frequency || [1, 100],
+      },
+    });
   };
 
   // Format values for display
@@ -73,6 +183,50 @@ export function FilterPanel({
   const formatCPC = (value: number) => `$${value.toFixed(2)}`;
   const formatKeywordFrequency = (value: number) => `${value.toFixed(0)}`;
 
+  // 筛选项配置
+  const filterItems = [
+    {
+      key: 'position' as keyof FilterConfigs,
+      title: '排名位置',
+      formatter: formatPosition,
+      originalRange: filterRanges.position,
+      step: 1,
+      inputType: 'number',
+    },
+    {
+      key: 'search_volume' as keyof FilterConfigs,
+      title: '搜索量',
+      formatter: formatSearchVolume,
+      originalRange: filterRanges.search_volume,
+      step: 1,
+      inputType: 'number',
+    },
+    {
+      key: 'keyword_difficulty' as keyof FilterConfigs,
+      title: '关键词难度',
+      formatter: formatKeywordDifficulty,
+      originalRange: filterRanges.keyword_difficulty,
+      step: 1,
+      inputType: 'number',
+    },
+    {
+      key: 'cpc' as keyof FilterConfigs,
+      title: '点击成本 (CPC)',
+      formatter: formatCPC,
+      originalRange: filterRanges.cpc,
+      step: 0.01,
+      inputType: 'number',
+    },
+    {
+      key: 'keyword_frequency' as keyof FilterConfigs,
+      title: '关键词重复次数',
+      formatter: formatKeywordFrequency,
+      originalRange: filterRanges.keyword_frequency || [1, 100],
+      step: 1,
+      inputType: 'number',
+    },
+  ];
+
   return (
     <Card className="mb-6">
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -82,6 +236,16 @@ export function FilterPanel({
               <div className="flex items-center">
                 <Filter className="mr-2 h-5 w-5 text-primary" />
                 <CardTitle className="text-lg">筛选条件</CardTitle>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Info className="ml-2 h-4 w-4 text-muted-foreground cursor-help" />
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>提示：选中滑杆后可使用键盘左右箭头键进行精确调节</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               <div>
                 {isOpen ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
@@ -92,136 +256,99 @@ export function FilterPanel({
         
         <CollapsibleContent>
           <CardContent className="pt-0 space-y-6">
-            {/* 排名位置 Range Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label className="text-sm font-medium">排名位置</Label>
-                <span className="text-sm text-muted-foreground">
-                  {formatPosition(positionRange[0])} - {formatPosition(positionRange[1])}
-                </span>
-              </div>
-              <Slider 
-                defaultValue={positionRange}
-                value={[positionRange[0], positionRange[1]]}
-                min={filterRanges.position[0]}
-                max={filterRanges.position[1]}
-                step={1}
-                onValueChange={(values) => setPositionRange([values[0], values[1]] as [number, number])}
-                disabled={disabled || isLoading}
-                className="my-2"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{formatPosition(filterRanges.position[0])}</span>
-                <span>{formatPosition(filterRanges.position[1])}</span>
-              </div>
-            </div>
-          
-            <Separator className="my-2" />
+            {filterItems.map((item, index) => {
+              const config = filterConfigs[item.key];
+              const isItemDisabled = disabled || isLoading || !config.enabled;
+              
+              return (
+                <div key={item.key}>
+                  {/* 筛选项标题和开关 */}
+                  <div className="flex items-center justify-between mb-3">
+                    <Label className="text-sm font-medium flex items-center">
+                      <Switch
+                        checked={config.enabled}
+                        onCheckedChange={(checked) => updateFilterEnabled(item.key, checked)}
+                        disabled={disabled || isLoading}
+                        className="mr-2"
+                      />
+                      {item.title}
+                    </Label>
+                    <span className={cn(
+                      "text-sm",
+                      config.enabled ? "text-muted-foreground" : "text-muted-foreground/50"
+                    )}>
+                      {item.formatter(config.range[0])} - {item.formatter(config.range[1])}
+                    </span>
+                  </div>
 
-            {/* 搜索量 Range Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label className="text-sm font-medium">搜索量</Label>
-                <span className="text-sm text-muted-foreground">
-                  {formatSearchVolume(searchVolumeRange[0])} - {formatSearchVolume(searchVolumeRange[1])}
-                </span>
-              </div>
-              <Slider 
-                defaultValue={searchVolumeRange}
-                value={[searchVolumeRange[0], searchVolumeRange[1]]}
-                min={filterRanges.search_volume[0]}
-                max={filterRanges.search_volume[1]}
-                step={1}
-                onValueChange={(values) => setSearchVolumeRange([values[0], values[1]] as [number, number])}
-                disabled={disabled || isLoading}
-                className="my-2"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{formatSearchVolume(filterRanges.search_volume[0])}</span>
-                <span>{formatSearchVolume(filterRanges.search_volume[1])}</span>
-              </div>
-            </div>
-          
-            <Separator className="my-2" />
+                  {/* 滑杆 */}
+                  <Slider 
+                    value={[config.range[0], config.range[1]]}
+                    min={item.originalRange[0]}
+                    max={item.originalRange[1]}
+                    step={item.step}
+                    onValueChange={(values) => updateFilterRange(item.key, [values[0], values[1]] as [number, number])}
+                    disabled={isItemDisabled}
+                    className={cn(
+                      "my-2",
+                      !config.enabled && "opacity-50"
+                    )}
+                  />
 
-            {/* 关键词难度 Range Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label className="text-sm font-medium">关键词难度</Label>
-                <span className="text-sm text-muted-foreground">
-                  {formatKeywordDifficulty(keywordDifficultyRange[0])} - {formatKeywordDifficulty(keywordDifficultyRange[1])}
-                </span>
-              </div>
-              <Slider 
-                defaultValue={keywordDifficultyRange}
-                value={[keywordDifficultyRange[0], keywordDifficultyRange[1]]}
-                min={filterRanges.keyword_difficulty[0]}
-                max={filterRanges.keyword_difficulty[1]}
-                step={1}
-                onValueChange={(values) => setKeywordDifficultyRange([values[0], values[1]] as [number, number])}
-                disabled={disabled || isLoading}
-                className="my-2"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{formatKeywordDifficulty(filterRanges.keyword_difficulty[0])}</span>
-                <span>{formatKeywordDifficulty(filterRanges.keyword_difficulty[1])}</span>
-              </div>
-            </div>
-          
-            <Separator className="my-2" />
+                  {/* 范围显示和输入框 */}
+                  <div className="flex justify-between items-center mt-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-muted-foreground">最小:</span>
+                      <Input
+                        type={item.inputType}
+                        value={config.range[0]}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          if (!isNaN(value)) {
+                            updateSingleRangeValue(item.key, 0, value);
+                          }
+                        }}
+                        disabled={isItemDisabled}
+                        className="w-20 h-7 text-xs"
+                        step={item.step}
+                        min={item.originalRange[0]}
+                        max={item.originalRange[1]}
+                      />
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs text-muted-foreground">最大:</span>
+                      <Input
+                        type={item.inputType}
+                        value={config.range[1]}
+                        onChange={(e) => {
+                          const value = parseFloat(e.target.value);
+                          if (!isNaN(value)) {
+                            updateSingleRangeValue(item.key, 1, value);
+                          }
+                        }}
+                        disabled={isItemDisabled}
+                        className="w-20 h-7 text-xs"
+                        step={item.step}
+                        min={item.originalRange[0]}
+                        max={item.originalRange[1]}
+                      />
+                    </div>
+                  </div>
 
-            {/* 点击成本 Range Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label className="text-sm font-medium">点击成本 (CPC)</Label>
-                <span className="text-sm text-muted-foreground">
-                  {formatCPC(cpcRange[0])} - {formatCPC(cpcRange[1])}
-                </span>
-              </div>
-              <Slider 
-                defaultValue={cpcRange}
-                value={[cpcRange[0], cpcRange[1]]}
-                min={filterRanges.cpc[0]}
-                max={filterRanges.cpc[1]}
-                step={0.01}
-                onValueChange={(values) => setCpcRange([values[0], values[1]] as [number, number])}
-                disabled={disabled || isLoading}
-                className="my-2"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>{formatCPC(filterRanges.cpc[0])}</span>
-                <span>{formatCPC(filterRanges.cpc[1])}</span>
-              </div>
-            </div>
-          
-            <Separator className="my-2" />
-
-            {/* 关键词重复次数 Range Slider */}
-            <div className="space-y-2">
-              <div className="flex justify-between items-center">
-                <Label className="text-sm font-medium">关键词重复次数</Label>
-                <span className="text-sm text-muted-foreground">
-                  {formatKeywordFrequency(keywordFrequencyRange[0])} - {formatKeywordFrequency(keywordFrequencyRange[1])}
-                </span>
-              </div>
-              <Slider 
-                defaultValue={keywordFrequencyRange}
-                value={[keywordFrequencyRange[0], keywordFrequencyRange[1]]}
-                min={1}
-                max={100}
-                step={1}
-                onValueChange={(values) => setKeywordFrequencyRange([values[0], values[1]] as [number, number])}
-                disabled={disabled || isLoading}
-                className="my-2"
-              />
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>1</span>
-                <span>100</span>
-              </div>
-            </div>
+                  {/* 原始范围显示 */}
+                  <div className="flex justify-between text-xs text-muted-foreground mt-1">
+                    <span>{item.formatter(item.originalRange[0])}</span>
+                    <span>{item.formatter(item.originalRange[1])}</span>
+                  </div>
+                  
+                  {index < filterItems.length - 1 && <Separator className="mt-4" />}
+                </div>
+              );
+            })}
             
             {/* 按钮 */}
-            <div className="flex space-x-4 pt-2">
+            <div className="flex space-x-4 pt-4">
               <Button
                 variant="default"
                 onClick={handleApplyFilter}

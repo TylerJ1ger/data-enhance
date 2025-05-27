@@ -92,7 +92,7 @@ SITEMAPS_CONFIG = {
 # =====================================
 # Logging Configuration
 # =====================================
-LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG").upper()
 LOG_FORMAT = os.getenv("LOG_FORMAT", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 LOG_FILE = os.getenv("LOG_FILE", None)  # If None, logs only to console
 ENABLE_REQUEST_LOGGING = os.getenv("ENABLE_REQUEST_LOGGING", "true").lower() == "true"

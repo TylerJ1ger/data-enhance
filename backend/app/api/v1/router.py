@@ -19,7 +19,7 @@ from app.core.backlinks.backlinks_processor import BacklinksProcessor
 from app.core.backlinks.cross_analysis_processor import CrossAnalysisProcessor
 
 # 创建主路由器
-router = APIRouter(prefix="/v1", tags=["API v1"])
+router = APIRouter(tags=["API v1"])
 
 # 设置文件大小限制为 100MB
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB

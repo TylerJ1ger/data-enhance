@@ -23,11 +23,26 @@ export interface UploadResponse {
 
 // 筛选范围
 export interface FilterRanges {
-  position_range?: [number, number];
-  search_volume_range?: [number, number];
-  keyword_difficulty_range?: [number, number];
-  cpc_range?: [number, number];
-  keyword_frequency_range?: [number, number]; // 关键词重复次数范围
+  position_range?: [number, number] | null;
+  search_volume_range?: [number, number] | null;
+  keyword_difficulty_range?: [number, number] | null;
+  cpc_range?: [number, number] | null;
+  keyword_frequency_range?: [number, number] | null;
+}
+
+// 筛选项配置
+export interface FilterConfig {
+  enabled: boolean;
+  range: [number, number];
+}
+
+// 筛选配置对象
+export interface FilterConfigs {
+  position: FilterConfig;
+  search_volume: FilterConfig;
+  keyword_difficulty: FilterConfig;
+  cpc: FilterConfig;
+  keyword_frequency: FilterConfig;
 }
 
 // 筛选响应

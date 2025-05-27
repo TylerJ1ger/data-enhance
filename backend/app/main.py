@@ -5,8 +5,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 import uvicorn
 from starlette.middleware.base import BaseHTTPMiddleware
+import logging
+import sys
 
-from .config import config, is_development, is_production
+from .config import config, is_development, is_production, LOG_LEVEL
 # 导入legacy API路由（保持向后兼容）
 from .api.legacy import router as legacy_api_router
 # 导入新的v1 API路由
@@ -17,6 +19,32 @@ class LargeUploadMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # 这里不检查内容长度，直接放行所有请求
         return await call_next(request)
+
+# 设置日志配置
+def setup_logging():
+    """设置日志配置"""
+    # 创建logs目录
+    logs_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs')
+    if not os.path.exists(logs_dir):
+        os.makedirs(logs_dir)
+    
+    # 设置日志文件路径
+    log_file = os.path.join(logs_dir, 'backend.log')
+    
+    # 配置根日志记录器 - 使用config中的日志级别
+    logging.basicConfig(
+        level=getattr(logging, LOG_LEVEL, logging.INFO),
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            # 文件处理器
+            logging.FileHandler(log_file, encoding='utf-8'),
+            # 控制台处理器（开发模式）
+            logging.StreamHandler(sys.stdout) if is_development() else logging.NullHandler()
+        ]
+    )
+
+# 初始化日志
+setup_logging()
 
 # Create FastAPI app
 app = FastAPI(
