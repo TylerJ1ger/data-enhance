@@ -1,5 +1,5 @@
 """
-数据处理工具模块 - 使用Logger的正确版本
+数据处理工具模块 - 正确修复CPC列名映射问题的完整版本
 """
 
 import os
@@ -13,7 +13,12 @@ logger = logging.getLogger(__name__)
 
 # 导入新的列名映射工具 - 添加日志记录
 try:
-    from app.shared.utils.column_name_utils import find_column_name, find_multiple_column_names
+    from app.shared.utils.column_name_utils import (
+        find_column_name, 
+        find_multiple_column_names, 
+        get_standardized_column_mapping,
+        KEYWORD_COLUMN_MAPPINGS
+    )
     COLUMN_MAPPING_AVAILABLE = True
     logger.info("列名映射模块导入成功 - 使用映射方案")
 except ImportError as e:
@@ -30,7 +35,7 @@ except ImportError as e:
             'position': ['Position'],
             'url': ['URL'],
             'keyword_difficulty': ['Keyword Difficulty'],
-            'cpc': ['CPC']
+            'cpc': ['CPC', 'CPC (USD)']
         }
         for col_name in concept_mappings.get(concept, []):
             if col_name in df.columns:
@@ -40,6 +45,24 @@ except ImportError as e:
     def find_multiple_column_names(df: pd.DataFrame, concepts: List[str]) -> Dict[str, Optional[str]]:
         """回退版本的多列名查找"""
         return {concept: find_column_name(df, concept) for concept in concepts}
+
+    def get_standardized_column_mapping(df: pd.DataFrame, mappings: Dict[str, List[str]] = None) -> Dict[str, str]:
+        """回退版本的标准化映射"""
+        return {}
+
+    # 提供回退版本的KEYWORD_COLUMN_MAPPINGS
+    KEYWORD_COLUMN_MAPPINGS = {
+        'traffic': ['Traffic'],
+        'keyword': ['Keyword', 'Keywords'],
+        'brand': ['Brand'],
+        'position': ['Position'],
+        'url': ['URL', 'Link', 'Landing Page', '链接', 'Page URL', 'Target URL'],
+        'keyword_difficulty': ['Keyword Difficulty', 'DIFF', '关键词难度', 'SEO Difficulty'],
+        'cpc': ['CPC', 'CPC (USD)', 'Cost Per Click', '点击成本', 'Cost', 'Avg CPC', 'Average CPC'],
+        'search_volume': ['Search Volume', 'Volume', 'Monthly Searches', '搜索量', 'Searches'],
+        'ctr': ['CTR', 'Click Through Rate', '点击率', 'Click Rate'],
+        'traffic_estimate': ['Traffic Estimate', 'Estimated Traffic', '流量估算', 'Est. Traffic']
+    }
 
 
 # ========================================
@@ -60,15 +83,92 @@ def read_file(file_path: str) -> pd.DataFrame:
         raise ValueError(f"Unsupported file format: {file_path}")
 
 
+def standardize_dataframe_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    标准化单个DataFrame的列名，将不同的列名变体重命名为标准名称
+    这是修复CPC列名冲突问题的核心函数
+    
+    Args:
+        df: 原始DataFrame
+        
+    Returns:
+        列名标准化后的DataFrame
+    """
+    if df.empty:
+        return df
+    
+    # 创建标准化后的DataFrame副本
+    standardized_df = df.copy()
+    
+    # 创建重命名映射字典
+    rename_mapping = {}
+    
+    # 为每个概念找到最佳的标准列名
+    for concept, possible_names in KEYWORD_COLUMN_MAPPINGS.items():
+        # 查找当前DataFrame中存在的列名
+        found_columns = [col for col in possible_names if col in df.columns]
+        
+        if len(found_columns) > 0:
+            # 使用第一个匹配的列名作为标准名称
+            standard_name = found_columns[0]
+            
+            # 如果有多个列匹配同一概念，将其他列重命名为标准名称
+            for i, col in enumerate(found_columns):
+                if i == 0:
+                    # 第一个列保持为标准名称
+                    continue
+                else:
+                    # 其他列需要重命名，但由于同一DataFrame中不能有相同列名
+                    # 这种情况实际上很少见，我们记录警告
+                    logger.warning(f"DataFrame中发现同概念的多个列: {found_columns}，将忽略 {col}")
+            
+            # 检查是否需要重命名（如果当前列名不是首选的标准名称）
+            for col in found_columns:
+                if col != possible_names[0]:  # 如果不是首选标准名称
+                    rename_mapping[col] = possible_names[0]
+                    logger.info(f"列名标准化: {col} -> {possible_names[0]}")
+    
+    # 应用重命名
+    if rename_mapping:
+        standardized_df = standardized_df.rename(columns=rename_mapping)
+        logger.info(f"应用列名重命名: {rename_mapping}")
+    
+    return standardized_df
+
+
 def merge_dataframes(dataframes: List[pd.DataFrame]) -> pd.DataFrame:
+    """
+    合并多个DataFrame，在合并前先标准化每个DataFrame的列名
+    
+    Args:
+        dataframes: 要合并的DataFrame列表
+        
+    Returns:
+        合并并标准化后的DataFrame
+    """
     if not dataframes:
         return pd.DataFrame()
     
-    # 连接所有DataFrame
-    merged_df = pd.concat(dataframes, ignore_index=True)
+    # 首先标准化每个DataFrame的列名
+    standardized_dfs = []
+    for i, df in enumerate(dataframes):
+        logger.debug(f"标准化第 {i+1} 个DataFrame的列名")
+        logger.debug(f"原始列名: {list(df.columns)}")
+        
+        standardized_df = standardize_dataframe_columns(df)
+        
+        logger.debug(f"标准化后列名: {list(standardized_df.columns)}")
+        standardized_dfs.append(standardized_df)
+    
+    # 连接所有标准化后的DataFrame
+    merged_df = pd.concat(standardized_dfs, ignore_index=True)
     
     # 基于所有列去除重复行
     merged_df = merged_df.drop_duplicates()
+    
+    logger.info(f"成功合并 {len(dataframes)} 个DataFrame")
+    logger.info(f"最终列名: {list(merged_df.columns)}")
+    logger.info(f"最终数据形状: {merged_df.shape}")
     
     return merged_df
 
@@ -116,7 +216,7 @@ def filter_dataframe(
     column_mappings: Optional[Dict[str, str]] = None
 ) -> pd.DataFrame:
     """
-    筛选DataFrame，支持动态列名映射 - 添加状态日志
+    筛选DataFrame，支持动态列名映射 - 修复CPC筛选问题
     """
     if df.empty:
         return df
@@ -130,6 +230,9 @@ def filter_dataframe(
         logger.info("数据筛选: 使用回退方案")
 
     filtered_df = df.copy()
+    
+    # 记录筛选前的状态
+    logger.debug(f"筛选前数据状态: 行数={len(filtered_df)}, 列名={list(filtered_df.columns)}")
     
     # 获取实际列名，优先使用传入的映射，否则自动查找
     def get_actual_column(concept: str) -> Optional[str]:
@@ -147,10 +250,14 @@ def filter_dataframe(
             logger.debug(f"位置筛选: 使用映射列名 -> {position_column}")
         
         if position_column and position_column in filtered_df.columns:
+            # 确保数值类型处理
+            numeric_mask = pd.to_numeric(filtered_df[position_column], errors='coerce').notna()
             filtered_df = filtered_df[
-                (filtered_df[position_column] >= position_range[0]) & 
-                (filtered_df[position_column] <= position_range[1])
+                numeric_mask &
+                (pd.to_numeric(filtered_df[position_column], errors='coerce') >= position_range[0]) & 
+                (pd.to_numeric(filtered_df[position_column], errors='coerce') <= position_range[1])
             ]
+            logger.debug(f"位置筛选后: {len(filtered_df)} 行")
         else:
             logger.debug("位置筛选: 跳过 - 未找到对应列")
     
@@ -169,10 +276,14 @@ def filter_dataframe(
             logger.debug("搜索量筛选: 使用硬编码回退 -> Search Volume")
         
         if search_volume_column and search_volume_column in filtered_df.columns:
+            # 确保数值类型处理
+            numeric_mask = pd.to_numeric(filtered_df[search_volume_column], errors='coerce').notna()
             filtered_df = filtered_df[
-                (filtered_df[search_volume_column] >= search_volume_range[0]) & 
-                (filtered_df[search_volume_column] <= search_volume_range[1])
+                numeric_mask &
+                (pd.to_numeric(filtered_df[search_volume_column], errors='coerce') >= search_volume_range[0]) & 
+                (pd.to_numeric(filtered_df[search_volume_column], errors='coerce') <= search_volume_range[1])
             ]
+            logger.debug(f"搜索量筛选后: {len(filtered_df)} 行")
         else:
             logger.debug("搜索量筛选: 跳过 - 未找到对应列")
     
@@ -186,14 +297,18 @@ def filter_dataframe(
             logger.debug(f"关键词难度筛选: 使用映射列名 -> {kd_column}")
         
         if kd_column and kd_column in filtered_df.columns:
+            # 确保数值类型处理
+            numeric_mask = pd.to_numeric(filtered_df[kd_column], errors='coerce').notna()
             filtered_df = filtered_df[
-                (filtered_df[kd_column] >= keyword_difficulty_range[0]) & 
-                (filtered_df[kd_column] <= keyword_difficulty_range[1])
+                numeric_mask &
+                (pd.to_numeric(filtered_df[kd_column], errors='coerce') >= keyword_difficulty_range[0]) & 
+                (pd.to_numeric(filtered_df[kd_column], errors='coerce') <= keyword_difficulty_range[1])
             ]
+            logger.debug(f"关键词难度筛选后: {len(filtered_df)} 行")
         else:
             logger.debug("关键词难度筛选: 跳过 - 未找到对应列")
     
-    # 应用CPC过滤
+    # 应用CPC过滤 - 这里是关键修复点
     if cpc_range:
         cpc_column = get_actual_column('cpc')
         if not cpc_column and 'CPC' in filtered_df.columns:
@@ -203,10 +318,34 @@ def filter_dataframe(
             logger.debug(f"CPC筛选: 使用映射列名 -> {cpc_column}")
         
         if cpc_column and cpc_column in filtered_df.columns:
+            # 记录筛选前的数据状态
+            logger.debug(f"CPC筛选前数据量: {len(filtered_df)}")
+            
+            # 检查CPC列的数据情况
+            cpc_data = filtered_df[cpc_column]
+            logger.debug(f"CPC列数据类型: {cpc_data.dtype}")
+            logger.debug(f"CPC列非空数据量: {cpc_data.notna().sum()}")
+            logger.debug(f"CPC列数据范围: {cpc_data.min()} - {cpc_data.max()}")
+            
+            # 确保CPC列中的数据是数值类型，处理可能的字符串或空值
+            numeric_mask = pd.to_numeric(filtered_df[cpc_column], errors='coerce').notna()
+            cpc_values = pd.to_numeric(filtered_df[cpc_column], errors='coerce')
+            
+            logger.debug(f"CPC数值转换后非空数据量: {numeric_mask.sum()}")
+            
+            # 应用CPC范围筛选
             filtered_df = filtered_df[
-                (filtered_df[cpc_column] >= cpc_range[0]) & 
-                (filtered_df[cpc_column] <= cpc_range[1])
+                numeric_mask & 
+                (cpc_values >= cpc_range[0]) & 
+                (cpc_values <= cpc_range[1])
             ]
+            
+            logger.debug(f"CPC筛选后数据量: {len(filtered_df)}")
+            
+            # 记录品牌分布以帮助调试
+            if len(filtered_df) > 0 and 'Brand' in filtered_df.columns:
+                brand_counts = filtered_df['Brand'].value_counts()
+                logger.debug(f"CPC筛选后品牌分布: {dict(brand_counts)}")
         else:
             logger.debug("CPC筛选: 跳过 - 未找到对应列")
     
@@ -229,9 +368,11 @@ def filter_dataframe(
             ].index
             # 筛选包含这些关键词的行
             filtered_df = filtered_df[filtered_df[keyword_column].isin(valid_keywords)]
+            logger.debug(f"关键词频率筛选后: {len(filtered_df)} 行")
         else:
             logger.debug("关键词频率筛选: 跳过 - 未找到对应列")
     
+    logger.info(f"筛选完成: {len(df)} -> {len(filtered_df)} 行")
     return filtered_df
 
 
@@ -449,16 +590,20 @@ def get_dataframe_stats(df: pd.DataFrame, column_mappings: Optional[Dict[str, st
     for col in keyword_columns:
         if col in df.columns:
             # 确保转换为Python原生的float类型
-            stats["min_values"][col] = float(df[col].min())
-            stats["max_values"][col] = float(df[col].max())
+            numeric_series = pd.to_numeric(df[col], errors='coerce')
+            if not numeric_series.isna().all():
+                stats["min_values"][col] = float(numeric_series.min())
+                stats["max_values"][col] = float(numeric_series.max())
     
     # 域名相关列
     domain_columns = ['Domain ascore', 'Backlinks']
     for col in domain_columns:
         if col in df.columns:
             # 确保转换为Python原生的float类型
-            stats["min_values"][col] = float(df[col].min())
-            stats["max_values"][col] = float(df[col].max())
+            numeric_series = pd.to_numeric(df[col], errors='coerce')
+            if not numeric_series.isna().all():
+                stats["min_values"][col] = float(numeric_series.min())
+                stats["max_values"][col] = float(numeric_series.max())
     
     # 处理新的列名映射
     if column_mappings:
@@ -467,9 +612,10 @@ def get_dataframe_stats(df: pd.DataFrame, column_mappings: Optional[Dict[str, st
             actual_column = get_actual_column(concept)
             if actual_column and actual_column in df.columns:
                 # 检查列是否为数值类型
-                if pd.api.types.is_numeric_dtype(df[actual_column]):
-                    stats["min_values"][actual_column] = float(df[actual_column].min())
-                    stats["max_values"][actual_column] = float(df[actual_column].max())
+                numeric_series = pd.to_numeric(df[actual_column], errors='coerce')
+                if not numeric_series.isna().all():
+                    stats["min_values"][actual_column] = float(numeric_series.min())
+                    stats["max_values"][actual_column] = float(numeric_series.max())
     
     return stats
 
