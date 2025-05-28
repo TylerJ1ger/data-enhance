@@ -115,108 +115,6 @@ export function OrderGenerator({
     return 0;
   };
 
-  // 日期范围选择器组件
-  const DateRangePicker = () => (
-    <div className="space-y-3">
-      <Label className="text-sm font-medium">订单时间范围</Label>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {/* 开始日期 */}
-        <div className="space-y-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-full justify-start text-left font-normal",
-                  !dateRange.startDate && "text-muted-foreground"
-                )}
-                disabled={disabled || isGenerating}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateRange.startDate ? (
-                  formatDateDisplay(dateRange.startDate)
-                ) : (
-                  <span>选择开始日期</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={dateRange.startDate}
-                onSelect={(date) => {
-                  setDateRange(prev => ({ ...prev, startDate: date }));
-                  // Clear error when date is selected
-                  if (error) setError('');
-                }}
-                disabled={(date) => {
-                  // 修复：确保总是返回 boolean
-                  const today = new Date();
-                  if (date > today) return true;
-                  if (dateRange.endDate && date >= dateRange.endDate) return true;
-                  return false;
-                }}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-          <Label className="text-xs text-muted-foreground">开始日期</Label>
-        </div>
-
-        {/* 结束日期 */}
-        <div className="space-y-2">
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  "w-full justify-start text-left font-normal",
-                  !dateRange.endDate && "text-muted-foreground"
-                )}
-                disabled={disabled || isGenerating}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {dateRange.endDate ? (
-                  formatDateDisplay(dateRange.endDate)
-                ) : (
-                  <span>选择结束日期</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={dateRange.endDate}
-                onSelect={(date) => {
-                  setDateRange(prev => ({ ...prev, endDate: date }));
-                  // Clear error when date is selected
-                  if (error) setError('');
-                }}
-                disabled={(date) => {
-                  // 修复：确保总是返回 boolean
-                  const today = new Date();
-                  if (date > today) return true;
-                  if (dateRange.startDate && date <= dateRange.startDate) return true;
-                  return false;
-                }}
-                initialFocus
-              />
-            </PopoverContent>
-          </Popover>
-          <Label className="text-xs text-muted-foreground">结束日期</Label>
-        </div>
-      </div>
-      
-      {/* 日期范围提示 */}
-      {dateRange.startDate && dateRange.endDate && (
-        <div className="text-xs text-muted-foreground bg-muted/50 rounded p-2">
-          将生成从 {formatDateDisplay(dateRange.startDate)} 到 {formatDateDisplay(dateRange.endDate)} 期间的订单数据
-          （共 {calculateDaysDiff()} 天）
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <Card>
       <CardHeader>
@@ -230,13 +128,12 @@ export function OrderGenerator({
       </CardHeader>
       <CardContent className="space-y-6">
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* 优化的响应式布局 - 修复大屏幕布局问题 */}
+          {/* 🔧 优化后的响应式布局 */}
           <div className="w-full max-w-5xl mx-auto">
-            {/* 在小屏幕到中等屏幕：垂直布局 */}
-            {/* 在大屏幕：2列布局，左侧占2/3，右侧占1/3 */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              {/* 左侧内容区域 - 在大屏幕占2列 */}
-              <div className="xl:col-span-2 space-y-6">
+            {/* 主要内容区域 */}
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
+              {/* 左侧表单区域 - 在大屏幕占3列 */}
+              <div className="xl:col-span-3 space-y-6">
                 {/* 数据条数和日期范围 - 在中等屏幕以上并排 */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* 数据条数设置 */}
@@ -282,55 +179,147 @@ export function OrderGenerator({
                     </div>
                   </div>
                   
-                  {/* 日期范围设置 */}
-                  <div>
-                    <DateRangePicker />
+                  {/* 🔧 日期范围设置 + 生成按钮 */}
+                  <div className="space-y-4 flex flex-col justify-between">
+                    {/* 日期范围选择器 */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">订单时间范围</Label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* 开始日期 */}
+                        <div className="space-y-2">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !dateRange.startDate && "text-muted-foreground"
+                                )}
+                                disabled={disabled || isGenerating}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {dateRange.startDate ? (
+                                  formatDateDisplay(dateRange.startDate)
+                                ) : (
+                                  <span>选择开始日期</span>
+                                )}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={dateRange.startDate}
+                                onSelect={(date) => {
+                                  setDateRange(prev => ({ ...prev, startDate: date }));
+                                  // Clear error when date is selected
+                                  if (error) setError('');
+                                }}
+                                disabled={(date) => {
+                                  // 修复：确保总是返回 boolean
+                                  const today = new Date();
+                                  if (date > today) return true;
+                                  if (dateRange.endDate && date >= dateRange.endDate) return true;
+                                  return false;
+                                }}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <Label className="text-xs text-muted-foreground">开始日期</Label>
+                        </div>
+
+                        {/* 结束日期 */}
+                        <div className="space-y-2">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="outline"
+                                className={cn(
+                                  "w-full justify-start text-left font-normal",
+                                  !dateRange.endDate && "text-muted-foreground"
+                                )}
+                                disabled={disabled || isGenerating}
+                              >
+                                <CalendarIcon className="mr-2 h-4 w-4" />
+                                {dateRange.endDate ? (
+                                  formatDateDisplay(dateRange.endDate)
+                                ) : (
+                                  <span>选择结束日期</span>
+                                )}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                              <Calendar
+                                mode="single"
+                                selected={dateRange.endDate}
+                                onSelect={(date) => {
+                                  setDateRange(prev => ({ ...prev, endDate: date }));
+                                  // Clear error when date is selected
+                                  if (error) setError('');
+                                }}
+                                disabled={(date) => {
+                                  // 修复：确保总是返回 boolean
+                                  const today = new Date();
+                                  if (date > today) return true;
+                                  if (dateRange.startDate && date <= dateRange.startDate) return true;
+                                  return false;
+                                }}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <Label className="text-xs text-muted-foreground">结束日期</Label>
+                        </div>
+                      </div>
+                      
+                      {/* 🔧 已删除：日期范围提示文字 */}
+                    </div>
+
+                    {/* 🔧 新位置：生成按钮位于日期范围选择器下方 */}
+                    <div className="space-y-3">
+                      <Button
+                        type="submit"
+                        disabled={disabled || isGenerating || count <= 0}
+                        className="w-full gap-2 h-12"
+                        size="lg"
+                      >
+                        {isGenerating ? (
+                          <>
+                            <Loader className="h-5 w-5 animate-spin" />
+                            生成中...
+                          </>
+                        ) : (
+                          <>
+                            <Plus className="h-5 w-5" />
+                            生成虚拟数据
+                          </>
+                        )}
+                      </Button>
+
+                      {/* 生成进度提示 */}
+                      {isGenerating && (
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">
+                            正在生成 {count.toLocaleString()} 条订单数据...
+                          </p>
+                          {dateRange.startDate && dateRange.endDate && (
+                            <p className="text-sm text-muted-foreground">
+                              时间范围：{formatDateDisplay(dateRange.startDate)} - {formatDateDisplay(dateRange.endDate)}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
               
-              {/* 右侧操作区域 - 在大屏幕占1列 */}
-              <div className="xl:col-span-1">
+              {/* 右侧信息区域 - 在大屏幕占1列 */}
+              <div className="xl:col-span-1 bg-secondary/50 border border-secondary rounded-lg">
                 <div className="space-y-4 xl:sticky xl:top-6">
-                  {/* 生成按钮 */}
-                  <div className="space-y-3">
-                    <Button
-                      type="submit"
-                      disabled={disabled || isGenerating || count <= 0}
-                      className="w-full gap-2 h-12"
-                      size="lg"
-                    >
-                      {isGenerating ? (
-                        <>
-                          <Loader className="h-5 w-5 animate-spin" />
-                          生成中...
-                        </>
-                      ) : (
-                        <>
-                          <Plus className="h-5 w-5" />
-                          生成虚拟数据
-                        </>
-                      )}
-                    </Button>
-
-                    {/* 生成进度提示 */}
-                    {isGenerating && (
-                      <div className="text-center space-y-1">
-                        <p className="text-xs text-muted-foreground">
-                          正在生成 {count.toLocaleString()} 条订单数据...
-                        </p>
-                        {dateRange.startDate && dateRange.endDate && (
-                          <p className="text-xs text-muted-foreground">
-                            时间范围：{formatDateDisplay(dateRange.startDate)} - {formatDateDisplay(dateRange.endDate)}
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* 快速设置摘要 */}
+                  {/* 设置摘要 */}
                   {!isGenerating && (
-                    <div className="w-full bg-secondary/50 border border-secondary rounded-lg p-4 space-y-3">
+                    <div className="w-full p-4 space-y-3">
                       <h4 className="font-medium text-sm text-foreground">当前设置</h4>
                       <div className="space-y-2">
                         <div className="flex justify-between items-center">
