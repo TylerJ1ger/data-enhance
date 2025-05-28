@@ -13,7 +13,7 @@ import { useOrdersApi } from "@/hooks/use-orders-api";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import type { OrderFilterRequest } from '@/types';
+import type { OrderFilterRequest, DateRange } from '@/types';
 
 export default function OrdersPage() {
   const [showGenerator, setShowGenerator] = useState(true);
@@ -35,9 +35,9 @@ export default function OrdersPage() {
     resetData,
   } = useOrdersApi();
 
-  const handleGenerateData = async (count: number) => {
+  const handleGenerateData = async (count: number, dateRange: DateRange) => {
     try {
-      await generateVirtualData(count);
+      await generateVirtualData(count, dateRange);
       setShowGenerator(false);
     } catch (error) {
       console.error('Error generating virtual order data:', error);
@@ -70,7 +70,7 @@ export default function OrdersPage() {
         <div>
           <h1 className="text-3xl font-bold text-foreground">虚拟订单分析</h1>
           <p className="text-muted-foreground mt-1">
-            生成虚拟订单数据进行业务分析和可视化展示
+            生成虚拟订单数据进行业务分析和可视化展示，支持自定义时间范围
           </p>
         </div>
         {/* 添加v1 API指示 */}
@@ -170,6 +170,11 @@ export default function OrdersPage() {
                   {summary.last_generation_params.count && 
                     `（最后生成 ${summary.last_generation_params.count} 条）`
                   }
+                  {summary.last_generation_params.date_range && (
+                    <span>
+                      ，时间范围：{summary.last_generation_params.date_range.start_date} 至 {summary.last_generation_params.date_range.end_date}
+                    </span>
+                  )}
                 </AlertDescription>
               </Alert>
             )}

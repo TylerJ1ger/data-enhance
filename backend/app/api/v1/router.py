@@ -9,7 +9,8 @@ from fastapi.responses import StreamingResponse
 import io
 import json
 import xml.etree.ElementTree as ET
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
+from datetime import datetime
 
 # 导入重构后的处理器
 from app.core.keywords.keywords_processor import KeywordsProcessor
@@ -75,8 +76,52 @@ class CrossAnalysisExportRequest(BaseModel):
     comparison_data: Optional[Dict[str, Any]] = None
 
 class VirtualDataGenerateRequest(BaseModel):
-    """虚拟数据生成请求模型"""
+    """虚拟数据生成请求模型 - 支持自定义日期范围"""
     count: int = 100
+    date_range: Optional[Dict[str, str]] = None  # {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}
+    
+    @validator('count')
+    def validate_count(cls, v):
+        """验证订单数量"""
+        if v <= 0:
+            raise ValueError('数据条数必须大于0')
+        if v > 10000:
+            raise ValueError('数据条数不能超过10000')
+        return v
+    
+    @validator('date_range')
+    def validate_date_range(cls, v):
+        """验证日期范围"""
+        if v is None:
+            return v
+        
+        if not isinstance(v, dict):
+            raise ValueError('日期范围必须是字典格式')
+        
+        if 'start_date' not in v or 'end_date' not in v:
+            raise ValueError('日期范围必须包含 start_date 和 end_date')
+        
+        try:
+            start_date = datetime.strptime(v['start_date'], '%Y-%m-%d')
+            end_date = datetime.strptime(v['end_date'], '%Y-%m-%d')
+        except ValueError:
+            raise ValueError('日期格式必须为 YYYY-MM-DD')
+        
+        if start_date >= end_date:
+            raise ValueError('结束日期必须晚于开始日期')
+        
+        # 限制日期范围最大为365天
+        if (end_date - start_date).days > 365:
+            raise ValueError('日期范围不能超过365天')
+        
+        # 检查日期是否在合理范围内
+        min_date = datetime(2020, 1, 1)
+        max_date = datetime(2030, 12, 31)
+        
+        if start_date < min_date or end_date > max_date:
+            raise ValueError(f'日期必须在 {min_date.strftime("%Y-%m-%d")} 到 {max_date.strftime("%Y-%m-%d")} 之间')
+        
+        return v
 
 class OrderFilterRequest(BaseModel):
     """订单筛选请求模型"""
@@ -552,24 +597,27 @@ async def export_filtered_sitemaps_urls(format: str = "csv"):
 @router.post("/orders/generate", tags=["Orders"])
 async def generate_virtual_orders(request: VirtualDataGenerateRequest):
     """
-    生成虚拟订单数据
+    生成虚拟订单数据 - 支持自定义日期范围
     """
     try:
-        if request.count <= 0 or request.count > 10000:
-            raise HTTPException(
-                status_code=400, 
-                detail="数据条数必须在1到10000之间"
-            )
-        
-        result = orders_processor.generate_virtual_data(request.count)
+        result = orders_processor.generate_virtual_data(
+            count=request.count,
+            date_range=request.date_range
+        )
         
         if not result["success"]:
             raise HTTPException(
-                status_code=500,
+                status_code=400,
                 detail=result.get("message", "生成虚拟数据失败")
             )
         
         return result
+    except ValueError as e:
+        # 处理Pydantic验证错误
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
     except HTTPException:
         raise
     except Exception as e:

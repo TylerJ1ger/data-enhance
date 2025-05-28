@@ -10,6 +10,7 @@ import {
   OrderFilterRanges,
   OrderSummary,
   OrderStats,
+  DateRange,
 } from '@/types/index';
 
 export function useOrdersApi() {
@@ -41,11 +42,20 @@ export function useOrdersApi() {
     checkApiHealth();
   }, []);
 
-  // 生成虚拟订单数据
-  const generateVirtualData = useCallback(async (count: number) => {
+  // 生成虚拟订单数据 - 支持日期范围
+  const generateVirtualData = useCallback(async (count: number, dateRange?: DateRange) => {
     setIsGenerating(true);
     try {
-      const data = await ordersApi.generateVirtualOrders(count);
+      // 验证日期范围（如果提供了的话）
+      if (dateRange) {
+        const validation = ordersApi.validateDateRange(dateRange.startDate, dateRange.endDate);
+        if (!validation.valid) {
+          toast.error(validation.message);
+          return;
+        }
+      }
+
+      const data = await ordersApi.generateVirtualOrders(count, dateRange);
       
       if (data.success) {
         setOrderStats(data.stats);

@@ -1,5 +1,5 @@
 """
-订单数据处理器 - 修复numpy类型序列化问题
+订单数据处理器 - 支持自定义日期范围和完整功能
 backend/app/core/orders/orders_processor.py
 """
 
@@ -38,8 +38,45 @@ class OrdersProcessor:
         else:
             return data
     
-    def generate_virtual_data(self, count: int) -> Dict[str, Any]:
-        """生成虚拟订单数据"""
+    def _parse_date_range(self, date_range_dict: Dict[str, str]) -> Tuple[datetime, datetime]:
+        """
+        解析日期范围字典为datetime对象
+        
+        Args:
+            date_range_dict: 包含start_date和end_date的字典
+            
+        Returns:
+            (start_date, end_date) datetime元组
+        """
+        try:
+            start_date_str = date_range_dict.get("start_date")
+            end_date_str = date_range_dict.get("end_date")
+            
+            if not start_date_str or not end_date_str:
+                raise ValueError("缺少开始日期或结束日期")
+            
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+            end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+            
+            return start_date, end_date
+        except ValueError as e:
+            raise ValueError(f"日期格式错误: {str(e)}")
+    
+    def generate_virtual_data(
+        self, 
+        count: int, 
+        date_range: Optional[Dict[str, str]] = None
+    ) -> Dict[str, Any]:
+        """
+        生成虚拟订单数据 - 支持自定义日期范围
+        
+        Args:
+            count: 要生成的订单数量
+            date_range: 可选的日期范围字典 {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}
+            
+        Returns:
+            生成结果字典
+        """
         try:
             # 验证输入参数
             if count <= 0:
@@ -54,12 +91,40 @@ class OrdersProcessor:
                     "message": "数据条数不能超过10000"
                 }
             
+            # 处理日期范围
+            start_date = None
+            end_date = None
+            
+            if date_range:
+                try:
+                    start_date, end_date = self._parse_date_range(date_range)
+                    
+                    # 验证日期范围
+                    validation = self.generator.validate_date_range(start_date, end_date)
+                    if not validation["valid"]:
+                        return {
+                            "success": False,
+                            "message": f"日期范围验证失败: {'; '.join(validation['errors'])}"
+                        }
+                except ValueError as e:
+                    return {
+                        "success": False,
+                        "message": str(e)
+                    }
+            
             # 生成数据
-            self.data = self.generator.generate_orders_batch(count)
+            self.data = self.generator.generate_orders_batch(
+                count=count,
+                start_date=start_date,
+                end_date=end_date
+            )
             self.filtered_data = self.data.copy()
             
             # 保存生成参数
-            self._last_generation_params = {"count": count}
+            self._last_generation_params = {
+                "count": count,
+                "date_range": date_range
+            }
             
             # 获取统计信息
             stats = self.generator.get_generation_stats(self.data)
@@ -67,11 +132,16 @@ class OrdersProcessor:
             # 确保所有数据都是JSON可序列化的
             serializable_stats = self._ensure_json_serializable(stats)
             
+            # 构建成功消息
+            message = f"成功生成 {len(self.data)} 条虚拟订单数据"
+            if date_range:
+                message += f"，时间范围：{date_range['start_date']} 至 {date_range['end_date']}"
+            
             return {
                 "success": True,
                 "generated_count": len(self.data),
                 "stats": serializable_stats,
-                "message": f"成功生成 {len(self.data)} 条虚拟订单数据"
+                "message": message
             }
         except Exception as e:
             return {
@@ -530,4 +600,91 @@ class OrdersProcessor:
                 "issues": [f"验证过程中发生错误: {str(e)}"],
                 "total_records": int(len(self.data)),
                 "validation_time": datetime.now().isoformat()
+            }
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """获取性能指标（新增功能）"""
+        try:
+            import psutil
+            import os
+            
+            # 内存使用情况
+            process = psutil.Process(os.getpid())
+            memory_info = process.memory_info()
+            
+            # 数据大小估算
+            data_size = 0
+            filtered_data_size = 0
+            
+            if not self.data.empty:
+                data_size = self.data.memory_usage(deep=True).sum()
+            
+            if not self.filtered_data.empty:
+                filtered_data_size = self.filtered_data.memory_usage(deep=True).sum()
+            
+            return {
+                "memory": {
+                    "rss": int(memory_info.rss),  # 物理内存使用
+                    "vms": int(memory_info.vms),  # 虚拟内存使用
+                    "data_memory": int(data_size),  # 数据占用内存
+                    "filtered_data_memory": int(filtered_data_size)  # 筛选后数据占用内存
+                },
+                "data": {
+                    "total_rows": int(len(self.data)) if not self.data.empty else 0,
+                    "filtered_rows": int(len(self.filtered_data)) if not self.filtered_data.empty else 0,
+                    "columns": len(self.data.columns) if not self.data.empty else 0,
+                    "data_types": {col: str(dtype) for col, dtype in self.data.dtypes.items()} if not self.data.empty else {}
+                },
+                "generation_params": self._last_generation_params
+            }
+        except ImportError:
+            return {
+                "error": "psutil not available",
+                "data": {
+                    "total_rows": int(len(self.data)) if not self.data.empty else 0,
+                    "filtered_rows": int(len(self.filtered_data)) if not self.filtered_data.empty else 0,
+                    "columns": len(self.data.columns) if not self.data.empty else 0
+                }
+            }
+        except Exception as e:
+            return {"error": str(e)}
+    
+    def export_data_sample(self, sample_size: int = 100) -> Dict[str, Any]:
+        """导出数据样本用于预览（新增功能）"""
+        try:
+            if self.filtered_data.empty:
+                return {
+                    "success": False,
+                    "message": "没有数据可以导出样本"
+                }
+            
+            # 获取样本数据
+            sample_df = self.filtered_data.head(sample_size)
+            
+            # 转换为字典格式
+            sample_data = []
+            for _, row in sample_df.iterrows():
+                row_dict = {}
+                for col in sample_df.columns:
+                    value = row[col]
+                    # 确保值是JSON可序列化的
+                    if pd.isna(value):
+                        row_dict[col] = None
+                    else:
+                        row_dict[col] = self._ensure_json_serializable(value)
+                sample_data.append(row_dict)
+            
+            return {
+                "success": True,
+                "sample_size": len(sample_data),
+                "total_size": len(self.filtered_data),
+                "columns": list(sample_df.columns),
+                "data": sample_data
+            }
+            
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "导出数据样本失败"
             }

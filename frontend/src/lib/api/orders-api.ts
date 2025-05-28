@@ -8,6 +8,7 @@ import type {
   OrderChartsResponse,
   OrderFilterRanges,
   OrderSummary,
+  DateRange,
 } from '@/types/index';
 
 // API base URL - 使用环境变量或默认值，指向新的v1 orders API
@@ -25,12 +26,27 @@ const ordersApi = axios.create({
 });
 
 /**
- * 生成虚拟订单数据
+ * 生成虚拟订单数据 - 支持自定义日期范围
  * @param count 要生成的订单数量
+ * @param dateRange 可选的日期范围
  * @returns 生成结果响应
  */
-export const generateVirtualOrders = async (count: number): Promise<VirtualDataGenerateResponse> => {
-  const request: VirtualDataGenerateRequest = { count };
+export const generateVirtualOrders = async (
+  count: number, 
+  dateRange?: DateRange
+): Promise<VirtualDataGenerateResponse> => {
+  const request: VirtualDataGenerateRequest = { 
+    count,
+    ...(dateRange && {
+      date_range: {
+        start_date: dateRange.startDate.toISOString().split('T')[0], // 转换为 YYYY-MM-DD 格式
+        end_date: dateRange.endDate.toISOString().split('T')[0]
+      }
+    })
+  };
+  
+  console.log('Generating virtual orders with request:', request);
+  
   const response = await ordersApi.post<VirtualDataGenerateResponse>('/generate', request);
   return response.data;
 };
@@ -96,6 +112,45 @@ export const resetOrderData = async (): Promise<{ success: boolean; message: str
 export const checkOrderApiHealth = async (): Promise<{ status: string; module: string; version: string }> => {
   const response = await ordersApi.get<{ status: string; module: string; version: string }>('/health');
   return response.data;
+};
+
+/**
+ * 日期范围验证工具
+ */
+export const validateDateRange = (startDate: Date, endDate: Date): { valid: boolean; message?: string; daysDiff?: number } => {
+  if (!startDate || !endDate) {
+    return { valid: false, message: '请选择完整的日期范围' };
+  }
+
+  if (startDate >= endDate) {
+    return { valid: false, message: '开始日期必须早于结束日期' };
+  }
+
+  const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  
+  if (daysDiff > 365) {
+    return { valid: false, message: '日期范围不能超过365天' };
+  }
+
+  if (daysDiff < 1) {
+    return { valid: false, message: '日期范围至少需要1天' };
+  }
+
+  return { valid: true, daysDiff };
+};
+
+/**
+ * 日期格式化工具
+ */
+export const formatDateForApi = (date: Date): string => {
+  return date.toISOString().split('T')[0]; // YYYY-MM-DD 格式
+};
+
+/**
+ * 解析API返回的日期字符串
+ */
+export const parseDateFromApi = (dateString: string): Date => {
+  return new Date(dateString + 'T00:00:00.000Z');
 };
 
 /**
@@ -170,12 +225,17 @@ export const batchOperations = {
   /**
    * 批量生成数据并应用筛选
    * @param count 生成数量
+   * @param dateRange 日期范围
    * @param filters 筛选条件
    */
-  generateAndFilter: async (count: number, filters?: OrderFilterRequest) => {
+  generateAndFilter: async (
+    count: number, 
+    dateRange?: DateRange,
+    filters?: OrderFilterRequest
+  ) => {
     try {
       // 先生成数据
-      const generateResult = await generateVirtualOrders(count);
+      const generateResult = await generateVirtualOrders(count, dateRange);
       
       if (!generateResult.success) {
         throw new Error(generateResult.message);
@@ -216,11 +276,12 @@ export const batchOperations = {
   /**
    * 重置并重新生成数据
    * @param count 新的数据量
+   * @param dateRange 日期范围
    */
-  resetAndGenerate: async (count: number) => {
+  resetAndGenerate: async (count: number, dateRange?: DateRange) => {
     try {
       await resetOrderData();
-      return await generateVirtualOrders(count);
+      return await generateVirtualOrders(count, dateRange);
     } catch (error) {
       console.error('重置并生成数据失败:', error);
       throw error;
@@ -254,26 +315,37 @@ export const validation = {
    * @param dateRange 日期范围
    * @returns 验证结果
    */
-  validateDateRange: (dateRange: [string, string] | null): { valid: boolean; message?: string } => {
+  validateDateRange: (dateRange: DateRange | null): { valid: boolean; message?: string } => {
     if (!dateRange) {
       return { valid: true };
     }
     
-    const [start, end] = dateRange;
+    const { startDate, endDate } = dateRange;
     
-    if (!start || !end) {
+    if (!startDate || !endDate) {
       return { valid: false, message: '请选择完整的日期范围' };
     }
     
-    const startDate = new Date(start);
-    const endDate = new Date(end);
+    if (!(startDate instanceof Date) || !(endDate instanceof Date)) {
+      return { valid: false, message: '日期格式无效' };
+    }
     
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
       return { valid: false, message: '日期格式无效' };
     }
     
-    if (startDate > endDate) {
+    if (startDate >= endDate) {
       return { valid: false, message: '开始日期不能晚于结束日期' };
+    }
+    
+    const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysDiff > 365) {
+      return { valid: false, message: '日期范围不能超过365天' };
+    }
+    
+    if (daysDiff < 1) {
+      return { valid: false, message: '日期范围至少需要1天' };
     }
     
     return { valid: true };
@@ -297,6 +369,30 @@ export const validation = {
     
     if (min > max) {
       return { valid: false, message: '最小金额不能大于最大金额' };
+    }
+    
+    return { valid: true };
+  },
+
+  /**
+   * 综合验证生成请求
+   * @param count 数量
+   * @param dateRange 日期范围
+   * @returns 验证结果
+   */
+  validateGenerateRequest: (count: number, dateRange?: DateRange): { valid: boolean; message?: string } => {
+    // 验证数量
+    const countValidation = validation.validateGenerateCount(count);
+    if (!countValidation.valid) {
+      return countValidation;
+    }
+    
+    // 验证日期范围
+    if (dateRange) {
+      const dateValidation = validation.validateDateRange(dateRange);
+      if (!dateValidation.valid) {
+        return dateValidation;
+      }
     }
     
     return { valid: true };
@@ -396,6 +492,39 @@ export const cachedApi = {
     const data = await getOrderFilterRanges();
     cacheUtils.set(cacheKey, data);
     return data;
+  }
+};
+
+/**
+ * 性能监控工具
+ */
+export const performanceMonitor = {
+  /**
+   * 测量API调用性能
+   * @param apiCall API调用函数
+   * @param label 标签
+   * @returns API调用结果
+   */
+  measureApiCall: async <T>(apiCall: () => Promise<T>, label: string): Promise<T> => {
+    const startTime = performance.now();
+    
+    try {
+      const result = await apiCall();
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Performance] ${label}: ${duration.toFixed(2)}ms`);
+      }
+      
+      return result;
+    } catch (error) {
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      
+      console.error(`[Performance] ${label} failed after ${duration.toFixed(2)}ms:`, error);
+      throw error;
+    }
   }
 };
 

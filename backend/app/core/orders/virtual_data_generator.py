@@ -1,13 +1,13 @@
 # backend/app/core/orders/virtual_data_generator.py
 """
-虚拟订单数据生成器 - 修复numpy类型序列化问题
+虚拟订单数据生成器 - 支持自定义日期范围
 """
 
 import random
 import hashlib
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 from decimal import Decimal
 
 
@@ -39,13 +39,73 @@ class VirtualOrderDataGenerator:
         self.ab_test_ids = ["abtest0001a", "abtest0002"]
         self.order_statuses = ["已付款", "已退款", "取消付款", "付款失败"]
         
-        # 日期范围：2025年4月至2025年5月
-        self.start_date = datetime(2025, 4, 1)
-        self.end_date = datetime(2025, 5, 31, 23, 59, 59)
+        # 默认日期范围：2025年4月至2025年5月
+        self.default_start_date = datetime(2025, 4, 1)
+        self.default_end_date = datetime(2025, 5, 31, 23, 59, 59)
         
         # 用于生成重复用户的用户池
         self.user_pool = []
         self._random_seed_counter = 0
+    
+    def set_date_range(self, start_date: datetime, end_date: datetime) -> None:
+        """
+        设置日期范围
+        
+        Args:
+            start_date: 开始日期
+            end_date: 结束日期
+        """
+        if start_date >= end_date:
+            raise ValueError("开始日期必须早于结束日期")
+        
+        # 设置时间到一天的开始和结束
+        self.start_date = start_date.replace(hour=0, minute=0, second=0, microsecond=0)
+        self.end_date = end_date.replace(hour=23, minute=59, second=59, microsecond=0)
+    
+    def get_date_range(self) -> Tuple[datetime, datetime]:
+        """
+        获取当前设置的日期范围
+        
+        Returns:
+            (start_date, end_date) 元组
+        """
+        return getattr(self, 'start_date', self.default_start_date), getattr(self, 'end_date', self.default_end_date)
+    
+    def validate_date_range(self, start_date: datetime, end_date: datetime) -> Dict[str, Any]:
+        """
+        验证日期范围
+        
+        Args:
+            start_date: 开始日期
+            end_date: 结束日期
+            
+        Returns:
+            验证结果字典
+        """
+        result = {"valid": True, "errors": []}
+        
+        if start_date >= end_date:
+            result["valid"] = False
+            result["errors"].append("开始日期必须早于结束日期")
+        
+        # 检查日期是否在合理范围内
+        min_date = datetime(2020, 1, 1)
+        max_date = datetime(2030, 12, 31)
+        
+        if start_date < min_date or end_date > max_date:
+            result["valid"] = False
+            result["errors"].append(f"日期必须在 {min_date.strftime('%Y-%m-%d')} 到 {max_date.strftime('%Y-%m-%d')} 之间")
+        
+        # 检查日期范围不能超过365天
+        if (end_date - start_date).days > 365:
+            result["valid"] = False
+            result["errors"].append("日期范围不能超过365天")
+        
+        if (end_date - start_date).days < 1:
+            result["valid"] = False
+            result["errors"].append("日期范围至少需要1天")
+        
+        return result
     
     def _generate_hash_id(self, length: int = 10) -> str:
         """生成指定长度的哈希值"""
@@ -68,12 +128,14 @@ class VirtualOrderDataGenerator:
     
     def _generate_random_datetime(self) -> datetime:
         """在指定范围内生成随机日期时间"""
-        time_between = self.end_date - self.start_date
+        start_date, end_date = self.get_date_range()
+        
+        time_between = end_date - start_date
         days_between = time_between.days
         hours_between = time_between.total_seconds() / 3600
         
         random_hours = random.randrange(int(hours_between))
-        random_datetime = self.start_date + timedelta(hours=random_hours)
+        random_datetime = start_date + timedelta(hours=random_hours)
         
         # 添加分钟和秒的随机性
         random_minutes = random.randrange(60)
@@ -214,8 +276,32 @@ class VirtualOrderDataGenerator:
             "订单状态": order_status
         }
     
-    def generate_orders_batch(self, count: int) -> pd.DataFrame:
-        """批量生成订单数据"""
+    def generate_orders_batch(
+        self, 
+        count: int, 
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None
+    ) -> pd.DataFrame:
+        """
+        批量生成订单数据
+        
+        Args:
+            count: 要生成的订单数量
+            start_date: 可选的开始日期
+            end_date: 可选的结束日期
+            
+        Returns:
+            包含订单数据的DataFrame
+        """
+        # 设置日期范围
+        if start_date and end_date:
+            # 验证日期范围
+            validation = self.validate_date_range(start_date, end_date)
+            if not validation["valid"]:
+                raise ValueError(f"日期范围验证失败: {'; '.join(validation['errors'])}")
+            
+            self.set_date_range(start_date, end_date)
+        
         # 先生成用户池，确保有重复用户
         user_count = max(10, count // 5)  # 用户数约为订单数的1/5
         self._generate_user_pool(user_count)
@@ -304,6 +390,14 @@ class VirtualOrderDataGenerator:
             "repeat_customer_rate": float((user_order_counts > 1).sum() / len(user_order_counts) * 100)
         }
         
+        # 添加日期范围统计
+        start_date, end_date = self.get_date_range()
+        stats["generation_date_range"] = {
+            "requested_start": start_date.strftime("%Y-%m-%d"),
+            "requested_end": end_date.strftime("%Y-%m-%d"),
+            "days_span": (end_date - start_date).days + 1
+        }
+        
         return stats
     
     def validate_generated_data(self, df: pd.DataFrame) -> Dict[str, Any]:
@@ -336,8 +430,9 @@ class VirtualOrderDataGenerator:
             validation_results["warnings"].append("销售总额字段数据类型可能不正确")
         
         # 检查日期范围
+        start_date, end_date = self.get_date_range()
         date_series = pd.to_datetime(df["日期"])
-        if date_series.min() < self.start_date or date_series.max() > self.end_date:
+        if date_series.min() < start_date or date_series.max() > end_date:
             validation_results["warnings"].append("部分日期超出预期范围")
         
         # 检查数据分布合理性

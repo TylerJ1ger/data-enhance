@@ -1,4 +1,4 @@
-//frontend-new/src/types/index.ts
+//frontend/src/types/index.ts
 
 // ==============================================
 // 通用类型定义
@@ -315,9 +315,33 @@ export type ExportFormat = 'csv' | 'xml' | 'txt' | 'json';
 // 虚拟订单分析相关类型定义
 // ==============================================
 
-// 虚拟数据生成请求
+// 日期范围接口 - 新增
+export interface DateRange {
+  startDate: Date;
+  endDate: Date;
+}
+
+// 日期范围验证结果 - 新增
+export interface DateRangeValidation {
+  isValid: boolean;
+  error?: string;
+  daysDiff?: number;
+}
+
+// 订单生成配置接口 - 新增
+export interface OrderGenerationConfig {
+  count: number;
+  startDate: Date;
+  endDate: Date;
+}
+
+// 虚拟数据生成请求 - 更新支持日期范围
 export interface VirtualDataGenerateRequest {
   count: number;
+  date_range?: {
+    start_date: string;  // ISO格式日期字符串 YYYY-MM-DD
+    end_date: string;    // ISO格式日期字符串 YYYY-MM-DD
+  };
 }
 
 // 虚拟数据生成响应
@@ -343,6 +367,20 @@ export interface OrderStats {
   status_distribution: Record<string, number>;
   total_revenue: Record<string, number>;
   avg_order_value: Record<string, number>;
+  coupon_usage_rate?: number;
+  ab_test_participation_rate?: number;
+  success_rate?: number;
+  user_behavior?: {
+    avg_orders_per_user: number;
+    max_orders_per_user: number;
+    repeat_customers: number;
+    repeat_customer_rate: number;
+  };
+  generation_date_range?: {
+    requested_start: string;
+    requested_end: string;
+    days_span: number;
+  };
 }
 
 // 订单筛选请求
@@ -409,6 +447,10 @@ export interface OrderSummary {
   has_data: boolean;
   last_generation_params: {
     count?: number;
+    date_range?: {
+      start_date: string;
+      end_date: string;
+    };
   };
 }
 
@@ -451,3 +493,95 @@ export const COUPON_MAPPINGS = {
 export interface OrderApiError {
   detail: string;
 }
+
+// ==============================================
+// 日期工具类型定义 - 新增
+// ==============================================
+
+// 日期格式化选项
+export interface DateFormatOptions {
+  locale?: string;
+  includeTime?: boolean;
+  format?: 'short' | 'long' | 'iso';
+}
+
+// 日期范围预设
+export interface DateRangePreset {
+  label: string;
+  value: DateRange;
+  description?: string;
+}
+
+// 常用日期范围预设
+export const DATE_RANGE_PRESETS: DateRangePreset[] = [
+  {
+    label: "最近7天",
+    value: {
+      startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
+      endDate: new Date()
+    },
+    description: "过去一周的数据"
+  },
+  {
+    label: "最近30天",
+    value: {
+      startDate: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000),
+      endDate: new Date()
+    },
+    description: "过去一个月的数据"
+  },
+  {
+    label: "最近90天",
+    value: {
+      startDate: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000),
+      endDate: new Date()
+    },
+    description: "过去三个月的数据"
+  },
+  {
+    label: "本年度",
+    value: {
+      startDate: new Date(new Date().getFullYear(), 0, 1),
+      endDate: new Date()
+    },
+    description: "从年初到现在的数据"
+  }
+];
+
+// ==============================================
+// 通用响应类型
+// ==============================================
+
+// 基础API响应
+export interface BaseApiResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+// 分页响应
+export interface PaginatedResponse<T> {
+  data: T[];
+  total: number;
+  page: number;
+  limit: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+}
+
+// 批量操作响应
+export interface BatchOperationResponse {
+  success: boolean;
+  processed: number;
+  failed: number;
+  errors?: string[];
+  message: string;
+}
+
+// ==============================================
+// 导出所有类型（确保向后兼容）
+// ==============================================
+
+// 重新导出常用类型以保持兼容性
+export type OrderGenerationRequest = VirtualDataGenerateRequest;
+export type OrderGenerationResponse = VirtualDataGenerateResponse;
