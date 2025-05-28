@@ -24,6 +24,17 @@ interface OrderFilterPanelProps {
   disabled?: boolean;
 }
 
+// 工具函数：将日期时间字符串转换为日期字符串
+const formatDateForInput = (dateTimeString: string): string => {
+  if (!dateTimeString) return '';
+  // 如果已经是 YYYY-MM-DD 格式，直接返回
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateTimeString)) {
+    return dateTimeString;
+  }
+  // 如果是 YYYY-MM-DD HH:MM:SS 格式，截取日期部分
+  return dateTimeString.split(' ')[0];
+};
+
 export function OrderFilterPanel({
   filterRanges,
   onApplyFilter,
@@ -41,10 +52,14 @@ export function OrderFilterPanel({
   const [hasCoupon, setHasCoupon] = useState<boolean | null>(null);
   const [abTestFilter, setAbTestFilter] = useState<"with" | "without" | null>(null);
 
-  // 初始化筛选范围
+  // 初始化筛选范围 - 修复日期格式问题
   useEffect(() => {
     if (filterRanges && !isLoading) {
-      setDateRange([filterRanges.date_range.min, filterRanges.date_range.max]);
+      // 处理日期格式转换
+      const minDate = formatDateForInput(filterRanges.date_range.min);
+      const maxDate = formatDateForInput(filterRanges.date_range.max);
+      
+      setDateRange([minDate, maxDate]);
       setSalesAmountRange([filterRanges.sales_amount_range.min, filterRanges.sales_amount_range.max]);
     }
   }, [filterRanges, isLoading]);
@@ -67,7 +82,9 @@ export function OrderFilterPanel({
 
   const handleReset = () => {
     if (filterRanges) {
-      setDateRange([filterRanges.date_range.min, filterRanges.date_range.max]);
+      const minDate = formatDateForInput(filterRanges.date_range.min);
+      const maxDate = formatDateForInput(filterRanges.date_range.max);
+      setDateRange([minDate, maxDate]);
       setSalesAmountRange([filterRanges.sales_amount_range.min, filterRanges.sales_amount_range.max]);
     }
     setOrderTypes([]);
@@ -280,13 +297,13 @@ export function OrderFilterPanel({
 
         <Separator />
 
-        {/* 优惠券筛选 */}
+        {/* 优惠券筛选 - 修复空值问题 */}
         <div className="space-y-2">
           <Label className="text-sm font-medium">优惠券使用</Label>
           <Select 
-            value={hasCoupon === null ? "" : hasCoupon.toString()} 
+            value={hasCoupon === null ? "__all__" : hasCoupon.toString()} 
             onValueChange={(value) => {
-              if (value === "") setHasCoupon(null);
+              if (value === "__all__") setHasCoupon(null);
               else setHasCoupon(value === "true");
             }}
           >
@@ -294,7 +311,7 @@ export function OrderFilterPanel({
               <SelectValue placeholder="选择优惠券筛选条件" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">全部</SelectItem>
+              <SelectItem value="__all__">全部</SelectItem>
               <SelectItem value="true">有优惠券</SelectItem>
               <SelectItem value="false">无优惠券</SelectItem>
             </SelectContent>
@@ -303,20 +320,20 @@ export function OrderFilterPanel({
 
         <Separator />
 
-        {/* AB测试筛选 */}
+        {/* AB测试筛选 - 修复空值问题 */}
         <div className="space-y-2">
           <Label className="text-sm font-medium">AB测试参与</Label>
           <Select 
-            value={abTestFilter || ""} 
+            value={abTestFilter || "__all__"} 
             onValueChange={(value) => {
-              setAbTestFilter(value === "" ? null : value as "with" | "without");
+              setAbTestFilter(value === "__all__" ? null : value as "with" | "without");
             }}
           >
             <SelectTrigger disabled={disabled}>
               <SelectValue placeholder="选择AB测试筛选条件" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">全部</SelectItem>
+              <SelectItem value="__all__">全部</SelectItem>
               <SelectItem value="with">参与AB测试</SelectItem>
               <SelectItem value="without">未参与AB测试</SelectItem>
             </SelectContent>
