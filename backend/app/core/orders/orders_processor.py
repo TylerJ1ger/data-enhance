@@ -249,18 +249,77 @@ class OrdersProcessor:
             }
     
     def get_chart_data(self) -> Dict[str, Any]:
-        """获取图表数据 - 修复numpy类型序列化问题"""
+        """获取图表数据 - 优化版本，添加数据验证和错误处理"""
+        
+        # 🔧 新增：检查数据是否就绪
         if self.filtered_data.empty:
-            return {"charts": {}}
+            # 如果筛选数据为空，但原始数据不为空，重新设置筛选数据
+            if not self.data.empty:
+                self.filtered_data = self.data.copy()
+            else:
+                return {
+                    "charts": {},
+                    "error": "没有可用的数据生成图表",
+                    "debug_info": {
+                        "original_data_empty": self.data.empty,
+                        "filtered_data_empty": self.filtered_data.empty
+                    }
+                }
         
         try:
             df = self.filtered_data.copy()
+            
+            # 🔧 新增：数据完整性验证
+            required_columns = ["订单类型", "日期", "LicenseID", "支付币种", "支付平台", "订单状态", "销售总额"]
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                return {
+                    "charts": {},
+                    "error": f"数据缺少必要字段: {', '.join(missing_columns)}",
+                    "debug_info": {
+                        "available_columns": list(df.columns),
+                        "missing_columns": missing_columns
+                    }
+                }
+            
+            # 验证数据不为空
+            if len(df) == 0:
+                return {
+                    "charts": {},
+                    "error": "筛选后的数据为空，无法生成图表",
+                    "debug_info": {
+                        "original_data_count": len(self.data),
+                        "filtered_data_count": len(df)
+                    }
+                }
+            
+            # 🔧 优化：添加数据类型验证和转换
+            try:
+                # 确保日期列是datetime类型
+                if "日期" in df.columns:
+                    df["日期"] = pd.to_datetime(df["日期"])
+                
+                # 确保数值列是正确的类型
+                if "销售总额" in df.columns:
+                    df["销售总额"] = pd.to_numeric(df["销售总额"], errors='coerce')
+                
+                if "LicenseID" in df.columns:
+                    df["LicenseID"] = pd.to_numeric(df["LicenseID"], errors='coerce')
+                
+            except Exception as type_error:
+                return {
+                    "charts": {},
+                    "error": f"数据类型转换失败: {str(type_error)}",
+                    "debug_info": {
+                        "data_types": {col: str(dtype) for col, dtype in df.dtypes.items()}
+                    }
+                }
             
             # 1. 订单类型分布（饼图）
             order_type_data = {str(k): int(v) for k, v in df["订单类型"].value_counts().to_dict().items()}
             
             # 2. 每日订单量趋势（折线图）
-            df["日期_date"] = pd.to_datetime(df["日期"]).dt.date
+            df["日期_date"] = df["日期"].dt.date
             daily_orders = df.groupby("日期_date").size().reset_index(name="订单数量")
             daily_orders["日期"] = daily_orders["日期_date"].astype(str)
             # 确保数据类型转换
@@ -319,7 +378,8 @@ class OrdersProcessor:
                 "未参与AB测试": int(len(df[df["AB实验ID"].isna()]))
             }
             
-            return {
+            # 🔧 新增：构建图表数据结构
+            chart_data = {
                 "charts": {
                     "order_type_distribution": {
                         "type": "pie",
@@ -361,12 +421,55 @@ class OrdersProcessor:
                         "title": "AB测试参与情况",
                         "data": ab_test_participation
                     }
+                },
+                "metadata": {
+                    "data_rows": len(df),
+                    "generated_at": datetime.now().isoformat(),
+                    "charts_count": 8,
+                    "data_source": "filtered" if len(df) != len(self.data) else "original"
                 }
             }
+            
+            # 🔧 新增：验证所有图表都有数据
+            empty_charts = []
+            for chart_name, chart_config in chart_data["charts"].items():
+                chart_data_content = chart_config.get("data")
+                if not chart_data_content or (
+                    isinstance(chart_data_content, (list, dict)) and len(chart_data_content) == 0
+                ):
+                    empty_charts.append(chart_name)
+            
+            if empty_charts:
+                chart_data["warning"] = f"以下图表没有数据: {', '.join(empty_charts)}"
+            
+            # 🔧 新增：添加数据质量信息
+            chart_data["data_quality"] = {
+                "has_all_required_fields": len(missing_columns) == 0,
+                "data_completeness": {
+                    "total_records": len(df),
+                    "null_counts": {col: int(df[col].isna().sum()) for col in required_columns if col in df.columns}
+                },
+                "value_ranges": {
+                    "sales_amount": {
+                        "min": float(df["销售总额"].min()) if "销售总额" in df.columns else None,
+                        "max": float(df["销售总额"].max()) if "销售总额" in df.columns else None,
+                        "mean": float(df["销售总额"].mean()) if "销售总额" in df.columns else None
+                    }
+                }
+            }
+            
+            return chart_data
+            
         except Exception as e:
             return {
                 "charts": {},
-                "error": str(e)
+                "error": f"生成图表数据时发生错误: {str(e)}",
+                "debug_info": {
+                    "data_shape": list(self.filtered_data.shape) if not self.filtered_data.empty else "empty",
+                    "columns": list(self.filtered_data.columns) if not self.filtered_data.empty else [],
+                    "error_type": type(e).__name__,
+                    "error_details": str(e)
+                }
             }
     
     def export_filtered_data(self) -> bytes:

@@ -35,14 +35,13 @@ export function useOrdersApi() {
         await ordersApi.checkOrderApiHealth();
       } catch (error) {
         console.warn('订单API服务器连接检查失败:', error);
-        // 注意：这里不显示toast，因为这是初始化检查
       }
     };
 
     checkApiHealth();
   }, []);
 
-  // 生成虚拟订单数据 - 支持日期范围
+  // 生成虚拟订单数据 - 修复时序问题
   const generateVirtualData = useCallback(async (count: number, dateRange?: DateRange) => {
     setIsGenerating(true);
     try {
@@ -61,12 +60,23 @@ export function useOrdersApi() {
         setOrderStats(data.stats);
         setFilteredStats(data.stats); // 初始时，过滤后数据 = 原始数据
         
-        // 生成数据后，加载其他信息
-        await Promise.all([
-          fetchFilterRanges(),
-          fetchChartData(),
-          fetchSummary()
-        ]);
+        // 🔧 修复：按顺序获取数据，确保后端数据完全准备好
+        try {
+          // 1. 先获取筛选范围（这个比较快）
+          await fetchFilterRanges();
+          
+          // 2. 等待一小段时间确保后端数据完全同步
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // 3. 再获取图表数据和摘要
+          await Promise.all([
+            fetchChartData(),
+            fetchSummary()
+          ]);
+        } catch (error) {
+          console.warn('获取附加数据时出错:', error);
+          // 即使附加数据获取失败，也不影响主要功能
+        }
         
         toast.success(data.message);
       } else {
@@ -84,7 +94,7 @@ export function useOrdersApi() {
     }
   }, []);
 
-  // 应用筛选器
+  // 应用筛选器 - 优化图表数据获取
   const applyFilters = useCallback(async (filters: OrderFilterRequest) => {
     setIsFiltering(true);
     try {
@@ -93,7 +103,11 @@ export function useOrdersApi() {
       if (data.success) {
         setFilteredStats(data.filtered_stats);
         
-        // 筛选后更新图表数据和摘要
+        // 🔧 修复：筛选后立即获取最新图表数据
+        // 先等待一小段时间确保后端筛选完成
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        // 然后获取图表数据和摘要
         await Promise.all([
           fetchChartData(),
           fetchSummary()
@@ -115,11 +129,19 @@ export function useOrdersApi() {
     }
   }, []);
 
-  // 获取图表数据
-  const fetchChartData = useCallback(async () => {
+  // 获取图表数据 - 添加重试机制
+  const fetchChartData = useCallback(async (retryCount = 0) => {
     setIsLoadingCharts(true);
     try {
       const data = await ordersApi.getOrderCharts();
+      
+      // 🔧 修复：检查数据是否为空，如果为空且未达到重试上限则重试
+      if ((!data.charts || Object.keys(data.charts).length === 0) && retryCount < 2) {
+        console.log(`图表数据为空，进行第${retryCount + 1}次重试...`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+        return fetchChartData(retryCount + 1);
+      }
+      
       setChartData(data);
       return data;
     } catch (error: any) {
@@ -127,7 +149,7 @@ export function useOrdersApi() {
       // 图表数据获取失败时，设置一个错误状态而不是完全清空
       setChartData({
         charts: {} as any,
-        error: '图表数据加载失败'
+        error: `图表数据加载失败${retryCount > 0 ? ` (重试${retryCount}次后)` : ''}`
       });
       return null;
     } finally {
