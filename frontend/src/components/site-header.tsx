@@ -3,7 +3,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { FileTextIcon, LinkIcon, SearchIcon, MapIcon, HomeIcon, BarChart3 } from "lucide-react";
+import { 
+  FileTextIcon, 
+  LinkIcon, 
+  SearchIcon, 
+  MapIcon, 
+  HomeIcon, 
+  BarChart3,
+  Code2, // 新增：结构化数据生成器图标
+  Menu
+} from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -13,7 +22,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Menu } from "lucide-react";
 
 export function SiteHeader() {
   const pathname = usePathname();
@@ -45,6 +53,7 @@ export function SiteHeader() {
             <NavItem href="/orders" icon={<BarChart3 className="mr-1 h-4 w-4" />} label="订单分析" />
             <NavItem href="/sitemap" icon={<MapIcon className="mr-1 h-4 w-4" />} label="Sitemap分析" />
             <NavItem href="/seo" icon={<SearchIcon className="mr-1 h-4 w-4" />} label="单页SEO分析" />
+            <NavItem href="/schema" icon={<Code2 className="mr-1 h-4 w-4" />} label="结构化数据生成器" />
           </nav>
           
           {/* 移动端汉堡菜单 */}
@@ -91,6 +100,12 @@ export function SiteHeader() {
                   <Link href="/seo" className="flex items-center">
                     <SearchIcon className="mr-2 h-4 w-4" />
                     <span>单页SEO分析</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/schema" className="flex items-center">
+                    <Code2 className="mr-2 h-4 w-4" />
+                    <span>结构化数据生成器</span>
                   </Link>
                 </DropdownMenuItem>
               </DropdownMenuContent>

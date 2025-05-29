@@ -19,6 +19,7 @@ from app.core.seo.seo_processor import SEOProcessor
 from app.core.backlinks.backlinks_processor import BacklinksProcessor
 from app.core.backlinks.cross_analysis_processor import CrossAnalysisProcessor
 from app.core.orders.orders_processor import OrdersProcessor
+from app.core.schema.schema_processor import SchemaProcessor
 
 # 创建主路由器
 router = APIRouter(tags=["API v1"])
@@ -33,6 +34,7 @@ seo_processor = SEOProcessor()
 backlinks_processor = BacklinksProcessor()
 cross_analysis_processor = CrossAnalysisProcessor()
 orders_processor = OrdersProcessor()
+schema_processor = SchemaProcessor()
 
 # ================================
 # Pydantic 模型定义
@@ -134,6 +136,26 @@ class OrderFilterRequest(BaseModel):
     sales_amount_range: Optional[List[float]] = None  # [min_amount, max_amount]
     has_coupon: Optional[bool] = None
     ab_test_filter: Optional[str] = None  # "with", "without", None
+
+# 结构化数据生成器相关模型
+class SchemaGenerateRequest(BaseModel):
+    schema_type: str
+    data: Dict[str, Any]
+    
+    @validator('schema_type')
+    def validate_schema_type(cls, v):
+        """验证结构化数据类型"""
+        supported_types = [
+            'Article', 'Breadcrumb', 'Event', 'FAQPage', 'HowTo', 
+            'Organization', 'Person', 'Product', 'VideoObject', 'WebSite'
+        ]
+        if v not in supported_types:
+            raise ValueError(f'不支持的结构化数据类型。支持的类型: {", ".join(supported_types)}')
+        return v
+
+class SchemaValidateRequest(BaseModel):
+    schema_type: str
+    data: Dict[str, Any]
 
 # ================================
 # 通用辅助函数
@@ -740,6 +762,189 @@ async def reset_order_data():
         )
 
 # ================================
+# 结构化数据生成相关路由 (Schema)
+# ================================
+
+@router.get("/schema/types", tags=["Schema"])
+async def get_schema_types():
+    """
+    获取支持的结构化数据类型
+    """
+    try:
+        schema_types = schema_processor.get_supported_schemas()
+        return {
+            "success": True,
+            "schema_types": schema_types
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取结构化数据类型时发生错误: {str(e)}"
+        )
+
+@router.get("/schema/template/{schema_type}", tags=["Schema"])
+async def get_schema_template(schema_type: str):
+    """
+    获取指定类型的结构化数据模板
+    """
+    try:
+        # 验证结构化数据类型
+        supported_types = schema_processor.get_supported_schemas().keys()
+        if schema_type not in supported_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的结构化数据类型: {schema_type}"
+            )
+        
+        template = schema_processor.get_schema_template(schema_type)
+        return {
+            "success": True,
+            "schema_type": schema_type,
+            "template": template
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取结构化数据模板时发生错误: {str(e)}"
+        )
+
+@router.post("/schema/generate", tags=["Schema"])
+async def generate_schema(request: SchemaGenerateRequest):
+    """
+    生成结构化数据
+    """
+    try:
+        # 生成结构化数据
+        schema_data = schema_processor.generate_schema(
+            request.schema_type, 
+            request.data
+        )
+        
+        # 格式化输出
+        json_ld = schema_processor.format_schema_output(schema_data, "json-ld")
+        html_script = schema_processor.format_schema_output(schema_data, "html")
+        
+        return {
+            "success": True,
+            "schema_type": request.schema_type,
+            "schema_data": schema_data,
+            "json_ld": json_ld,
+            "html_script": html_script
+        }
+    except ValueError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"生成结构化数据时发生错误: {str(e)}"
+        )
+
+@router.post("/schema/validate", tags=["Schema"])
+async def validate_schema(request: SchemaValidateRequest):
+    """
+    验证结构化数据
+    """
+    try:
+        validation_result = schema_processor.validate_schema(
+            request.schema_type, 
+            request.data
+        )
+        
+        return {
+            "success": True,
+            "schema_type": request.schema_type,
+            "validation": validation_result
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"验证结构化数据时发生错误: {str(e)}"
+        )
+
+@router.post("/schema/preview", tags=["Schema"])
+async def preview_schema(request: SchemaGenerateRequest):
+    """
+    预览结构化数据（不进行完整验证）
+    """
+    try:
+        # 即使数据不完整也生成预览
+        try:
+            schema_data = schema_processor.generate_schema(
+                request.schema_type, 
+                request.data
+            )
+            json_ld = schema_processor.format_schema_output(schema_data, "json-ld")
+            html_script = schema_processor.format_schema_output(schema_data, "html")
+            
+            return {
+                "success": True,
+                "schema_type": request.schema_type,
+                "schema_data": schema_data,
+                "json_ld": json_ld,
+                "html_script": html_script,
+                "is_preview": True
+            }
+        except ValueError:
+            # 如果必填字段缺失，返回部分数据和模板
+            template = schema_processor.get_schema_template(request.schema_type)
+            return {
+                "success": True,
+                "schema_type": request.schema_type,
+                "template": template,
+                "is_preview": True,
+                "message": "请填写必填字段以生成完整的结构化数据"
+            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"预览结构化数据时发生错误: {str(e)}"
+        )
+
+@router.get("/schema/export/{schema_type}", tags=["Schema"])
+async def export_schema_template(schema_type: str, format: str = "json"):
+    """
+    导出结构化数据模板文件
+    """
+    try:
+        # 验证结构化数据类型
+        supported_types = schema_processor.get_supported_schemas().keys()
+        if schema_type not in supported_types:
+            raise HTTPException(
+                status_code=400,
+                detail=f"不支持的结构化数据类型: {schema_type}"
+            )
+        
+        template = schema_processor.get_schema_template(schema_type)
+        
+        if format.lower() == "json":
+            content = json.dumps(template, indent=2, ensure_ascii=False)
+            media_type = "application/json"
+            filename = f"{schema_type.lower()}_template.json"
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="仅支持JSON格式导出"
+            )
+        
+        return StreamingResponse(
+            io.BytesIO(content.encode('utf-8')),
+            media_type=media_type,
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"导出模板时发生错误: {str(e)}"
+        )
+
+# ================================
 # 健康检查和通用路由
 # ================================
 
@@ -765,6 +970,7 @@ async def api_info():
             "orders": "/v1/orders/",
             "seo": "/v1/seo/",
             "sitemaps": "/v1/sitemaps/",
+            "schema": "/v1/schema/",
             "health": "/v1/health"
         }
     }

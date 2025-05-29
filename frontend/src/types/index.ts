@@ -550,6 +550,455 @@ export const DATE_RANGE_PRESETS: DateRangePreset[] = [
 ];
 
 // ==============================================
+// 结构化数据生成器相关类型定义 - 新增
+// ==============================================
+
+// 结构化数据类型枚举
+export type SchemaType = 
+  | 'Article'
+  | 'Breadcrumb'
+  | 'Event'
+  | 'FAQPage'
+  | 'HowTo'
+  | 'Organization'
+  | 'Person'
+  | 'Product'
+  | 'VideoObject'
+  | 'WebSite';
+
+// 结构化数据配置信息
+export interface SchemaTypeConfig {
+  name: string;
+  description: string;
+  required_fields: string[];
+  optional_fields: string[];
+}
+
+// 支持的结构化数据类型响应
+export interface SchemaTypesResponse {
+  success: boolean;
+  schema_types: Record<SchemaType, SchemaTypeConfig>;
+}
+
+// 结构化数据模板响应
+export interface SchemaTemplateResponse {
+  success: boolean;
+  schema_type: string;
+  template: Record<string, any>;
+}
+
+// 结构化数据生成请求
+export interface SchemaGenerateRequest {
+  schema_type: SchemaType;
+  data: Record<string, any>;
+}
+
+// 结构化数据生成响应
+export interface SchemaGenerateResponse {
+  success: boolean;
+  schema_type: string;
+  schema_data: Record<string, any>;
+  json_ld: string;
+  html_script: string;
+  is_preview?: boolean;
+  message?: string;
+  template?: Record<string, any>;
+}
+
+// 结构化数据验证请求
+export interface SchemaValidateRequest {
+  schema_type: SchemaType;
+  data: Record<string, any>;
+}
+
+// 验证结果
+export interface ValidationResult {
+  is_valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+// 结构化数据验证响应
+export interface SchemaValidateResponse {
+  success: boolean;
+  schema_type: string;
+  validation: ValidationResult;
+}
+
+// 面包屑导航项
+export interface BreadcrumbItem {
+  name: string;
+  url: string;
+}
+
+// FAQ项
+export interface FAQItem {
+  question: string;
+  answer: string;
+}
+
+// 操作步骤项
+export interface HowToStep {
+  name?: string;
+  text: string;
+  image?: string;
+}
+
+// 地址信息
+export interface Address {
+  streetAddress: string;
+  city: string;
+  postalCode: string;
+  country: string;
+}
+
+// 联系信息
+export interface ContactPoint {
+  telephone: string;
+  contactType: string;
+}
+
+// 价格信息
+export interface Offer {
+  price: string;
+  currency: string;
+}
+
+// 评分信息
+export interface AggregateRating {
+  ratingValue: string;
+  reviewCount: string;
+}
+
+// 搜索功能配置
+export interface PotentialAction {
+  type: 'SearchAction';
+  target: string;
+}
+
+// 结构化数据表单字段类型
+export type SchemaFieldType = 
+  | 'text'
+  | 'textarea'
+  | 'url'
+  | 'email'
+  | 'date'
+  | 'datetime-local'
+  | 'number'
+  | 'array'
+  | 'object';
+
+// 表单字段配置
+export interface SchemaFieldConfig {
+  key: string;
+  label: string;
+  type: SchemaFieldType;
+  required: boolean;
+  placeholder?: string;
+  description?: string;
+  items?: SchemaFieldConfig[]; // 用于数组和对象类型
+  validation?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+  };
+}
+
+// 结构化数据表单状态
+export interface SchemaFormState {
+  selectedType: SchemaType | null;
+  formData: Record<string, any>;
+  errors: Record<string, string>;
+  isValid: boolean;
+}
+
+// 结构化数据输出格式
+export type SchemaOutputFormat = 'json-ld' | 'html';
+
+// 结构化数据编辑器状态
+export interface SchemaEditorState {
+  activeTab: 'form' | 'preview' | 'output';
+  outputFormat: SchemaOutputFormat;
+  showValidation: boolean;
+  isGenerating: boolean;
+  lastGenerated?: SchemaGenerateResponse;
+}
+
+// 预定义的结构化数据示例
+export interface SchemaExample {
+  title: string;
+  description: string;
+  data: Record<string, any>;
+}
+
+// 结构化数据保存/加载配置
+export interface SchemaConfig {
+  id: string;
+  name: string;
+  schema_type: SchemaType;
+  data: Record<string, any>;
+  created_at: string;
+  updated_at: string;
+}
+
+// 结构化数据API错误响应
+export interface SchemaApiError {
+  detail: string;
+  schema_type?: string;
+  field_errors?: Record<string, string[]>;
+}
+
+// 表单验证状态
+export interface FormValidationState {
+  isValidating: boolean;
+  validationResult: ValidationResult | null;
+  lastValidated: string | null;
+}
+
+// 结构化数据统计信息
+export interface SchemaStats {
+  total_generated: number;
+  most_used_type: SchemaType;
+  success_rate: number;
+  last_generated: string;
+}
+
+// 结构化数据类型的字段映射
+export const SCHEMA_FIELD_CONFIGS: Record<SchemaType, SchemaFieldConfig[]> = {
+  Article: [
+    { key: 'headline', label: '标题', type: 'text', required: true, placeholder: '文章标题' },
+    { key: 'author', label: '作者', type: 'text', required: true, placeholder: '作者姓名' },
+    { key: 'datePublished', label: '发布日期', type: 'date', required: true },
+    { key: 'description', label: '描述', type: 'textarea', required: false, placeholder: '文章描述' },
+    { key: 'image', label: '图片URL', type: 'url', required: false, placeholder: 'https://example.com/image.jpg' },
+    { key: 'publisher', label: '发布者', type: 'text', required: false, placeholder: '发布机构名称' },
+    { key: 'dateModified', label: '修改日期', type: 'date', required: false }
+  ],
+  Breadcrumb: [
+    {
+      key: 'itemListElement',
+      label: '面包屑导航项',
+      type: 'array',
+      required: true,
+      items: [
+        { key: 'name', label: '名称', type: 'text', required: true, placeholder: '页面名称' },
+        { key: 'url', label: 'URL', type: 'url', required: true, placeholder: 'https://example.com/page' }
+      ]
+    }
+  ],
+  Event: [
+    { key: 'name', label: '事件名称', type: 'text', required: true, placeholder: '活动名称' },
+    { key: 'startDate', label: '开始时间', type: 'datetime-local', required: true },
+    { key: 'location', label: '地点', type: 'text', required: true, placeholder: '活动地点' },
+    { key: 'description', label: '描述', type: 'textarea', required: false, placeholder: '活动描述' },
+    { key: 'endDate', label: '结束时间', type: 'datetime-local', required: false },
+    { key: 'organizer', label: '主办方', type: 'text', required: false, placeholder: '主办机构' },
+    {
+      key: 'offers',
+      label: '票价信息',
+      type: 'object',
+      required: false,
+      items: [
+        { key: 'price', label: '价格', type: 'number', required: false, placeholder: '0' },
+        { key: 'currency', label: '货币', type: 'text', required: false, placeholder: 'USD' }
+      ]
+    }
+  ],
+  FAQPage: [
+    {
+      key: 'mainEntity',
+      label: 'FAQ列表',
+      type: 'array',
+      required: true,
+      items: [
+        { key: 'question', label: '问题', type: 'text', required: true, placeholder: '常见问题' },
+        { key: 'answer', label: '答案', type: 'textarea', required: true, placeholder: '问题答案' }
+      ]
+    }
+  ],
+  HowTo: [
+    { key: 'name', label: '指南标题', type: 'text', required: true, placeholder: '操作指南标题' },
+    { key: 'description', label: '描述', type: 'textarea', required: false, placeholder: '指南描述' },
+    { key: 'image', label: '图片URL', type: 'url', required: false, placeholder: 'https://example.com/image.jpg' },
+    { key: 'totalTime', label: '总耗时', type: 'text', required: false, placeholder: 'PT30M (30分钟)' },
+    {
+      key: 'supply',
+      label: '所需用品',
+      type: 'array',
+      required: false,
+      items: [
+        { key: 'name', label: '用品名称', type: 'text', required: true, placeholder: '所需用品' }
+      ]
+    },
+    {
+      key: 'tool',
+      label: '所需工具',
+      type: 'array',
+      required: false,
+      items: [
+        { key: 'name', label: '工具名称', type: 'text', required: true, placeholder: '所需工具' }
+      ]
+    },
+    {
+      key: 'step',
+      label: '操作步骤',
+      type: 'array',
+      required: true,
+      items: [
+        { key: 'name', label: '步骤名称', type: 'text', required: false, placeholder: '步骤标题' },
+        { key: 'text', label: '步骤描述', type: 'textarea', required: true, placeholder: '详细步骤说明' },
+        { key: 'image', label: '步骤图片', type: 'url', required: false, placeholder: 'https://example.com/step.jpg' }
+      ]
+    }
+  ],
+  Organization: [
+    { key: 'name', label: '组织名称', type: 'text', required: true, placeholder: '公司或组织名称' },
+    { key: 'url', label: '网站URL', type: 'url', required: false, placeholder: 'https://example.com' },
+    { key: 'logo', label: 'Logo URL', type: 'url', required: false, placeholder: 'https://example.com/logo.png' },
+    { key: 'description', label: '描述', type: 'textarea', required: false, placeholder: '组织描述' },
+    {
+      key: 'address',
+      label: '地址信息',
+      type: 'object',
+      required: false,
+      items: [
+        { key: 'streetAddress', label: '街道地址', type: 'text', required: false, placeholder: '街道地址' },
+        { key: 'city', label: '城市', type: 'text', required: false, placeholder: '城市' },
+        { key: 'postalCode', label: '邮政编码', type: 'text', required: false, placeholder: '邮政编码' },
+        { key: 'country', label: '国家', type: 'text', required: false, placeholder: '国家' }
+      ]
+    },
+    {
+      key: 'contactPoint',
+      label: '联系方式',
+      type: 'object',
+      required: false,
+      items: [
+        { key: 'telephone', label: '电话', type: 'text', required: false, placeholder: '+1-555-123-4567' },
+        { key: 'contactType', label: '联系类型', type: 'text', required: false, placeholder: 'customer service' }
+      ]
+    }
+  ],
+  Person: [
+    { key: 'name', label: '姓名', type: 'text', required: true, placeholder: '人物姓名' },
+    { key: 'jobTitle', label: '职位', type: 'text', required: false, placeholder: '职位头衔' },
+    { key: 'worksFor', label: '工作单位', type: 'text', required: false, placeholder: '公司或组织名称' },
+    { key: 'url', label: '个人网站', type: 'url', required: false, placeholder: 'https://example.com' },
+    { key: 'image', label: '头像URL', type: 'url', required: false, placeholder: 'https://example.com/avatar.jpg' },
+    { key: 'description', label: '个人描述', type: 'textarea', required: false, placeholder: '个人介绍' }
+  ],
+  Product: [
+    { key: 'name', label: '产品名称', type: 'text', required: true, placeholder: '产品名称' },
+    { key: 'description', label: '产品描述', type: 'textarea', required: false, placeholder: '产品详细描述' },
+    { key: 'image', label: '产品图片', type: 'url', required: false, placeholder: 'https://example.com/product.jpg' },
+    { key: 'brand', label: '品牌', type: 'text', required: false, placeholder: '品牌名称' },
+    {
+      key: 'offers',
+      label: '价格信息',
+      type: 'object',
+      required: false,
+      items: [
+        { key: 'price', label: '价格', type: 'number', required: false, placeholder: '99.99' },
+        { key: 'currency', label: '货币', type: 'text', required: false, placeholder: 'USD' }
+      ]
+    },
+    {
+      key: 'aggregateRating',
+      label: '评分信息',
+      type: 'object',
+      required: false,
+      items: [
+        { key: 'ratingValue', label: '评分', type: 'number', required: false, placeholder: '4.5' },
+        { key: 'reviewCount', label: '评价数量', type: 'number', required: false, placeholder: '100' }
+      ]
+    }
+  ],
+  VideoObject: [
+    { key: 'name', label: '视频标题', type: 'text', required: true, placeholder: '视频标题' },
+    { key: 'description', label: '视频描述', type: 'textarea', required: true, placeholder: '视频内容描述' },
+    { key: 'thumbnailUrl', label: '缩略图URL', type: 'url', required: true, placeholder: 'https://example.com/thumbnail.jpg' },
+    { key: 'uploadDate', label: '上传日期', type: 'date', required: true },
+    { key: 'duration', label: '视频时长', type: 'text', required: false, placeholder: 'PT1H30M (1小时30分钟)' },
+    { key: 'contentUrl', label: '视频URL', type: 'url', required: false, placeholder: 'https://example.com/video.mp4' },
+    { key: 'embedUrl', label: '嵌入URL', type: 'url', required: false, placeholder: 'https://example.com/embed/video' },
+    { key: 'publisher', label: '发布者', type: 'text', required: false, placeholder: '发布机构名称' }
+  ],
+  WebSite: [
+    { key: 'name', label: '网站名称', type: 'text', required: true, placeholder: '网站名称' },
+    { key: 'url', label: '网站URL', type: 'url', required: true, placeholder: 'https://example.com' },
+    { key: 'description', label: '网站描述', type: 'textarea', required: false, placeholder: '网站描述' },
+    {
+      key: 'potentialAction',
+      label: '搜索功能',
+      type: 'object',
+      required: false,
+      items: [
+        { key: 'type', label: '功能类型', type: 'text', required: false, placeholder: 'SearchAction' },
+        { key: 'target', label: '搜索URL模板', type: 'text', required: false, placeholder: 'https://example.com/search?q={search_term_string}' }
+      ]
+    }
+  ]
+};
+
+// 结构化数据示例
+export const SCHEMA_EXAMPLES: Record<SchemaType, SchemaExample[]> = {
+  Article: [
+    {
+      title: '博客文章示例',
+      description: '标准的博客文章结构化数据',
+      data: {
+        headline: '如何优化网站SEO',
+        author: '张三',
+        datePublished: '2024-01-15',
+        description: '本文介绍了网站SEO优化的基本方法和技巧',
+        publisher: '技术博客'
+      }
+    }
+  ],
+  Event: [
+    {
+      title: '会议活动示例',
+      description: '技术会议活动的结构化数据',
+      data: {
+        name: '2024年前端技术大会',
+        startDate: '2024-06-15T09:00:00',
+        endDate: '2024-06-15T18:00:00',
+        location: '北京国际会议中心',
+        description: '探讨最新的前端技术趋势和实践',
+        organizer: '前端技术社区'
+      }
+    }
+  ],
+  Product: [
+    {
+      title: '电商产品示例',
+      description: '电商网站产品页面的结构化数据',
+      data: {
+        name: 'iPhone 15 Pro',
+        description: '最新的苹果智能手机，搭载A17 Pro芯片',
+        brand: 'Apple',
+        offers: {
+          price: '999',
+          currency: 'USD'
+        },
+        aggregateRating: {
+          ratingValue: '4.8',
+          reviewCount: '1250'
+        }
+      }
+    }
+  ],
+  // 其他类型的示例...
+  Breadcrumb: [],
+  FAQPage: [],
+  HowTo: [],
+  Organization: [],
+  Person: [],
+  VideoObject: [],
+  WebSite: []
+};
+
+// ==============================================
 // 通用响应类型
 // ==============================================
 
