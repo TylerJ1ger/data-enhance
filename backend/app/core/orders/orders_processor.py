@@ -249,9 +249,9 @@ class OrdersProcessor:
             }
     
     def get_chart_data(self) -> Dict[str, Any]:
-        """获取图表数据 - 优化版本，添加数据验证和错误处理"""
+        """获取图表数据 - 优化版本，添加购物车来源分布图表"""
         
-        # 🔧 新增：检查数据是否就绪
+        # 检查数据是否就绪
         if self.filtered_data.empty:
             # 如果筛选数据为空，但原始数据不为空，重新设置筛选数据
             if not self.data.empty:
@@ -269,8 +269,11 @@ class OrdersProcessor:
         try:
             df = self.filtered_data.copy()
             
-            # 🔧 新增：数据完整性验证
-            required_columns = ["订单类型", "日期", "LicenseID", "支付币种", "支付平台", "订单状态", "销售总额"]
+            # 数据完整性验证
+            required_columns = [
+                "订单类型", "日期", "LicenseID", "支付币种", "支付平台", 
+                "订单状态", "销售总额", "购物车来源"
+            ]
             missing_columns = [col for col in required_columns if col not in df.columns]
             if missing_columns:
                 return {
@@ -293,7 +296,7 @@ class OrdersProcessor:
                     }
                 }
             
-            # 🔧 优化：添加数据类型验证和转换
+            # 添加数据类型验证和转换
             try:
                 # 确保日期列是datetime类型
                 if "日期" in df.columns:
@@ -378,7 +381,10 @@ class OrdersProcessor:
                 "未参与AB测试": int(len(df[df["AB实验ID"].isna()]))
             }
             
-            # 🔧 新增：构建图表数据结构
+            # 9. 购物车来源分布（饼图）- 新增
+            cart_source_distribution = {str(k): int(v) for k, v in df["购物车来源"].value_counts().to_dict().items()}
+            
+            # 构建图表数据结构
             chart_data = {
                 "charts": {
                     "order_type_distribution": {
@@ -420,17 +426,22 @@ class OrdersProcessor:
                         "type": "pie",
                         "title": "AB测试参与情况",
                         "data": ab_test_participation
+                    },
+                    "cart_source_distribution": {
+                        "type": "pie",
+                        "title": "购物车来源分布",
+                        "data": cart_source_distribution
                     }
                 },
                 "metadata": {
                     "data_rows": len(df),
                     "generated_at": datetime.now().isoformat(),
-                    "charts_count": 8,
+                    "charts_count": 9,  # 更新为9个图表
                     "data_source": "filtered" if len(df) != len(self.data) else "original"
                 }
             }
             
-            # 🔧 新增：验证所有图表都有数据
+            # 验证所有图表都有数据
             empty_charts = []
             for chart_name, chart_config in chart_data["charts"].items():
                 chart_data_content = chart_config.get("data")
@@ -442,7 +453,7 @@ class OrdersProcessor:
             if empty_charts:
                 chart_data["warning"] = f"以下图表没有数据: {', '.join(empty_charts)}"
             
-            # 🔧 新增：添加数据质量信息
+            # 添加数据质量信息
             chart_data["data_quality"] = {
                 "has_all_required_fields": len(missing_columns) == 0,
                 "data_completeness": {

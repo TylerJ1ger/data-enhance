@@ -30,6 +30,7 @@ export function OrderCharts({
   const pieChart2Ref = useRef<HTMLDivElement>(null);
   const pieChart3Ref = useRef<HTMLDivElement>(null);
   const pieChart4Ref = useRef<HTMLDivElement>(null);
+  const pieChartCartRef = useRef<HTMLDivElement>(null); // 新增：购物车来源图表
   const lineChartRef = useRef<HTMLDivElement>(null);
   const barChart1Ref = useRef<HTMLDivElement>(null);
   const barChart2Ref = useRef<HTMLDivElement>(null);
@@ -143,92 +144,14 @@ export function OrderCharts({
     backgroundColor: 'transparent',
   });
 
-  // 🔧 修复：创建具体的图表初始化函数，支持强制重新初始化
+  // 🔧 修复：概览图表初始化函数 - 重新布局
   const initializeOverviewCharts = useCallback((forceReinit: boolean = false) => {
     if (!echarts || !chartData || !chartData.charts || isLoading) return;
 
     const charts = chartData.charts;
     const commonConfig = getCommonConfig();
 
-    // 1. 订单类型分布（饼图）
-    if (pieChart1Ref.current && charts.order_type_distribution && (forceReinit || !chartsInitializedRef.current['pieChart1'])) {
-      const chart = safeInitChart(pieChart1Ref.current, 'pieChart1', forceReinit);
-      if (chart) {
-        const data = Object.entries(charts.order_type_distribution.data).map(([name, value]) => ({
-          name,
-          value
-        }));
-        
-        chart.setOption({
-          ...commonConfig,
-          title: {
-            text: charts.order_type_distribution.title,
-            left: 'center',
-            top: 20,
-            textStyle: { 
-              fontSize: 16, 
-              fontWeight: 'bold',
-              fontFamily: 'Inter, system-ui, sans-serif'
-            }
-          },
-          tooltip: {
-            trigger: 'item',
-            formatter: '{a} <br/>{b}: {c} ({d}%)',
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-            borderColor: '#e1e5e9',
-            borderWidth: 1,
-            textStyle: {
-              color: '#374151'
-            }
-          },
-          legend: {
-            bottom: '10%',
-            left: 'center',
-            textStyle: {
-              fontSize: 12,
-              fontFamily: 'Inter, system-ui, sans-serif'
-            }
-          },
-          series: [{
-            name: '订单类型',
-            type: 'pie',
-            radius: ['40%', '70%'],
-            center: ['50%', '45%'],
-            avoidLabelOverlap: false,
-            itemStyle: {
-              borderRadius: 8,
-              borderColor: '#fff',
-              borderWidth: 2
-            },
-            label: {
-              show: false,
-              position: 'center'
-            },
-            emphasis: {
-              label: {
-                show: true,
-                fontSize: 18,
-                fontWeight: 'bold'
-              },
-              itemStyle: {
-                shadowBlur: 10,
-                shadowOffsetX: 0,
-                shadowColor: 'rgba(0, 0, 0, 0.2)'
-              }
-            },
-            labelLine: {
-              show: false
-            },
-            data: data,
-            color: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
-          }]
-        });
-
-        chartsInitializedRef.current['pieChart1'] = true;
-      }
-    }
-
-    // 2. 每日订单量趋势（折线图）
+    // 1. 每日订单量趋势（折线图）- 全宽显示
     if (lineChartRef.current && charts.daily_orders_trend && (forceReinit || !chartsInitializedRef.current['lineChart'])) {
       const chart = safeInitChart(lineChartRef.current, 'lineChart', forceReinit);
       if (chart) {
@@ -239,7 +162,7 @@ export function OrderCharts({
           title: {
             text: charts.daily_orders_trend.title,
             left: 'center',
-            top: 20,
+            top: 15, // 调整标题位置
             textStyle: { 
               fontSize: 16, 
               fontWeight: 'bold',
@@ -321,7 +244,7 @@ export function OrderCharts({
       }
     }
 
-    // 3. License类型销售分布（柱状图）
+    // 2. License类型销售分布（柱状图）
     if (barChart1Ref.current && charts.license_sales_distribution && (forceReinit || !chartsInitializedRef.current['barChart1'])) {
       const chart = safeInitChart(barChart1Ref.current, 'barChart1', forceReinit);
       if (chart) {
@@ -332,7 +255,7 @@ export function OrderCharts({
           title: {
             text: charts.license_sales_distribution.title,
             left: 'center',
-            top: 20,
+            top: 15, // 调整标题位置
             textStyle: { 
               fontSize: 16, 
               fontWeight: 'bold',
@@ -352,7 +275,7 @@ export function OrderCharts({
             }
           },
           legend: {
-            bottom: '10%',
+            bottom: '5%', // 调整图例位置
             textStyle: {
               fontFamily: 'Inter, system-ui, sans-serif'
             }
@@ -452,21 +375,21 @@ export function OrderCharts({
       }
     }
 
-    // 4. 币种收入分布（饼图）
-    if (pieChart2Ref.current && charts.currency_revenue_distribution && (forceReinit || !chartsInitializedRef.current['pieChart2'])) {
-      const chart = safeInitChart(pieChart2Ref.current, 'pieChart2', forceReinit);
+    // 3. 购物车来源分布（饼图）- 新增
+    if (pieChartCartRef.current && charts.cart_source_distribution && (forceReinit || !chartsInitializedRef.current['pieChartCart'])) {
+      const chart = safeInitChart(pieChartCartRef.current, 'pieChartCart', forceReinit);
       if (chart) {
-        const data = Object.entries(charts.currency_revenue_distribution.data).map(([name, value]) => ({
-          name: name.toUpperCase(),
+        const data = Object.entries(charts.cart_source_distribution.data).map(([name, value]) => ({
+          name,
           value
         }));
         
         chart.setOption({
           ...commonConfig,
           title: {
-            text: charts.currency_revenue_distribution.title,
+            text: charts.cart_source_distribution.title,
             left: 'center',
-            top: 20,
+            top: 15, // 调整标题位置
             textStyle: { 
               fontSize: 16, 
               fontWeight: 'bold',
@@ -484,7 +407,171 @@ export function OrderCharts({
             }
           },
           legend: {
-            bottom: '10%',
+            bottom: '5%', // 调整图例位置
+            left: 'center',
+            textStyle: {
+              fontSize: 12,
+              fontFamily: 'Inter, system-ui, sans-serif'
+            }
+          },
+          series: [{
+            name: '购物车来源',
+            type: 'pie',
+            radius: ['25%', '55%'], // 缩小饼图尺寸
+            center: ['50%', '50%'], // 调整中心位置
+            avoidLabelOverlap: false,
+            itemStyle: {
+              borderRadius: 8,
+              borderColor: '#fff',
+              borderWidth: 2
+            },
+            label: {
+              show: false,
+              position: 'center'
+            },
+            emphasis: {
+              label: {
+                show: true,
+                fontSize: 18,
+                fontWeight: 'bold'
+              },
+              itemStyle: {
+                shadowBlur: 10,
+                shadowOffsetX: 0,
+                shadowColor: 'rgba(0, 0, 0, 0.2)'
+              }
+            },
+            labelLine: {
+              show: false
+            },
+            data: data,
+            color: ['#06b6d4', '#84cc16'] // 为两个来源设置不同颜色
+          }]
+        });
+
+        chartsInitializedRef.current['pieChartCart'] = true;
+      }
+    }
+  }, [safeInitChart, chartData, isLoading]);
+
+  // 修改销售分析图表初始化函数
+  const initializeSalesCharts = useCallback((forceReinit: boolean = false) => {
+    if (!echarts || !chartData || !chartData.charts || isLoading) return;
+
+    const charts = chartData.charts;
+    const commonConfig = getCommonConfig();
+
+    // 1. 订单类型分布（饼图）- 从概览移过来
+    if (pieChart1Ref.current && charts.order_type_distribution && (forceReinit || !chartsInitializedRef.current['pieChart1'])) {
+      const chart = safeInitChart(pieChart1Ref.current, 'pieChart1', forceReinit);
+      if (chart) {
+        const data = Object.entries(charts.order_type_distribution.data).map(([name, value]) => ({
+          name,
+          value
+        }));
+        
+        chart.setOption({
+          ...commonConfig,
+          title: {
+            text: charts.order_type_distribution.title,
+            left: 'center',
+            top: 15, // 调整标题位置
+            textStyle: { 
+              fontSize: 16, 
+              fontWeight: 'bold',
+              fontFamily: 'Inter, system-ui, sans-serif'
+            }
+          },
+          tooltip: {
+            trigger: 'item',
+            formatter: '{a} <br/>{b}: {c} ({d}%)',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            borderColor: '#e1e5e9',
+            borderWidth: 1,
+            textStyle: {
+              color: '#374151'
+            }
+          },
+          legend: {
+            bottom: '5%', // 调整图例位置
+            left: 'center',
+            textStyle: {
+              fontSize: 12,
+              fontFamily: 'Inter, system-ui, sans-serif'
+            }
+          },
+          series: [{
+            name: '订单类型',
+            type: 'pie',
+            radius: ['25%', '55%'], // 缩小饼图尺寸
+            center: ['50%', '50%'], // 调整中心位置
+            avoidLabelOverlap: false,
+            itemStyle: {
+              borderRadius: 8,
+              borderColor: '#fff',
+              borderWidth: 2
+            },
+            label: {
+              show: false,
+              position: 'center'
+            },
+            emphasis: {
+              label: {
+                show: true,
+                fontSize: 18,
+                fontWeight: 'bold'
+              },
+              itemStyle: {
+                shadowBlur: 10,
+                shadowOffsetX: 0,
+                shadowColor: 'rgba(0, 0, 0, 0.2)'
+              }
+            },
+            labelLine: {
+              show: false
+            },
+            data: data,
+            color: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6']
+          }]
+        });
+
+        chartsInitializedRef.current['pieChart1'] = true;
+      }
+    }
+
+    // 2. 币种收入分布（饼图）- 从概览移过来
+    if (pieChart2Ref.current && charts.currency_revenue_distribution && (forceReinit || !chartsInitializedRef.current['pieChart2'])) {
+      const chart = safeInitChart(pieChart2Ref.current, 'pieChart2', forceReinit);
+      if (chart) {
+        const data = Object.entries(charts.currency_revenue_distribution.data).map(([name, value]) => ({
+          name: name.toUpperCase(),
+          value
+        }));
+        
+        chart.setOption({
+          ...commonConfig,
+          title: {
+            text: charts.currency_revenue_distribution.title,
+            left: 'center',
+            top: 15, // 调整标题位置
+            textStyle: { 
+              fontSize: 16, 
+              fontWeight: 'bold',
+              fontFamily: 'Inter, system-ui, sans-serif'
+            }
+          },
+          tooltip: {
+            trigger: 'item',
+            formatter: '{a} <br/>{b}: {c} ({d}%)',
+            backgroundColor: 'rgba(255, 255, 255, 0.95)',
+            borderColor: '#e1e5e9',
+            borderWidth: 1,
+            textStyle: {
+              color: '#374151'
+            }
+          },
+          legend: {
+            bottom: '5%', // 调整图例位置
             left: 'center',
             textStyle: {
               fontSize: 12,
@@ -494,8 +581,8 @@ export function OrderCharts({
           series: [{
             name: '币种收入',
             type: 'pie',
-            radius: ['40%', '70%'],
-            center: ['50%', '45%'],
+            radius: ['25%', '55%'], // 缩小饼图尺寸
+            center: ['50%', '50%'], // 调整中心位置
             data: data,
             itemStyle: {
               borderRadius: 8,
@@ -516,15 +603,8 @@ export function OrderCharts({
         chartsInitializedRef.current['pieChart2'] = true;
       }
     }
-  }, [safeInitChart, chartData, isLoading]);
 
-  const initializeSalesCharts = useCallback((forceReinit: boolean = false) => {
-    if (!echarts || !chartData || !chartData.charts || isLoading) return;
-
-    const charts = chartData.charts;
-    const commonConfig = getCommonConfig();
-
-    // 5. 支付平台统计（柱状图）
+    // 3. 支付平台统计（柱状图）
     if (barChart2Ref.current && charts.payment_platform_stats && (forceReinit || !chartsInitializedRef.current['barChart2'])) {
       const chart = safeInitChart(barChart2Ref.current, 'barChart2', forceReinit);
       if (chart) {
@@ -535,7 +615,7 @@ export function OrderCharts({
           title: {
             text: charts.payment_platform_stats.title,
             left: 'center',
-            top: 20,
+            top: 15, // 调整标题位置
             textStyle: { 
               fontSize: 16, 
               fontWeight: 'bold',
@@ -552,7 +632,7 @@ export function OrderCharts({
             }
           },
           legend: {
-            bottom: '10%',
+            bottom: '5%', // 调整图例位置
             textStyle: {
               fontFamily: 'Inter, system-ui, sans-serif'
             }
@@ -642,7 +722,7 @@ export function OrderCharts({
       }
     }
 
-    // 6. 订单状态分布（饼图）
+    // 4. 订单状态分布（饼图）
     if (pieChart3Ref.current && charts.order_status_distribution && (forceReinit || !chartsInitializedRef.current['pieChart3'])) {
       const chart = safeInitChart(pieChart3Ref.current, 'pieChart3', forceReinit);
       if (chart) {
@@ -656,7 +736,7 @@ export function OrderCharts({
           title: {
             text: charts.order_status_distribution.title,
             left: 'center',
-            top: 20,
+            top: 15, // 调整标题位置
             textStyle: { 
               fontSize: 16, 
               fontWeight: 'bold',
@@ -674,7 +754,7 @@ export function OrderCharts({
             }
           },
           legend: {
-            bottom: '10%',
+            bottom: '5%', // 调整图例位置
             left: 'center',
             textStyle: {
               fontSize: 12,
@@ -684,8 +764,8 @@ export function OrderCharts({
           series: [{
             name: '订单状态',
             type: 'pie',
-            radius: ['40%', '70%'],
-            center: ['50%', '45%'],
+            radius: ['25%', '55%'], // 缩小饼图尺寸
+            center: ['50%', '50%'], // 调整中心位置
             data: data,
             itemStyle: {
               borderRadius: 8,
@@ -725,7 +805,7 @@ export function OrderCharts({
           title: {
             text: charts.coupon_usage.title,
             left: 'center',
-            top: 20,
+            top: 15, // 调整标题位置
             textStyle: { 
               fontSize: 16, 
               fontWeight: 'bold',
@@ -810,7 +890,7 @@ export function OrderCharts({
           title: {
             text: charts.ab_test_participation.title,
             left: 'center',
-            top: 20,
+            top: 15, // 调整标题位置
             textStyle: { 
               fontSize: 16, 
               fontWeight: 'bold',
@@ -828,7 +908,7 @@ export function OrderCharts({
             }
           },
           legend: {
-            bottom: '10%',
+            bottom: '5%', // 调整图例位置
             left: 'center',
             textStyle: {
               fontSize: 12,
@@ -838,8 +918,8 @@ export function OrderCharts({
           series: [{
             name: 'AB测试',
             type: 'pie',
-            radius: ['40%', '70%'],
-            center: ['50%', '45%'],
+            radius: ['25%', '55%'], // 缩小饼图尺寸
+            center: ['50%', '50%'], // 调整中心位置
             data: data,
             itemStyle: {
               borderRadius: 8,
@@ -1055,16 +1135,21 @@ export function OrderCharts({
           </TabsList>
           
           <TabsContent value="overview" className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div ref={pieChart1Ref} className="h-80 w-full border rounded-lg" />
+            {/* 每日订单趋势占整行 */}
+            <div className="w-full">
               <div ref={lineChartRef} className="h-80 w-full border rounded-lg" />
+            </div>
+            {/* License销售分布和购物车来源分布并排 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div ref={barChart1Ref} className="h-80 w-full border rounded-lg" />
-              <div ref={pieChart2Ref} className="h-80 w-full border rounded-lg" />
+              <div ref={pieChartCartRef} className="h-80 w-full border rounded-lg" />
             </div>
           </TabsContent>
           
           <TabsContent value="sales" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div ref={pieChart1Ref} className="h-80 w-full border rounded-lg" />
+              <div ref={pieChart2Ref} className="h-80 w-full border rounded-lg" />
               <div ref={barChart2Ref} className="h-80 w-full border rounded-lg" />
               <div ref={pieChart3Ref} className="h-80 w-full border rounded-lg" />
             </div>

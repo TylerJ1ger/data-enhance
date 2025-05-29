@@ -69,7 +69,7 @@ export function OrderStats({
       .join(' | ');
   };
 
-  // 统计卡片组件
+  // 统计卡片组件 - 移除"原始: xxx"显示
   const StatCard = ({
     icon,
     title,
@@ -93,12 +93,7 @@ export function OrderStats({
           <div className="text-2xl font-bold">
             {formatter(filteredValue !== undefined ? filteredValue : originalValue)}
           </div>
-          {filteredValue !== undefined && filteredValue !== originalValue && (
-            <div className="text-sm">
-              <span className="text-muted-foreground">原始: </span>
-              <span className="font-medium">{formatter(originalValue)}</span>
-            </div>
-          )}
+          {/* 移除了原始值显示部分 */}
         </div>
       </CardContent>
     </Card>

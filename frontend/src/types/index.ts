@@ -416,6 +416,7 @@ export interface OrderChartsResponse {
     order_status_distribution: ChartConfig;
     coupon_usage: ChartConfig;
     ab_test_participation: ChartConfig;
+    cart_source_distribution: ChartConfig;
   };
   error?: string;
 }
