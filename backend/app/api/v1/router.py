@@ -9,7 +9,8 @@ from fastapi.responses import StreamingResponse
 import io
 import json
 import xml.etree.ElementTree as ET
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
+from datetime import datetime
 
 # 导入重构后的处理器
 from app.core.keywords.keywords_processor import KeywordsProcessor
@@ -17,6 +18,7 @@ from app.core.sitemaps.sitemaps_processor import SitemapsProcessor
 from app.core.seo.seo_processor import SEOProcessor
 from app.core.backlinks.backlinks_processor import BacklinksProcessor
 from app.core.backlinks.cross_analysis_processor import CrossAnalysisProcessor
+from app.core.orders.orders_processor import OrdersProcessor
 
 # 创建主路由器
 router = APIRouter(tags=["API v1"])
@@ -30,6 +32,7 @@ sitemaps_processor = SitemapsProcessor()
 seo_processor = SEOProcessor()
 backlinks_processor = BacklinksProcessor()
 cross_analysis_processor = CrossAnalysisProcessor()
+orders_processor = OrdersProcessor()
 
 # ================================
 # Pydantic 模型定义
@@ -71,6 +74,66 @@ class CrossAnalysisExportRequest(BaseModel):
     sort_direction: str = "desc"
     cell_display_type: str = "target_url" 
     comparison_data: Optional[Dict[str, Any]] = None
+
+class VirtualDataGenerateRequest(BaseModel):
+    """虚拟数据生成请求模型 - 支持自定义日期范围"""
+    count: int = 100
+    date_range: Optional[Dict[str, str]] = None  # {"start_date": "YYYY-MM-DD", "end_date": "YYYY-MM-DD"}
+    
+    @validator('count')
+    def validate_count(cls, v):
+        """验证订单数量"""
+        if v <= 0:
+            raise ValueError('数据条数必须大于0')
+        if v > 10000:
+            raise ValueError('数据条数不能超过10000')
+        return v
+    
+    @validator('date_range')
+    def validate_date_range(cls, v):
+        """验证日期范围"""
+        if v is None:
+            return v
+        
+        if not isinstance(v, dict):
+            raise ValueError('日期范围必须是字典格式')
+        
+        if 'start_date' not in v or 'end_date' not in v:
+            raise ValueError('日期范围必须包含 start_date 和 end_date')
+        
+        try:
+            start_date = datetime.strptime(v['start_date'], '%Y-%m-%d')
+            end_date = datetime.strptime(v['end_date'], '%Y-%m-%d')
+        except ValueError:
+            raise ValueError('日期格式必须为 YYYY-MM-DD')
+        
+        if start_date >= end_date:
+            raise ValueError('结束日期必须晚于开始日期')
+        
+        # 限制日期范围最大为365天
+        if (end_date - start_date).days > 365:
+            raise ValueError('日期范围不能超过365天')
+        
+        # 检查日期是否在合理范围内
+        min_date = datetime(2020, 1, 1)
+        max_date = datetime(2030, 12, 31)
+        
+        if start_date < min_date or end_date > max_date:
+            raise ValueError(f'日期必须在 {min_date.strftime("%Y-%m-%d")} 到 {max_date.strftime("%Y-%m-%d")} 之间')
+        
+        return v
+
+class OrderFilterRequest(BaseModel):
+    """订单筛选请求模型"""
+    date_range: Optional[List[str]] = None  # ["start_date", "end_date"]
+    order_types: Optional[List[str]] = None
+    license_ids: Optional[List[int]] = None
+    currencies: Optional[List[str]] = None
+    payment_platforms: Optional[List[str]] = None
+    order_statuses: Optional[List[str]] = None
+    sales_amount_range: Optional[List[float]] = None  # [min_amount, max_amount]
+    has_coupon: Optional[bool] = None
+    ab_test_filter: Optional[str] = None  # "with", "without", None
 
 # ================================
 # 通用辅助函数
@@ -528,6 +591,155 @@ async def export_filtered_sitemaps_urls(format: str = "csv"):
     )
 
 # ================================
+# 虚拟订单分析相关路由 (Orders)
+# ================================
+
+@router.post("/orders/generate", tags=["Orders"])
+async def generate_virtual_orders(request: VirtualDataGenerateRequest):
+    """
+    生成虚拟订单数据 - 支持自定义日期范围
+    """
+    try:
+        result = orders_processor.generate_virtual_data(
+            count=request.count,
+            date_range=request.date_range
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("message", "生成虚拟数据失败")
+            )
+        
+        return result
+    except ValueError as e:
+        # 处理Pydantic验证错误
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"生成虚拟订单数据时发生错误: {str(e)}"
+        )
+
+@router.post("/orders/filter", tags=["Orders"])
+async def apply_order_filters(filter_request: OrderFilterRequest):
+    """
+    应用订单筛选条件
+    """
+    try:
+        # 转换筛选参数
+        date_range = tuple(filter_request.date_range) if filter_request.date_range else None
+        sales_amount_range = tuple(filter_request.sales_amount_range) if filter_request.sales_amount_range else None
+        
+        result = orders_processor.apply_filters(
+            date_range=date_range,
+            order_types=filter_request.order_types,
+            license_ids=filter_request.license_ids,
+            currencies=filter_request.currencies,
+            payment_platforms=filter_request.payment_platforms,
+            order_statuses=filter_request.order_statuses,
+            sales_amount_range=sales_amount_range,
+            has_coupon=filter_request.has_coupon,
+            ab_test_filter=filter_request.ab_test_filter
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("message", "应用筛选条件失败")
+            )
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"应用筛选条件时发生错误: {str(e)}"
+        )
+
+@router.get("/orders/charts", tags=["Orders"])
+async def get_order_charts():
+    """
+    获取订单图表数据
+    """
+    try:
+        result = orders_processor.get_chart_data()
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取图表数据时发生错误: {str(e)}"
+        )
+
+@router.get("/orders/export", tags=["Orders"])
+async def export_order_data():
+    """
+    导出筛选后的订单数据为CSV文件
+    """
+    try:
+        csv_data = orders_processor.export_filtered_data()
+        
+        return StreamingResponse(
+            io.BytesIO(csv_data),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=virtual_orders.csv"}
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"导出数据时发生错误: {str(e)}"
+        )
+
+@router.get("/orders/filter-ranges", tags=["Orders"])
+async def get_order_filter_ranges():
+    """
+    获取订单筛选范围
+    """
+    try:
+        return orders_processor.get_filter_ranges()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取筛选范围时发生错误: {str(e)}"
+        )
+
+@router.get("/orders/summary", tags=["Orders"])
+async def get_order_summary():
+    """
+    获取订单数据摘要
+    """
+    try:
+        return orders_processor.get_data_summary()
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取数据摘要时发生错误: {str(e)}"
+        )
+
+@router.post("/orders/reset", tags=["Orders"])
+async def reset_order_data():
+    """
+    重置所有订单数据
+    """
+    try:
+        orders_processor.reset_data()
+        return {
+            "success": True,
+            "message": "订单数据已重置"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"重置数据时发生错误: {str(e)}"
+        )
+
+# ================================
 # 健康检查和通用路由
 # ================================
 
@@ -550,6 +762,7 @@ async def api_info():
         "endpoints": {
             "keywords": "/v1/keywords/",
             "backlinks": "/v1/backlinks/", 
+            "orders": "/v1/orders/",
             "seo": "/v1/seo/",
             "sitemaps": "/v1/sitemaps/",
             "health": "/v1/health"

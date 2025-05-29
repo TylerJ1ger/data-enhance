@@ -3,7 +3,7 @@
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Globe, Search, BarChart2 } from "lucide-react";
+import { FileText, Globe, Search, BarChart2, Database } from "lucide-react";
 import Link from "next/link";
 
 export default function HomePage() {
@@ -21,6 +21,13 @@ export default function HomePage() {
       icon: <BarChart2 className="h-10 w-10 text-primary" />,
       href: "/backlink",
       color: "bg-green-50"
+    },
+    {
+      title: "虚拟订单分析",
+      description: "生成虚拟订单数据进行业务分析，支持多维度筛选和图表可视化展示。",
+      icon: <Database className="h-10 w-10 text-primary" />,
+      href: "/orders",
+      color: "bg-rose-50"
     },
     {
       title: "SEO分析",
@@ -43,7 +50,7 @@ export default function HomePage() {
       <div className="text-center py-12">
         <h1 className="text-4xl font-bold tracking-tight text-foreground mb-4">数据分析工具</h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          针对SEMRush导出数据衍生的一站式解决方案，帮助您交叉/合并分析导出后的关键词、外链、SEO和网站结构数据
+          针对SEMRush导出数据衍生的一站式解决方案，帮助您交叉/合并分析导出后的关键词、外链、SEO和网站结构数据，同时支持虚拟订单数据生成与分析
         </p>
       </div>
 
