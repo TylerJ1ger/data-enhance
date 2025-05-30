@@ -146,19 +146,17 @@ export const generateBatchSchemas = async (request: SchemaBatchGenerateRequest):
  * @returns 导出响应或文件流
  */
 export const exportBatchSchemas = async (request: SchemaBatchExportRequest): Promise<SchemaBatchExportResponse | Blob> => {
+  const response = await schemaApi.post('/batch/export', request, {
+    responseType: request.export_type === 'combined' ? 'blob' : 'json',
+    timeout: 180000, // 3分钟超时
+  });
+  
   if (request.export_type === 'combined') {
     // 合并导出 - 返回文件流
-    const response = await schemaApi.post('/batch/export', request, {
-      responseType: 'blob',
-      timeout: 180000, // 3分钟超时
-    });
     return response.data as Blob;
   } else {
     // 分离导出 - 返回JSON响应
-    const response = await schemaApi.post<SchemaBatchExportResponse>('/batch/export', request, {
-      timeout: 180000,
-    });
-    return response.data;
+    return response.data as SchemaBatchExportResponse;
   }
 };
 

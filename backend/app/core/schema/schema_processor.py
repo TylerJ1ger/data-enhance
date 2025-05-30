@@ -140,14 +140,15 @@ class SchemaProcessor:
             'data_json': None
         }
         
-        for concept, possible_names in self.required_columns_mapping.items():
-            found_column = find_column_name(df, concept, possible_names)
+        # 修复：正确调用 find_column_name 函数
+        for concept in self.required_columns_mapping.keys():
+            found_column = find_column_name(df, concept, self.required_columns_mapping)
             if found_column:
                 found_columns[concept] = found_column
             else:
                 validation_result["is_valid"] = False
                 validation_result["errors"].append(
-                    f"文件 {filename} 缺少必需列 '{concept}'，期望列名: {', '.join(possible_names)}"
+                    f"文件 {filename} 缺少必需列 '{concept}'，期望列名: {', '.join(self.required_columns_mapping[concept])}"
                 )
         
         # 检查数据质量
@@ -185,10 +186,19 @@ class SchemaProcessor:
         standardized_df = df.copy()
         
         # 查找并重命名列
-        for concept, possible_names in self.required_columns_mapping.items():
-            found_column = find_column_name(df, concept, possible_names)
+        rename_mapping = {}
+        
+        for concept in self.required_columns_mapping.keys():
+            # 修复：正确调用 find_column_name 函数
+            found_column = find_column_name(df, concept, self.required_columns_mapping)
             if found_column and found_column != concept:
-                standardized_df = standardized_df.rename(columns={found_column: concept})
+                # 将找到的列名重命名为概念名（标准名）
+                rename_mapping[found_column] = concept
+        
+        # 应用重命名
+        if rename_mapping:
+            standardized_df = standardized_df.rename(columns=rename_mapping)
+            logger.info(f"列名标准化完成: {rename_mapping}")
         
         return standardized_df
     

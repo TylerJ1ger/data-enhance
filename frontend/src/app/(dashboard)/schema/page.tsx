@@ -48,7 +48,6 @@ export default function SchemaPage() {
     uploadBatchFiles,
     generateBatchSchemas,
     exportBatchSchemas,
-    previewBatchData,
     resetBatchData,
     downloadCSVTemplate,
     setUrlFilter,
@@ -63,8 +62,9 @@ export default function SchemaPage() {
   const [formErrors, setFormErrors] = useState<string[]>([]);
   
   // 批量处理状态
-  const [showBatchPreview, setShowBatchPreview] = useState(false);
   const [batchExportType, setBatchExportType] = useState<'combined' | 'separated'>('combined');
+  const [batchExportResult, setBatchExportResult] = useState<any>(null);
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   // 加载Schema类型
   useEffect(() => {
@@ -124,15 +124,16 @@ export default function SchemaPage() {
     await generateBatchSchemas(filterPattern);
   };
 
-  // 批量导出
+  // 批量导出 - 修复后的逻辑
   const handleBatchExport = async () => {
-    await exportBatchSchemas(batchExportType);
-  };
-
-  // 预览批量数据
-  const handlePreviewBatchData = async () => {
-    await previewBatchData(10);
-    setShowBatchPreview(true);
+    const result = await exportBatchSchemas(batchExportType);
+    
+    if (result && batchExportType === 'separated') {
+      // 对于分离导出，保存结果并显示文件选择对话框
+      setBatchExportResult(result);
+      setShowExportDialog(true);
+    }
+    // 对于合并导出，文件会自动下载，不需要额外处理
   };
 
   // 处理重置
@@ -144,6 +145,8 @@ export default function SchemaPage() {
       resetData();
     } else {
       resetBatchData();
+      setBatchExportResult(null);
+      setShowExportDialog(false);
     }
   };
 
@@ -217,6 +220,112 @@ export default function SchemaPage() {
           />
         );
     }
+  };
+
+  // 渲染分离导出文件列表对话框
+  const renderSeparatedExportDialog = () => {
+    if (!showExportDialog || !batchExportResult?.data) return null;
+
+    const files = Object.entries(batchExportResult.data);
+
+    return (
+      <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+        <div className="bg-white dark:bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">分离导出结果</h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowExportDialog(false)}
+            >
+              ×
+            </Button>
+          </div>
+          
+          <Alert className="mb-4">
+            <CheckCircle className="h-4 w-4" />
+            <AlertTitle>导出成功</AlertTitle>
+            <AlertDescription>
+              共生成 {files.length} 个JSON-LD文件，点击下方按钮逐个下载
+            </AlertDescription>
+          </Alert>
+
+          <div className="max-h-64 overflow-y-auto space-y-2">
+            {files.map(([filename, fileInfo]: [string, any]) => (
+              <Card key={filename} className="p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{filename}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {fileInfo.url}
+                    </p>
+                    <div className="flex items-center space-x-2 mt-1">
+                      <Badge variant="outline" className="text-xs">
+                        {fileInfo.schema_count} 个数据
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs">
+                        {Math.ceil(fileInfo.json_ld.length / 1024)} KB
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => navigator.clipboard.writeText(fileInfo.json_ld)}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const blob = new Blob([fileInfo.json_ld], { type: 'application/ld+json' });
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = filename;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                    >
+                      <Download className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+
+          <div className="flex justify-between mt-4">
+            <Button
+              variant="outline"
+              onClick={() => {
+                // 批量下载所有文件
+                files.forEach(([filename, fileInfo]: [string, any], index) => {
+                  setTimeout(() => {
+                    const blob = new Blob([fileInfo.json_ld], { type: 'application/ld+json' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = filename;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  }, index * 100); // 间隔100ms下载
+                });
+              }}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              批量下载全部
+            </Button>
+            
+            <Button onClick={() => setShowExportDialog(false)}>
+              关闭
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   // 获取当前选择的Schema配置
@@ -554,16 +663,7 @@ export default function SchemaPage() {
                 </>
               )}
 
-              {batchState.hasUploadedData && (
-                <Button
-                  onClick={handlePreviewBatchData}
-                  variant="outline"
-                  className="gap-2"
-                >
-                  <FileText className="h-4 w-4" />
-                  预览数据
-                </Button>
-              )}
+              {/* 移除预览数据按钮 */}
             </div>
 
             <Button
@@ -778,6 +878,9 @@ export default function SchemaPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* 分离导出对话框 */}
+      {renderSeparatedExportDialog()}
     </div>
   );
 }

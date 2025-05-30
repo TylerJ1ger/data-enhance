@@ -430,7 +430,7 @@ export function useSchemaApi() {
     }
   }, [batchState.hasUploadedData]);
 
-  // 导出批量数据
+  // 导出批量数据 - 修复分离导出逻辑
   const exportBatchSchemas = useCallback(async (exportType: 'combined' | 'separated') => {
     if (!batchState.hasGeneratedData) {
       toast.error('请先生成结构化数据');
@@ -457,12 +457,16 @@ export function useSchemaApi() {
         overallProgress: 100
       }));
 
-      // 处理下载
-      await schemaApi.handleBatchExportDownload(result, exportType);
+      if (exportType === 'combined') {
+        // 合并导出 - 直接下载文件
+        await schemaApi.handleBatchExportDownload(result, exportType);
+        toast.success('合并导出完成');
+      } else {
+        // 分离导出 - 返回数据供UI使用，不自动下载
+        toast.success('分离导出完成，请选择要下载的文件');
+      }
 
       setBatchState(prev => ({ ...prev, isExporting: false }));
-
-      toast.success(`${exportType === 'combined' ? '合并' : '分离'}导出完成`);
       return result;
     } catch (error: any) {
       const errorMessage = error.response?.data?.detail || error.message || '导出失败';
@@ -493,18 +497,10 @@ export function useSchemaApi() {
     }
   }, []);
 
-  // 预览批量数据
-  const previewBatchData = useCallback(async (limit: number = 10) => {
-    try {
-      const preview = await schemaApi.previewSchemaBatchData(limit);
-      setBatchState(prev => ({ ...prev, previewData: preview }));
-      return preview;
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.detail || error.message || '预览数据失败';
-      toast.error(errorMessage);
-      return null;
-    }
-  }, []);
+  // 移除预览批量数据功能
+  // const previewBatchData = useCallback(async (limit: number = 10) => {
+  //   // 这个功能被移除了
+  // }, []);
 
   // 重置批量数据
   const resetBatchData = useCallback(async () => {
@@ -676,7 +672,7 @@ export function useSchemaApi() {
     generateBatchSchemas,
     exportBatchSchemas,
     fetchBatchSummary,
-    previewBatchData,
+    // previewBatchData, // 移除预览功能
     resetBatchData,
     downloadCSVTemplate,
     
