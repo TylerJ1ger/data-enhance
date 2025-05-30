@@ -7,7 +7,19 @@ import type {
   SchemaGenerateRequest,
   SchemaGenerateResponse,
   SchemaApiError,
-  SchemaType
+  SchemaType,
+  // 新增：批量处理相关类型
+  SchemaBatchUploadResponse,
+  SchemaBatchGenerateRequest,
+  SchemaBatchGenerateResponse,
+  SchemaBatchExportRequest,
+  SchemaBatchExportResponse,
+  SchemaBatchExportCombinedResponse,
+  SchemaBatchExportSeparatedResponse,
+  SchemaBatchSummary,
+  SchemaBatchPreviewResponse,
+  SchemaBatchApiError,
+  CSVTemplateInfo
 } from '@/types';
 
 // ========================================
@@ -40,7 +52,7 @@ const schemaApi = axios.create({
 });
 
 // ========================================
-// 核心API调用函数
+// 原有的核心API调用函数（保持不变）
 // ========================================
 
 /**
@@ -91,7 +103,108 @@ export const checkSchemaApiHealth = async (): Promise<{
 };
 
 // ========================================
-// 工具函数
+// 新增：批量处理相关API函数
+// ========================================
+
+/**
+ * 批量上传结构化数据CSV文件
+ * @param files 要上传的CSV文件列表
+ * @returns 批量上传响应
+ */
+export const uploadSchemaBatchFiles = async (files: File[]): Promise<SchemaBatchUploadResponse> => {
+  const formData = new FormData();
+  
+  files.forEach((file) => {
+    formData.append('files', file);
+  });
+  
+  const response = await schemaApi.post<SchemaBatchUploadResponse>('/batch/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+    timeout: 120000, // 2分钟超时，处理大文件
+  });
+  
+  return response.data;
+};
+
+/**
+ * 批量生成结构化数据
+ * @param request 批量生成请求参数
+ * @returns 批量生成响应
+ */
+export const generateBatchSchemas = async (request: SchemaBatchGenerateRequest): Promise<SchemaBatchGenerateResponse> => {
+  const response = await schemaApi.post<SchemaBatchGenerateResponse>('/batch/generate', request, {
+    timeout: 300000, // 5分钟超时，支持大批量处理
+  });
+  return response.data;
+};
+
+/**
+ * 导出批量生成的结构化数据
+ * @param request 导出请求参数
+ * @returns 导出响应或文件流
+ */
+export const exportBatchSchemas = async (request: SchemaBatchExportRequest): Promise<SchemaBatchExportResponse | Blob> => {
+  if (request.export_type === 'combined') {
+    // 合并导出 - 返回文件流
+    const response = await schemaApi.post('/batch/export', request, {
+      responseType: 'blob',
+      timeout: 180000, // 3分钟超时
+    });
+    return response.data as Blob;
+  } else {
+    // 分离导出 - 返回JSON响应
+    const response = await schemaApi.post<SchemaBatchExportResponse>('/batch/export', request, {
+      timeout: 180000,
+    });
+    return response.data;
+  }
+};
+
+/**
+ * 下载分离导出中的单个文件
+ * @param filename 文件名
+ * @returns 文件流
+ */
+export const downloadSeparatedSchemaFile = async (filename: string): Promise<Blob> => {
+  const response = await schemaApi.get(`/batch/export-separated/${encodeURIComponent(filename)}`, {
+    responseType: 'blob',
+    timeout: 60000,
+  });
+  return response.data;
+};
+
+/**
+ * 获取批量处理摘要信息
+ * @returns 批量处理摘要
+ */
+export const getSchemaBatchSummary = async (): Promise<SchemaBatchSummary> => {
+  const response = await schemaApi.get<SchemaBatchSummary>('/batch/summary');
+  return response.data;
+};
+
+/**
+ * 重置批量处理数据
+ * @returns 重置响应
+ */
+export const resetSchemaBatchData = async (): Promise<{ success: boolean; message: string }> => {
+  const response = await schemaApi.post<{ success: boolean; message: string }>('/batch/reset');
+  return response.data;
+};
+
+/**
+ * 预览批量上传的数据
+ * @param limit 预览条数限制
+ * @returns 预览数据响应
+ */
+export const previewSchemaBatchData = async (limit: number = 10): Promise<SchemaBatchPreviewResponse> => {
+  const response = await schemaApi.get<SchemaBatchPreviewResponse>(`/batch/preview?limit=${limit}`);
+  return response.data;
+};
+
+// ========================================
+// 原有的工具函数（保持不变）
 // ========================================
 
 /**
@@ -224,6 +337,335 @@ export const getContentSize = (content: string): {
   return { bytes, size, lines };
 };
 
+// ========================================
+// 新增：批量处理工具函数
+// ========================================
+
+/**
+ * 验证CSV文件格式
+ * @param file CSV文件
+ * @returns 是否为有效的CSV文件
+ */
+export const validateCSVFile = (file: File): { isValid: boolean; errors: string[] } => {
+  const errors: string[] = [];
+  
+  // 检查文件类型
+  const validTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
+  if (!validTypes.includes(file.type) && !file.name.toLowerCase().endsWith('.csv') && !file.name.toLowerCase().endsWith('.xlsx')) {
+    errors.push('文件类型必须是CSV或XLSX格式');
+  }
+  
+  // 检查文件大小 (10MB限制)
+  const maxSize = 10 * 1024 * 1024;
+  if (file.size > maxSize) {
+    errors.push(`文件大小不能超过 ${(maxSize / 1024 / 1024).toFixed(1)}MB`);
+  }
+  
+  // 检查文件名
+  if (file.name.length === 0) {
+    errors.push('文件名不能为空');
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    errors
+  };
+};
+
+/**
+ * 批量验证多个CSV文件
+ * @param files 文件列表
+ * @returns 验证结果
+ */
+export const validateMultipleCSVFiles = (files: File[]): { 
+  isValid: boolean; 
+  errors: string[]; 
+  validFiles: File[];
+  invalidFiles: Array<{ file: File; errors: string[] }>;
+} => {
+  const allErrors: string[] = [];
+  const validFiles: File[] = [];
+  const invalidFiles: Array<{ file: File; errors: string[] }> = [];
+  
+  // 检查文件数量
+  if (files.length === 0) {
+    allErrors.push('请至少选择一个文件');
+  }
+  
+  if (files.length > 10) {
+    allErrors.push('最多只能同时上传10个文件');
+  }
+  
+  // 验证每个文件
+  files.forEach(file => {
+    const validation = validateCSVFile(file);
+    if (validation.isValid) {
+      validFiles.push(file);
+    } else {
+      invalidFiles.push({ file, errors: validation.errors });
+      allErrors.push(...validation.errors.map(error => `${file.name}: ${error}`));
+    }
+  });
+  
+  return {
+    isValid: allErrors.length === 0 && validFiles.length > 0,
+    errors: allErrors,
+    validFiles,
+    invalidFiles
+  };
+};
+
+/**
+ * 生成CSV模板文件
+ * @param templateInfo 模板信息
+ * @returns CSV内容字符串
+ */
+export const generateCSVTemplate = (templateInfo: CSVTemplateInfo): string => {
+  const headers = templateInfo.headers.join(',');
+  const sampleRows = templateInfo.sampleData.map(row => 
+    templateInfo.headers.map(header => {
+      const value = row[header] || '';
+      // 处理包含逗号的值，用引号包围
+      return value.includes(',') ? `"${value}"` : value;
+    }).join(',')
+  );
+  
+  return [headers, ...sampleRows].join('\n');
+};
+
+/**
+ * 下载CSV模板
+ * @param templateInfo 模板信息
+ * @param filename 文件名（可选）
+ */
+export const downloadCSVTemplate = (templateInfo: CSVTemplateInfo, filename?: string): void => {
+  const csvContent = generateCSVTemplate(templateInfo);
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename || `${templateInfo.schemaType.toLowerCase()}_template.csv`;
+  link.style.display = 'none';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  // 清理URL对象
+  setTimeout(() => URL.revokeObjectURL(link.href), 100);
+};
+
+/**
+ * 获取所有可用的CSV模板
+ * @returns CSV模板列表
+ */
+export const getAvailableCSVTemplates = (): CSVTemplateInfo[] => {
+  return [
+    {
+      name: "文章模板",
+      description: "适用于博客文章、新闻文章等内容",
+      schemaType: "Article",
+      headers: ["url", "schema_type", "data_json"],
+      sampleData: [
+        {
+          url: "https://example.com/article1",
+          schema_type: "Article",
+          data_json: JSON.stringify({
+            headline: "如何优化网站SEO",
+            author: "张三",
+            datePublished: "2024-01-15",
+            description: "完整的SEO优化指南"
+          })
+        }
+      ]
+    },
+    {
+      name: "产品模板", 
+      description: "适用于电商产品、服务产品等",
+      schemaType: "Product",
+      headers: ["url", "schema_type", "data_json"],
+      sampleData: [
+        {
+          url: "https://example.com/product1",
+          schema_type: "Product", 
+          data_json: JSON.stringify({
+            name: "无线蓝牙耳机",
+            description: "高音质无线耳机",
+            brand: "TechBrand",
+            price: "299",
+            currency: "CNY"
+          })
+        }
+      ]
+    },
+    {
+      name: "组织模板",
+      description: "适用于公司、机构等组织信息",
+      schemaType: "Organization",
+      headers: ["url", "schema_type", "data_json"],
+      sampleData: [
+        {
+          url: "https://example.com/about",
+          schema_type: "Organization",
+          data_json: JSON.stringify({
+            name: "创新科技公司",
+            url: "https://example.com",
+            description: "专注AI技术的创新公司"
+          })
+        }
+      ]
+    },
+    {
+      name: "人物模板",
+      description: "适用于团队成员、专家介绍等",
+      schemaType: "Person",
+      headers: ["url", "schema_type", "data_json"],
+      sampleData: [
+        {
+          url: "https://example.com/team/ceo",
+          schema_type: "Person",
+          data_json: JSON.stringify({
+            name: "王五",
+            jobTitle: "首席执行官",
+            worksFor: "创新科技公司",
+            description: "拥有15年技术管理经验"
+          })
+        }
+      ]
+    },
+    {
+      name: "事件模板",
+      description: "适用于会议、活动、培训等事件",
+      schemaType: "Event",
+      headers: ["url", "schema_type", "data_json"],
+      sampleData: [
+        {
+          url: "https://example.com/events/conference-2024",
+          schema_type: "Event",
+          data_json: JSON.stringify({
+            name: "2024年前端技术大会",
+            startDate: "2024-06-15T09:00:00",
+            location: "北京国际会议中心",
+            description: "探讨最新的前端技术趋势"
+          })
+        }
+      ]
+    }
+  ];
+};
+
+/**
+ * 解析导出的分离文件数据为可下载的文件列表
+ * @param exportData 分离导出数据
+ * @returns 文件信息列表
+ */
+export const parseSeparatedExportData = (exportData: any): Array<{
+  filename: string;
+  url: string;
+  schemaCount: number;
+  size: string;
+  downloadAction: () => Promise<void>;
+}> => {
+  if (!exportData || !exportData.data) {
+    return [];
+  }
+  
+  return Object.entries(exportData.data).map(([filename, fileInfo]: [string, any]) => ({
+    filename,
+    url: fileInfo.url,
+    schemaCount: fileInfo.schema_count,
+    size: getContentSize(fileInfo.json_ld).size,
+    downloadAction: async () => {
+      try {
+        const blob = await downloadSeparatedSchemaFile(filename);
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        link.style.display = 'none';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        setTimeout(() => URL.revokeObjectURL(link.href), 100);
+      } catch (error) {
+        console.error('下载文件失败:', error);
+        throw new Error('下载文件失败，请重试');
+      }
+    }
+  }));
+};
+
+/**
+ * 处理批量导出下载
+ * @param exportData 导出数据
+ * @param exportType 导出类型
+ * @param baseFilename 基础文件名
+ */
+export const handleBatchExportDownload = async (
+  exportData: SchemaBatchExportResponse | Blob,
+  exportType: 'combined' | 'separated',
+  baseFilename: string = 'structured_data'
+): Promise<void> => {
+  try {
+    if (exportType === 'combined' && exportData instanceof Blob) {
+      // 下载合并的JSON文件
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(exportData);
+      link.download = `${baseFilename}_${new Date().toISOString().slice(0, 10)}.json`;
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setTimeout(() => URL.revokeObjectURL(link.href), 100);
+      
+    } else if (exportType === 'separated' && !(exportData instanceof Blob)) {
+      // 分离导出 - 返回文件列表信息，由用户选择下载
+      const files = parseSeparatedExportData(exportData);
+      console.log('分离导出文件列表:', files);
+      // 这里可以触发UI更新显示文件列表
+      return Promise.resolve();
+    }
+  } catch (error) {
+    console.error('导出下载失败:', error);
+    throw new Error('导出下载失败，请重试');
+  }
+};
+
+/**
+ * 格式化批量处理错误信息
+ * @param errors 错误列表
+ * @returns 格式化的错误信息
+ */
+export const formatBatchProcessingErrors = (errors: string[]): string => {
+  if (errors.length === 0) {
+    return '';
+  }
+  
+  if (errors.length === 1) {
+    return errors[0];
+  }
+  
+  return `发现 ${errors.length} 个问题：\n${errors.slice(0, 5).map((error, index) => `${index + 1}. ${error}`).join('\n')}${errors.length > 5 ? `\n... 还有 ${errors.length - 5} 个问题` : ''}`;
+};
+
+/**
+ * 计算批量处理进度
+ * @param current 当前完成数量
+ * @param total 总数量
+ * @returns 进度百分比（0-100）
+ */
+export const calculateBatchProgress = (current: number, total: number): number => {
+  if (total === 0) return 0;
+  return Math.round((current / total) * 100);
+};
+
+// ========================================
+// 原有的生成示例数据函数（保持不变）
+// ========================================
+
 /**
  * 生成示例数据
  * @param schemaType 结构化数据类型
@@ -347,7 +789,7 @@ export const validateFieldData = (
 };
 
 // ========================================
-// 错误处理和拦截器
+// 错误处理和拦截器（保持不变）
 // ========================================
 
 /**
@@ -442,7 +884,7 @@ schemaApi.interceptors.response.use(
 );
 
 // ========================================
-// 常量定义
+// 常量定义（保持不变并新增批量处理相关）
 // ========================================
 
 // 支持的结构化数据类型列表
@@ -484,9 +926,29 @@ export const SCHEMA_TYPE_DESCRIPTIONS = {
   WebSite: '网站基本信息'
 } as const;
 
+// 新增：批量处理相关常量
+export const BATCH_PROCESSING_CONFIG = {
+  MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
+  MAX_FILES: 10,
+  SUPPORTED_FILE_TYPES: ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+  CHUNK_SIZE: 1000,
+  PREVIEW_LIMIT: 10,
+  TIMEOUT: {
+    UPLOAD: 120000, // 2分钟
+    GENERATE: 300000, // 5分钟
+    EXPORT: 180000, // 3分钟
+  }
+} as const;
+
+// CSV文件必需列
+export const REQUIRED_CSV_COLUMNS = {
+  URL: ['url', 'page_url', 'target_url', 'link'],
+  SCHEMA_TYPE: ['schema_type', 'type', 'structured_data_type', 'markup_type'],
+  DATA_JSON: ['data_json', 'data', 'schema_data', 'fields_json']
+} as const;
+
 // ========================================
-// 导出
+// 默认导出axios实例
 // ========================================
 
-// 导出配置好的axios实例
 export default schemaApi;

@@ -1,249 +1,90 @@
 python3 model/ref/combined-tree-formatter.py "." "model/ref/structure/file-structure.txt" "model/ref/structure/formatted-tree.txt"
 
-# 结构化数据生成器实现方案
+# 结构化数据生成器 - CSV文件格式说明
 
-## 功能概述
+## 1. Article（文章）类型模板
+url,schema_type,data_json
+https://example.com/article-1,Article,"{""headline"":""如何优化网站SEO - 完整指南"",""author"":""张三"",""datePublished"":""2024-01-15"",""description"":""本文详细介绍了网站SEO优化的各种技巧和最佳实践"",""image"":""https://example.com/images/seo-guide.jpg"",""publisher"":""技术博客""}"
+https://example.com/article-2,Article,"{""headline"":""前端开发最佳实践"",""author"":""李四"",""datePublished"":""2024-01-10"",""description"":""分享前端开发中的最佳实践和常见问题解决方案""}"
 
-结构化数据生成器是一个全新的功能模块，允许用户通过图形界面生成符合Google和Schema.org标准的结构化数据。支持多种常见的结构化数据类型，包括文章、产品、事件、FAQ、操作指南等。
+## 2. Product（产品）类型模板  
+url,schema_type,data_json
+https://example.com/product-1,Product,"{""name"":""无线蓝牙耳机"",""description"":""高音质无线蓝牙耳机，支持降噪功能，续航时间长达20小时"",""brand"":""TechBrand"",""price"":""299"",""currency"":""CNY"",""image"":""https://example.com/images/headphones.jpg""}"
+https://example.com/product-2,Product,"{""name"":""智能手表"",""description"":""多功能智能手表，支持健康监测和运动追踪"",""brand"":""TechBrand"",""price"":""599"",""currency"":""CNY""}"
 
-## 核心特性
+## 3. Organization（组织）类型模板
+url,schema_type,data_json
+https://example.com/about,Organization,"{""name"":""创新科技公司"",""url"":""https://example.com"",""description"":""专注于人工智能和机器学习技术的创新公司"",""logo"":""https://example.com/logo.png"",""telephone"":""+86-400-123-4567""}"
 
-### 1. 支持的结构化数据类型
-- **Article** - 文章/博客内容
-- **Breadcrumb** - 面包屑导航
-- **Event** - 事件活动
-- **FAQPage** - 常见问题页面
-- **HowTo** - 操作指南
-- **Organization** - 组织机构
-- **Person** - 人物信息
-- **Product** - 产品信息
-- **VideoObject** - 视频内容
-- **WebSite** - 网站信息
+## 4. Person（人物）类型模板
+url,schema_type,data_json
+https://example.com/team/ceo,Person,"{""name"":""王五"",""jobTitle"":""首席执行官"",""worksFor"":""创新科技公司"",""description"":""拥有15年技术管理经验，专注于AI技术商业化"",""url"":""https://example.com/team/ceo"",""image"":""https://example.com/images/ceo.jpg""}"
 
-### 2. 主要功能
-- 📝 **智能表单** - 根据选择的类型自动生成对应的表单字段
-- 👁️ **实时预览** - 填写数据时可实时预览生成的结构化数据
-- ✅ **数据验证** - 验证数据完整性和格式正确性
-- 💾 **配置管理** - 保存和加载常用配置
-- 📤 **多格式导出** - 支持JSON-LD和HTML Script标签格式
-- 🔍 **在线验证** - 集成Google富媒体结果测试工具
+## 5. Event（事件）类型模板
+url,schema_type,data_json
+https://example.com/events/conference-2024,Event,"{""name"":""2024年前端技术大会"",""startDate"":""2024-06-15T09:00:00"",""endDate"":""2024-06-15T18:00:00"",""location"":""北京国际会议中心"",""description"":""探讨最新的前端技术趋势，包括React、Vue、TypeScript等热门技术"",""organizer"":""前端技术社区"",""price"":""299""}"
 
-### 3. 技术标准
-- 完全符合**Google结构化数据要求**
-- 遵循**Schema.org**标准规范
-- 生成的代码可直接在网站中使用
+## 6. VideoObject（视频）类型模板
+url,schema_type,data_json
+https://example.com/videos/tutorial-1,VideoObject,"{""name"":""React入门教程"",""description"":""详细的React框架入门教程，适合初学者学习"",""thumbnailUrl"":""https://example.com/thumbnails/react-tutorial.jpg"",""uploadDate"":""2024-01-01"",""duration"":""PT30M"",""contentUrl"":""https://example.com/videos/react-tutorial.mp4""}"
 
-## 技术架构
+## 7. WebSite（网站）类型模板
+url,schema_type,data_json
+https://example.com,WebSite,"{""name"":""技术博客"",""url"":""https://example.com"",""description"":""分享最新技术动态和开发经验的技术博客"",""searchUrl"":""https://example.com/search?q={search_term}""}"
 
-### 后端实现 (Python/FastAPI)
+## 8. Breadcrumb（面包屑）类型模板
+url,schema_type,data_json
+https://example.com/products/electronics/phones,Breadcrumb,"{""items"":""首页|https://example.com\n产品|https://example.com/products\n电子产品|https://example.com/products/electronics\n手机|https://example.com/products/electronics/phones""}"
 
-#### 核心处理器
-```
-backend/app/core/schema/
-├── __init__.py
-└── schema_processor.py    # 核心业务逻辑
-```
+## 9. FAQPage（FAQ页面）类型模板
+url,schema_type,data_json
+https://example.com/faq,FAQPage,"{""faqs"":""什么是结构化数据？\n结构化数据是一种标准化的格式，用于向搜索引擎提供有关网页内容的信息。\n\n如何实现结构化数据？\n可以使用JSON-LD、Microdata或RDFa格式来实现结构化数据。\n\n结构化数据有什么好处？\n可以提高搜索结果的展示效果，增加点击率，改善SEO表现。""}"
 
-**主要功能：**
-- 结构化数据生成和验证
-- 支持10种常见Schema类型
-- JSON-LD和HTML格式输出
-- 数据完整性检查
+## 10. HowTo（操作指南）类型模板
+url,schema_type,data_json
+https://example.com/guides/make-coffee,HowTo,"{""name"":""如何制作完美咖啡"",""description"":""简单易学的咖啡制作方法，让你在家也能享受咖啡店品质"",""steps"":""准备优质咖啡豆和新鲜热水\n将咖啡豆研磨成中等粗细的粉末\n用90-95度的热水冲泡咖啡粉\n静置2-3分钟让咖啡充分萃取\n享用香浓美味的咖啡"",""totalTime"":""PT10M""}"
 
-#### API路由
-```
-backend/app/api/v1/router.py  # 新增Schema相关路由
-```
+## 混合类型示例 - 同一URL多种结构化数据
+url,schema_type,data_json
+https://example.com/product-review,Article,"{""headline"":""无线耳机深度评测"",""author"":""科技评测员"",""datePublished"":""2024-01-20"",""description"":""详细评测最新款无线耳机的音质、续航和功能""}"
+https://example.com/product-review,Product,"{""name"":""TechBrand无线耳机"",""description"":""高音质无线耳机"",""brand"":""TechBrand"",""price"":""299"",""currency"":""CNY""}"
+https://example.com/product-review,VideoObject,"{""name"":""耳机评测视频"",""description"":""无线耳机详细评测视频"",""thumbnailUrl"":""https://example.com/thumbnails/review.jpg""}"
 
-**提供的API端点：**
-- `GET /v1/schema/types` - 获取支持的类型
-- `GET /v1/schema/template/{type}` - 获取模板
-- `POST /v1/schema/generate` - 生成结构化数据
-- `POST /v1/schema/validate` - 验证数据
-- `POST /v1/schema/preview` - 预览功能
+## CSV文件格式规范
 
-### 前端实现 (React/Next.js)
+### 必需列：
+1. **url**: 目标网页的完整URL
+2. **schema_type**: 结构化数据类型（Article, Product, Organization等）
+3. **data_json**: 包含结构化数据字段的JSON字符串
 
-#### 页面结构
-```
-frontend/src/app/(dashboard)/schema/
-├── page.tsx          # 主页面
-└── loading.tsx       # 加载状态
-```
+### JSON字段格式规范：
+1. 使用双引号包围JSON字符串
+2. JSON内部的引号需要转义（""）
+3. 确保JSON格式正确，可以被解析
+4. 必填字段不能为空
 
-#### 组件架构
-```
-frontend/src/components/schema/
-├── schema-type-selector.tsx    # 类型选择器
-├── schema-form.tsx            # 动态表单
-├── schema-preview.tsx         # 预览组件
-├── schema-output.tsx          # 输出展示
-├── schema-validation.tsx      # 验证结果
-└── schema-save-load.tsx       # 配置管理
-```
+### 支持的结构化数据类型：
+- Article（文章）
+- Product（产品） 
+- Organization（组织）
+- Person（人物）
+- Event（事件）
+- VideoObject（视频）
+- WebSite（网站）
+- Breadcrumb（面包屑导航）
+- FAQPage（FAQ页面）
+- HowTo（操作指南）
 
-#### API客户端和Hooks
-```
-frontend/src/lib/api/schema-api.ts     # API客户端
-frontend/src/hooks/use-schema-api.ts   # 状态管理
-```
+### 注意事项：
+1. 同一URL可以有多个不同类型的结构化数据
+2. 相同URL+schema_type组合会自动去重，保留最后一个
+3. 文件编码建议使用UTF-8
+4. 单个文件大小不超过10MB
+5. 最多同时上传10个文件
 
-#### 类型定义
-```
-frontend/src/types/index.ts    # 新增Schema相关类型
-```
-
-## 用户界面设计
-
-### 1. 主页面布局
-- **左侧：** 类型选择器 + 表单编辑器 + 配置管理
-- **右侧：** 实时预览 + 输出结果 + 验证信息
-
-### 2. 工作流程
-1. **选择类型** - 从10种Schema类型中选择
-2. **填写表单** - 根据必填/可选字段填写数据
-3. **实时预览** - 查看生成的结构化数据
-4. **验证数据** - 检查数据完整性
-5. **生成输出** - 获取JSON-LD或HTML格式代码
-6. **保存配置** - 保存常用配置以便复用
-
-### 3. 交互特性
-- **响应式设计** - 适配桌面和移动端
-- **实时反馈** - 即时显示验证结果和预览
-- **智能表单** - 支持数组、对象等复杂数据结构
-- **一键复制** - 快速复制生成的代码
-- **配置管理** - 本地存储常用配置
-
-## 数据流程
-
-### 1. 类型选择流程
-```
-用户选择Schema类型 → 获取对应模板 → 初始化表单数据
-```
-
-### 2. 数据编辑流程
-```
-用户填写表单 → 实时预览更新 → 可选验证检查
-```
-
-### 3. 生成输出流程
-```
-提交表单数据 → 后端处理生成 → 返回JSON-LD和HTML格式
-```
-
-## 文件结构变更
-
-### 新增后端文件
-```
-backend/app/core/schema/
-├── __init__.py                # 模块初始化
-└── schema_processor.py        # 核心处理器
-
-backend/app/api/v1/router.py   # 添加Schema路由
-```
-
-### 新增前端文件
-```
-frontend/src/app/(dashboard)/schema/
-├── page.tsx                   # 主页面
-└── loading.tsx               # 加载页面
-
-frontend/src/components/schema/
-├── schema-type-selector.tsx   # 类型选择器
-├── schema-form.tsx           # 动态表单
-├── schema-preview.tsx        # 预览组件
-├── schema-output.tsx         # 输出组件
-├── schema-validation.tsx     # 验证组件
-└── schema-save-load.tsx      # 配置管理
-
-frontend/src/lib/api/schema-api.ts     # API客户端
-frontend/src/hooks/use-schema-api.ts   # Hooks
-frontend/src/components/ui/textarea.tsx # Textarea组件
-```
-
-### 修改的现有文件
-```
-frontend/src/types/index.ts           # 添加Schema类型定义
-frontend/src/components/site-header.tsx  # 添加导航链接
-frontend/src/app/page.tsx            # 添加功能卡片
-```
-
-## 部署说明
-
-### 1. 后端部署
-```bash
-# 安装依赖（如果有新增）
-pip install -r requirements.txt
-
-# 重启后端服务
-```
-
-### 2. 前端部署
-```bash
-# 安装依赖（如果有新增）
-npm install
-
-# 重新构建
-npm run build
-```
-
-### 3. 数据库
-无需数据库变更，配置存储在浏览器localStorage中。
-
-## 扩展性设计
-
-### 1. 新增Schema类型
-只需在`schema_processor.py`中：
-- 添加类型定义到`supported_schemas`
-- 实现对应的生成方法
-- 更新前端类型定义
-
-### 2. 自定义字段
-可通过修改`SCHEMA_FIELD_CONFIGS`轻松添加新字段类型。
-
-### 3. 验证规则
-可在处理器中扩展验证逻辑，支持更复杂的业务规则。
-
-## 质量保证
-
-### 1. 标准兼容性
-- ✅ Google结构化数据测试工具验证
-- ✅ Schema.org标准规范遵循
-- ✅ JSON-LD格式正确性
-
-### 2. 用户体验
-- ✅ 响应式设计适配各种设备
-- ✅ 加载状态和错误处理
-- ✅ 直观的操作流程
-
-### 3. 代码质量
-- ✅ TypeScript类型安全
-- ✅ 组件化设计
-- ✅ 错误边界处理
-- ✅ 性能优化
-
-## 使用示例
-
-### 1. 创建文章结构化数据
-1. 选择"Article"类型
-2. 填写标题、作者、发布日期等信息
-3. 预览生成的JSON-LD
-4. 复制HTML代码到网站
-
-### 2. 创建产品结构化数据
-1. 选择"Product"类型
-2. 填写产品名称、描述、价格等
-3. 添加评分和评论信息
-4. 生成并验证结构化数据
-
-### 3. 创建FAQ结构化数据
-1. 选择"FAQPage"类型
-2. 添加问题和答案项
-3. 支持多个FAQ条目
-4. 导出完整的FAQ结构化数据
-
-## 总结
-
-结构化数据生成器作为一个独立的功能模块，完美集成到现有的数据分析工具平台中。它不仅提供了强大的结构化数据生成能力，还通过直观的用户界面和完善的验证机制，让用户能够轻松创建符合标准的结构化数据，提升网站在搜索引擎中的表现。
-
-该实现方案遵循了项目现有的架构模式，使用相同的技术栈和设计风格，确保了整体的一致性和可维护性。
+### 常见字段说明：
+- **日期格式**: YYYY-MM-DD (如: 2024-01-15)
+- **日期时间格式**: YYYY-MM-DDTHH:MM:SS (如: 2024-01-15T09:00:00)
+- **时长格式**: PT[时间] (如: PT30M表示30分钟, PT2H表示2小时)
+- **URL格式**: 完整的HTTP/HTTPS地址
+- **价格格式**: 字符串格式的数字 (如: "299", "99.99")

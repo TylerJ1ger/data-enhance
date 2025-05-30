@@ -137,7 +137,7 @@ class OrderFilterRequest(BaseModel):
     has_coupon: Optional[bool] = None
     ab_test_filter: Optional[str] = None  # "with", "without", None
 
-# 结构化数据生成器相关模型 (简化版)
+# 结构化数据生成器相关模型
 class SchemaGenerateRequest(BaseModel):
     """结构化数据生成请求模型"""
     schema_type: str
@@ -152,6 +152,29 @@ class SchemaGenerateRequest(BaseModel):
         ]
         if v not in supported_types:
             raise ValueError(f'不支持的结构化数据类型。支持的类型: {", ".join(supported_types)}')
+        return v
+
+# 新增：批量处理相关的Pydantic模型
+class SchemaBatchGenerateRequest(BaseModel):
+    """批量生成结构化数据请求模型"""
+    url_filter: Optional[str] = None  # URL过滤器，可选
+    
+    @validator('url_filter')
+    def validate_url_filter(cls, v):
+        """验证URL过滤器"""
+        if v is not None and len(v.strip()) == 0:
+            return None
+        return v
+
+class SchemaBatchExportRequest(BaseModel):
+    """批量导出结构化数据请求模型"""
+    export_type: str = "combined"  # "combined" | "separated"
+    
+    @validator('export_type')
+    def validate_export_type(cls, v):
+        """验证导出类型"""
+        if v not in ['combined', 'separated']:
+            raise ValueError('导出类型必须是 "combined" 或 "separated"')
         return v
 
 # ================================
@@ -759,13 +782,13 @@ async def reset_order_data():
         )
 
 # ================================
-# 结构化数据生成相关路由 (Schema) - 简化版
+# 结构化数据生成相关路由 (Schema) - 包含原有功能和新增批量处理
 # ================================
 
 @router.get("/schema/types", tags=["Schema"])
 async def get_schema_types():
     """
-    获取支持的结构化数据类型 (简化版)
+    获取支持的结构化数据类型 (原有功能)
     """
     try:
         schema_types = schema_processor.get_supported_schemas()
@@ -782,7 +805,7 @@ async def get_schema_types():
 @router.post("/schema/generate", tags=["Schema"])
 async def generate_schema(request: SchemaGenerateRequest):
     """
-    生成结构化数据 (简化版)
+    生成结构化数据 (原有功能)
     """
     try:
         result = schema_processor.generate_schema(
@@ -799,6 +822,227 @@ async def generate_schema(request: SchemaGenerateRequest):
         raise HTTPException(
             status_code=500,
             detail=f"生成结构化数据时发生错误: {str(e)}"
+        )
+
+# 新增：批量处理相关路由
+@router.post("/schema/batch/upload", tags=["Schema Batch"])
+async def upload_schema_batch_files(files: List[UploadFile] = File(...)):
+    """
+    批量上传结构化数据CSV文件
+    
+    CSV文件格式要求：
+    - url: 目标网页URL
+    - schema_type: 结构化数据类型 (Article, Product, Organization等)
+    - data_json: 结构化数据字段的JSON字符串
+    
+    支持上传多个CSV文件，系统会自动合并和去重
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="未提供文件")
+    
+    # 检查文件大小
+    await check_file_size(files)
+    
+    # 验证文件类型
+    for file in files:
+        if not file.filename.lower().endswith(('.csv', '.xlsx')):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"不支持的文件类型: {file.filename}。仅支持CSV和XLSX文件"
+            )
+    
+    try:
+        result = await schema_processor.process_batch_files(files)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "文件处理失败")
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"批量文件上传处理失败: {str(e)}"
+        )
+
+@router.post("/schema/batch/generate", tags=["Schema Batch"])
+async def generate_batch_schemas(request: SchemaBatchGenerateRequest):
+    """
+    批量生成结构化数据
+    
+    基于已上传的CSV数据批量生成结构化数据
+    可选择性过滤特定URL模式
+    """
+    try:
+        result = schema_processor.generate_batch_schemas(
+            url_filter=request.url_filter
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "批量生成失败")
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"批量生成结构化数据时发生错误: {str(e)}"
+        )
+
+@router.post("/schema/batch/export", tags=["Schema Batch"])
+async def export_batch_schemas(request: SchemaBatchExportRequest):
+    """
+    导出批量生成的结构化数据
+    
+    支持两种导出模式：
+    - combined: 导出为单个JSON文件，包含所有URL的数据
+    - separated: 按URL分别导出JSON-LD文件
+    """
+    try:
+        result = schema_processor.export_batch_schemas(
+            export_type=request.export_type
+        )
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "导出失败")
+            )
+        
+        if request.export_type == "combined":
+            # 返回单个JSON文件
+            return StreamingResponse(
+                io.BytesIO(result["data"].encode('utf-8')),
+                media_type="application/json",
+                headers={"Content-Disposition": f"attachment; filename={result['filename']}"}
+            )
+        else:
+            # 返回分离的文件信息
+            return result
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"导出批量结构化数据时发生错误: {str(e)}"
+        )
+
+@router.get("/schema/batch/export-separated/{filename}", tags=["Schema Batch"])
+async def download_separated_schema_file(filename: str):
+    """
+    下载分离导出中的单个JSON-LD文件
+    """
+    try:
+        # 先获取分离导出数据
+        export_result = schema_processor.export_batch_schemas("separated")
+        
+        if not export_result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail="没有可导出的数据"
+            )
+        
+        separated_data = export_result["data"]
+        
+        if filename not in separated_data:
+            raise HTTPException(
+                status_code=404,
+                detail=f"未找到文件: {filename}"
+            )
+        
+        file_data = separated_data[filename]
+        
+        return StreamingResponse(
+            io.BytesIO(file_data["json_ld"].encode('utf-8')),
+            media_type="application/ld+json",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"下载文件时发生错误: {str(e)}"
+        )
+
+@router.get("/schema/batch/summary", tags=["Schema Batch"])
+async def get_batch_schema_summary():
+    """
+    获取批量处理摘要信息
+    
+    返回当前批量处理的状态、数据统计等信息
+    """
+    try:
+        summary = schema_processor.get_batch_summary()
+        return {
+            "success": True,
+            "summary": summary
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取批量处理摘要时发生错误: {str(e)}"
+        )
+
+@router.post("/schema/batch/reset", tags=["Schema Batch"])
+async def reset_batch_schema_data():
+    """
+    重置批量处理数据
+    
+    清除所有已上传的CSV数据和生成的结构化数据
+    """
+    try:
+        schema_processor.reset_batch_data()
+        return {
+            "success": True,
+            "message": "批量处理数据已重置"
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"重置批量处理数据时发生错误: {str(e)}"
+        )
+
+@router.get("/schema/batch/preview", tags=["Schema Batch"])
+async def preview_batch_data(limit: int = 10):
+    """
+    预览批量上传的CSV数据
+    
+    返回前N条数据用于确认上传内容是否正确
+    """
+    try:
+        if schema_processor.batch_data.empty:
+            return {
+                "success": False,
+                "message": "没有可预览的数据，请先上传CSV文件"
+            }
+        
+        # 获取预览数据
+        preview_data = schema_processor.batch_data.head(limit)
+        
+        return {
+            "success": True,
+            "preview": preview_data.to_dict('records'),
+            "total_rows": len(schema_processor.batch_data),
+            "showing": len(preview_data)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"预览批量数据时发生错误: {str(e)}"
         )
 
 # ================================
@@ -828,6 +1072,7 @@ async def api_info():
             "seo": "/v1/seo/",
             "sitemaps": "/v1/sitemaps/",
             "schema": "/v1/schema/",
+            "schema_batch": "/v1/schema/batch/",  # 新增批量处理端点
             "health": "/v1/health"
         }
     }
