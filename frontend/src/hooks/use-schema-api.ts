@@ -2,502 +2,271 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import * as schemaApi from '@/lib/api/schema-api';
-import {
-  SchemaType,
-  SchemaTypesResponse,
-  SchemaTemplateResponse,
+import type {
+  SchemaFieldConfig,
+  SchemaTypeConfig,
   SchemaGenerateRequest,
   SchemaGenerateResponse,
-  SchemaValidateRequest,
-  SchemaValidateResponse,
-  ValidationResult,
-  SchemaFormState,
-  SchemaEditorState,
-  FormValidationState,
+  SchemaApiError,
+  SchemaType
 } from '@/types';
 
 export function useSchemaApi() {
-  // 状态管理 - API 加载状态
+  // 基础状态管理
   const [isLoadingTypes, setIsLoadingTypes] = useState(false);
-  const [isLoadingTemplate, setIsLoadingTemplate] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isPreviewing, setIsPreviewing] = useState(false);
-  const [isValidating, setIsValidating] = useState(false);
+  
+  // 数据状态 - 修正类型定义
+  const [schemaTypes, setSchemaTypes] = useState<Record<string, SchemaTypeConfig> | null>(null);
+  const [generatedData, setGeneratedData] = useState<SchemaGenerateResponse | null>(null);
+  const [lastError, setLastError] = useState<string | null>(null);
 
-  // 状态管理 - 响应数据
-  const [schemaTypes, setSchemaTypes] = useState<SchemaTypesResponse | null>(null);
-  const [currentTemplate, setCurrentTemplate] = useState<SchemaTemplateResponse | null>(null);
-  const [generatedSchema, setGeneratedSchema] = useState<SchemaGenerateResponse | null>(null);
-  const [previewSchema, setPreviewSchema] = useState<SchemaGenerateResponse | null>(null);
-  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
-
-  // 表单状态管理
-  const [formState, setFormState] = useState<SchemaFormState>({
-    selectedType: null,
-    formData: {},
-    errors: {},
-    isValid: false,
-  });
-
-  // 编辑器状态管理
-  const [editorState, setEditorState] = useState<SchemaEditorState>({
-    activeTab: 'form',
-    outputFormat: 'json-ld',
-    showValidation: false,
-    isGenerating: false,
-    lastGenerated: undefined,
-  });
-
-  // 验证状态管理
-  const [formValidationState, setFormValidationState] = useState<FormValidationState>({
-    isValidating: false,
-    validationResult: null,
-    lastValidated: null,
-  });
-
-  // 在组件挂载时检查 API 健康状态并加载支持的类型
+  // 组件挂载时检查API健康状态
   useEffect(() => {
-    const initializeApi = async () => {
+    const checkApiHealth = async () => {
       try {
-        // 检查API健康状态
         await schemaApi.checkSchemaApiHealth();
-        
-        // 加载支持的结构化数据类型
-        await fetchSchemaTypes();
       } catch (error) {
-        console.error('Schema API initialization error:', error);
-        toast.error('无法连接到结构化数据API服务器。请确认后端服务是否正常运行。');
+        console.error('Schema API health check failed:', error);
+        toast.error('无法连接到结构化数据API服务器，请检查后端服务是否正常运行');
       }
     };
 
-    initializeApi();
+    checkApiHealth();
   }, []);
 
   // 获取支持的结构化数据类型
   const fetchSchemaTypes = useCallback(async () => {
-    if (schemaTypes) return schemaTypes; // 避免重复请求
+    // 避免重复请求
+    if (schemaTypes) return schemaTypes;
 
     setIsLoadingTypes(true);
+    setLastError(null);
+    
     try {
       const data = await schemaApi.getSchemaTypes();
-      setSchemaTypes(data);
+      setSchemaTypes(data); // 修复：直接设置 data，而不是 data.schema_types
       
-      toast.success('成功加载结构化数据类型');
+      console.log('成功加载结构化数据类型:', Object.keys(data));
       return data;
-    } catch (error) {
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || error.message || '获取结构化数据类型失败';
       console.error('获取结构化数据类型错误:', error);
-      toast.error('获取结构化数据类型失败，请重试。');
+      setLastError(errorMessage);
+      toast.error(errorMessage);
       return null;
     } finally {
       setIsLoadingTypes(false);
     }
   }, [schemaTypes]);
 
-  // 获取指定类型的模板
-  const fetchSchemaTemplate = useCallback(async (schemaType: SchemaType) => {
-    setIsLoadingTemplate(true);
-    try {
-      const data = await schemaApi.getSchemaTemplate(schemaType);
-      setCurrentTemplate(data);
-      
-      // 重置表单数据为模板数据
-      setFormState(prev => ({
-        ...prev,
-        selectedType: schemaType,
-        formData: data.template,
-        errors: {},
-        isValid: false,
-      }));
-      
-      // 清除之前的生成和预览数据
-      setGeneratedSchema(null);
-      setPreviewSchema(null);
-      setValidationResult(null);
-      
-      return data;
-    } catch (error) {
-      console.error('获取结构化数据模板错误:', error);
-      toast.error('获取结构化数据模板失败，请重试。');
-      return null;
-    } finally {
-      setIsLoadingTemplate(false);
-    }
-  }, []);
-
   // 生成结构化数据
-  const generateSchemaData = useCallback(async (request: SchemaGenerateRequest) => {
+  const generateSchema = useCallback(async (schemaType: string, data: Record<string, any>) => {
+    if (!schemaType) {
+      toast.error('请先选择结构化数据类型');
+      return null;
+    }
+
+    // 验证必填字段
+    if (schemaTypes?.[schemaType]) {
+      const requiredFields = schemaTypes[schemaType].required_fields;
+      const missingFields = requiredFields.filter(field => {
+        const value = data[field];
+        return !value || (typeof value === 'string' && value.trim() === '');
+      });
+
+      if (missingFields.length > 0) {
+        toast.error(`请填写必填字段: ${missingFields.join(', ')}`);
+        return null;
+      }
+    }
+
     setIsGenerating(true);
-    setEditorState(prev => ({ ...prev, isGenerating: true }));
+    setLastError(null);
     
     try {
-      const data = await schemaApi.generateSchema(request);
-      setGeneratedSchema(data);
-      setEditorState(prev => ({ 
-        ...prev, 
-        lastGenerated: data,
-        activeTab: 'output'
-      }));
+      console.log('生成结构化数据:', { schemaType, data });
       
+      const result = await schemaApi.generateSchema({
+        schema_type: schemaType as SchemaType,
+        data: data
+      });
+      
+      setGeneratedData(result);
       toast.success('结构化数据生成成功');
-      return data;
-    } catch (error) {
+      
+      console.log('生成结果:', result);
+      return result;
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.detail || error.message || '生成结构化数据失败';
       console.error('生成结构化数据错误:', error);
-      toast.error('生成结构化数据失败，请检查输入数据。');
-      throw error;
+      setLastError(errorMessage);
+      toast.error(errorMessage);
+      return null;
     } finally {
       setIsGenerating(false);
-      setEditorState(prev => ({ ...prev, isGenerating: false }));
     }
-  }, []);
+  }, [schemaTypes]);
 
-  // 预览结构化数据
-  const previewSchemaData = useCallback(async (request: SchemaGenerateRequest) => {
-    setIsPreviewing(true);
-    
-    try {
-      const data = await schemaApi.previewSchema(request);
-      setPreviewSchema(data);
-      return data;
-    } catch (error) {
-      console.error('预览结构化数据错误:', error);
-      // 预览失败不显示错误提示，因为可能是正常的数据不完整状态
-      return null;
-    } finally {
-      setIsPreviewing(false);
+  // 复制代码到剪贴板
+  const copyCode = useCallback(async (content: string, format: 'JSON-LD' | 'HTML') => {
+    if (!content) {
+      toast.error('没有可复制的内容');
+      return false;
     }
-  }, []);
 
-  // 验证结构化数据
-  const validateSchemaData = useCallback(async (request: SchemaValidateRequest) => {
-    setIsValidating(true);
-    setFormValidationState(prev => ({ ...prev, isValidating: true }));
-    
     try {
-      const data = await schemaApi.validateSchema(request);
-      setValidationResult(data.validation);
-      setFormValidationState(prev => ({
-        ...prev,
-        validationResult: data.validation,
-        lastValidated: new Date().toISOString(),
-      }));
+      const success = await schemaApi.copyToClipboard(content);
       
-      // 更新表单验证状态
-      setFormState(prev => ({
-        ...prev,
-        isValid: data.validation.is_valid,
-        errors: data.validation.errors.reduce((acc, error) => {
-          acc.general = acc.general ? `${acc.general}; ${error}` : error;
-          return acc;
-        }, {} as Record<string, string>)
-      }));
-      
-      // 显示验证结果
-      if (data.validation.is_valid) {
-        toast.success('数据验证通过');
-      } else {
-        toast.warn(`发现 ${data.validation.errors.length} 个错误`);
-      }
-      
-      return data;
-    } catch (error) {
-      console.error('验证结构化数据错误:', error);
-      toast.error('验证结构化数据失败，请重试。');
-      return null;
-    } finally {
-      setIsValidating(false);
-      setFormValidationState(prev => ({ ...prev, isValidating: false }));
-    }
-  }, []);
-
-  // 更新表单数据 - 修复类型错误
-  const updateFormData = useCallback((key: string, value: any) => {
-    setFormState(prev => {
-      const newErrors = { ...prev.errors };
-      // 移除该字段的错误，而不是设为undefined
-      delete newErrors[key];
-      
-      return {
-        ...prev,
-        formData: {
-          ...prev.formData,
-          [key]: value
-        },
-        errors: newErrors // 确保不包含undefined值
-      };
-    });
-  }, []);
-
-  // 更新嵌套表单数据
-  const updateNestedFormData = useCallback((path: string[], value: any) => {
-    setFormState(prev => {
-      const newFormData = { ...prev.formData };
-      let current = newFormData;
-      
-      // 导航到嵌套属性的父级
-      for (let i = 0; i < path.length - 1; i++) {
-        if (!current[path[i]]) {
-          current[path[i]] = {};
-        }
-        current = current[path[i]];
-      }
-      
-      // 设置最终值
-      current[path[path.length - 1]] = value;
-      
-      return {
-        ...prev,
-        formData: newFormData,
-      };
-    });
-  }, []);
-
-  // 添加数组项
-  const addArrayItem = useCallback((key: string, defaultValue: any = {}) => {
-    setFormState(prev => {
-      const currentArray = prev.formData[key] || [];
-      return {
-        ...prev,
-        formData: {
-          ...prev.formData,
-          [key]: [...currentArray, defaultValue]
-        }
-      };
-    });
-  }, []);
-
-  // 删除数组项
-  const removeArrayItem = useCallback((key: string, index: number) => {
-    setFormState(prev => {
-      const currentArray = prev.formData[key] || [];
-      const newArray = currentArray.filter((_: any, i: number) => i !== index);
-      return {
-        ...prev,
-        formData: {
-          ...prev.formData,
-          [key]: newArray
-        }
-      };
-    });
-  }, []);
-
-  // 重置表单
-  const resetForm = useCallback(() => {
-    setFormState({
-      selectedType: null,
-      formData: {},
-      errors: {},
-      isValid: false,
-    });
-    setCurrentTemplate(null);
-    setGeneratedSchema(null);
-    setPreviewSchema(null);
-    setValidationResult(null);
-    setEditorState({
-      activeTab: 'form',
-      outputFormat: 'json-ld',
-      showValidation: false,
-      isGenerating: false,
-      lastGenerated: undefined,
-    });
-    setFormValidationState({
-      isValidating: false,
-      validationResult: null,
-      lastValidated: null,
-    });
-  }, []);
-
-  // 切换编辑器标签
-  const setActiveTab = useCallback((tab: 'form' | 'preview' | 'output') => {
-    setEditorState(prev => ({ ...prev, activeTab: tab }));
-  }, []);
-
-  // 切换输出格式
-  const setOutputFormat = useCallback((format: 'json-ld' | 'html') => {
-    setEditorState(prev => ({ ...prev, outputFormat: format }));
-  }, []);
-
-  // 切换验证显示
-  const toggleValidation = useCallback(() => {
-    setEditorState(prev => ({ ...prev, showValidation: !prev.showValidation }));
-  }, []);
-
-  // 复制到剪贴板
-  const copyToClipboard = useCallback(async (content: string, format: 'json' | 'html' = 'json') => {
-    try {
-      const success = await schemaApi.copyToClipboard(content, format);
       if (success) {
-        toast.success('已复制到剪贴板');
+        toast.success(`${format} 代码已复制到剪贴板`);
+        return true;
       } else {
-        toast.error('复制失败，请手动复制');
+        toast.error('复制失败，请手动复制代码');
+        return false;
       }
-      return success;
     } catch (error) {
-      toast.error('复制失败，请手动复制');
+      console.error('复制代码失败:', error);
+      toast.error('复制失败，请手动复制代码');
       return false;
     }
   }, []);
 
-  // 下载为文件
-  const downloadAsFile = useCallback((content: string, filename: string, format: 'json' | 'html' = 'json') => {
-    try {
-      const mimeType = format === 'json' ? 'application/json' : 'text/html';
-      schemaApi.downloadAsFile(content, filename, mimeType);
-      toast.success('文件下载已开始');
-    } catch (error) {
-      toast.error('文件下载失败');
-    }
-  }, []);
-
-  // 保存配置
-  const saveConfig = useCallback((name: string) => {
-    if (!formState.selectedType) {
-      toast.error('请先选择结构化数据类型');
+  // 下载代码文件
+  const downloadCode = useCallback((content: string, filename: string, mimeType: string = 'application/json') => {
+    if (!content) {
+      toast.error('没有可下载的内容');
       return;
     }
-    
-    try {
-      schemaApi.saveSchemaConfig(name, formState.selectedType, formState.formData);
-      toast.success('配置保存成功');
-    } catch (error) {
-      toast.error('配置保存失败');
-    }
-  }, [formState.selectedType, formState.formData]);
 
-  // 加载配置
-  const loadConfig = useCallback((configId: string) => {
     try {
-      const config = schemaApi.loadSchemaConfig(configId);
-      if (config) {
-        setFormState({
-          selectedType: config.schema_type,
-          formData: config.data,
-          errors: {},
-          isValid: false,
-        });
-        
-        // 同时加载对应的模板
-        fetchSchemaTemplate(config.schema_type);
-        
-        toast.success('配置加载成功');
-      } else {
-        toast.error('配置不存在');
-      }
+      const blob = new Blob([content], { type: mimeType });
+      const url = URL.createObjectURL(blob);
+      
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.style.display = 'none';
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      // 清理URL对象
+      setTimeout(() => URL.revokeObjectURL(url), 100);
+      
+      toast.success(`文件 ${filename} 下载开始`);
     } catch (error) {
-      toast.error('配置加载失败');
-    }
-  }, [fetchSchemaTemplate]);
-
-  // 获取保存的配置列表
-  const getSavedConfigs = useCallback(() => {
-    return schemaApi.getSavedSchemaConfigs();
-  }, []);
-
-  // 删除保存的配置
-  const deleteConfig = useCallback((configId: string) => {
-    try {
-      schemaApi.deleteSchemaConfig(configId);
-      toast.success('配置删除成功');
-    } catch (error) {
-      toast.error('配置删除失败');
+      console.error('下载文件失败:', error);
+      toast.error('下载文件失败，请重试');
     }
   }, []);
 
-  // 自动保存预览（当表单数据变化时）
-  useEffect(() => {
-    if (formState.selectedType && Object.keys(formState.formData).length > 0) {
-      // 延迟执行预览，避免频繁请求
-      const timeoutId = setTimeout(() => {
-        previewSchemaData({
-          schema_type: formState.selectedType!,
-          data: formState.formData,
-        });
-      }, 500);
+  // 重置所有数据
+  const resetData = useCallback(() => {
+    console.log('重置结构化数据生成器数据');
+    setGeneratedData(null);
+    setLastError(null);
+  }, []);
 
-      return () => clearTimeout(timeoutId);
+  // 重置所有状态（包括类型数据）
+  const resetAll = useCallback(() => {
+    console.log('重置所有结构化数据生成器状态');
+    setSchemaTypes(null);
+    setGeneratedData(null);
+    setLastError(null);
+  }, []);
+
+  // 获取当前状态摘要
+  const getStateSummary = useCallback(() => {
+    return {
+      hasSchemaTypes: schemaTypes !== null,
+      typesCount: schemaTypes ? Object.keys(schemaTypes).length : 0,
+      hasGeneratedData: generatedData !== null,
+      isLoading: isLoadingTypes || isGenerating,
+      hasError: lastError !== null,
+      lastError,
+    };
+  }, [schemaTypes, generatedData, isLoadingTypes, isGenerating, lastError]);
+
+  // 验证字段数据
+  const validateFieldData = useCallback((schemaType: string, data: Record<string, any>) => {
+    if (!schemaTypes?.[schemaType]) {
+      return { isValid: false, errors: ['未知的结构化数据类型'] };
     }
-  }, [formState.formData, formState.selectedType, previewSchemaData]);
 
-  // 自动验证（可选，当需要时开启）
-  const enableAutoValidation = useCallback((enabled: boolean = true) => {
-    if (!enabled) return;
+    const schema = schemaTypes[schemaType];
+    const errors: string[] = [];
 
-    if (formState.selectedType && Object.keys(formState.formData).length > 0) {
-      const timeoutId = setTimeout(() => {
-        validateSchemaData({
-          schema_type: formState.selectedType!,
-          data: formState.formData,
-        });
-      }, 1000);
-
-      return () => clearTimeout(timeoutId);
+    // 检查必填字段
+    for (const field of schema.required_fields) {
+      const value = data[field];
+      if (!value || (typeof value === 'string' && value.trim() === '')) {
+        errors.push(`${schema.fields[field]?.label || field} 是必填项`);
+      }
     }
-  }, [formState.formData, formState.selectedType, validateSchemaData]);
 
-  // 获取数据摘要
-  const getDataSummary = useCallback(() => {
-    const filledFields = Object.keys(formState.formData).filter(key => {
-      const value = formState.formData[key];
-      if (Array.isArray(value)) {
-        return value.length > 0;
+    // 检查URL格式（简单验证）
+    Object.entries(schema.fields).forEach(([fieldKey, fieldConfig]) => {
+      const value = data[fieldKey];
+      if (value && fieldConfig.type === 'url') {
+        try {
+          new URL(value);
+        } catch {
+          errors.push(`${fieldConfig.label} 必须是有效的URL格式`);
+        }
       }
-      if (typeof value === 'object' && value !== null) {
-        return Object.keys(value).length > 0;
-      }
-      return value !== null && value !== undefined && value !== '';
     });
 
     return {
-      selectedType: formState.selectedType,
-      totalFields: Object.keys(formState.formData).length,
-      filledFields: filledFields.length,
-      isValid: formState.isValid,
-      hasErrors: Object.keys(formState.errors).length > 0,
-      lastValidated: formValidationState.lastValidated,
-      hasGenerated: generatedSchema !== null,
+      isValid: errors.length === 0,
+      errors
     };
-  }, [formState, formValidationState, generatedSchema]);
+  }, [schemaTypes]);
+
+  // 获取字段的默认值
+  const getFieldDefaultValue = useCallback((fieldType: string) => {
+    switch (fieldType) {
+      case 'number':
+        return '';
+      case 'date':
+        return new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+      case 'datetime-local':
+        return new Date().toISOString().slice(0, 16); // YYYY-MM-DDTHH:mm format
+      default:
+        return '';
+    }
+  }, []);
+
+  // 自动加载类型数据
+  useEffect(() => {
+    if (!schemaTypes && !isLoadingTypes) {
+      fetchSchemaTypes();
+    }
+  }, [schemaTypes, isLoadingTypes, fetchSchemaTypes]);
 
   return {
     // 状态
     isLoadingTypes,
-    isLoadingTemplate,
     isGenerating,
-    isPreviewing,
-    isValidating,
+    isLoading: isLoadingTypes || isGenerating,
     
     // 数据
     schemaTypes,
-    currentTemplate,
-    generatedSchema,
-    previewSchema,
-    validationResult,
-    formState,
-    editorState,
-    formValidationState,
+    generatedData,
+    lastError,
     
-    // 操作
+    // 核心操作
     fetchSchemaTypes,
-    fetchSchemaTemplate,
-    generateSchemaData,
-    previewSchemaData,
-    validateSchemaData,
-    updateFormData,
-    updateNestedFormData,
-    addArrayItem,
-    removeArrayItem,
-    resetForm,
-    setActiveTab,
-    setOutputFormat,
-    toggleValidation,
-    copyToClipboard,
-    downloadAsFile,
-    saveConfig,
-    loadConfig,
-    getSavedConfigs,
-    deleteConfig,
+    generateSchema,
+    copyCode,
+    downloadCode,
+    resetData,
+    resetAll,
     
-    // 工具函数
-    enableAutoValidation,
-    getDataSummary,
+    // 辅助功能
+    validateFieldData,
+    getFieldDefaultValue,
+    getStateSummary,
   };
 }
