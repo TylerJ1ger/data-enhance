@@ -8,7 +8,7 @@ import type {
   SchemaGenerateResponse,
   SchemaApiError,
   SchemaType,
-  // 新增：批量处理相关类型
+  // 批量处理相关类型
   SchemaBatchUploadResponse,
   SchemaBatchGenerateRequest,
   SchemaBatchGenerateResponse,
@@ -19,7 +19,8 @@ import type {
   SchemaBatchSummary,
   SchemaBatchPreviewResponse,
   SchemaBatchApiError,
-  CSVTemplateInfo
+  CSVTemplateInfo,
+  CSVFormatType
 } from '@/types';
 
 // ========================================
@@ -52,7 +53,7 @@ const schemaApi = axios.create({
 });
 
 // ========================================
-// 原有的核心API调用函数（保持不变）
+// 原有的核心API调用函数
 // ========================================
 
 /**
@@ -103,11 +104,62 @@ export const checkSchemaApiHealth = async (): Promise<{
 };
 
 // ========================================
-// 新增：批量处理相关API函数
+// 动态CSV模板相关API函数
 // ========================================
 
 /**
- * 批量上传结构化数据CSV文件
+ * 获取动态CSV模板
+ * @param schemaType 结构化数据类型
+ * @returns 动态CSV模板信息
+ */
+export const getDynamicCSVTemplate = async (schemaType: string): Promise<any> => {
+  const response = await schemaApi.get(`/batch/template/${schemaType}`);
+  return response.data;
+};
+
+/**
+ * 获取所有支持的动态CSV模板列表
+ * @returns 支持的模板列表
+ */
+export const getAllDynamicCSVTemplates = async (): Promise<any[]> => {
+  const response = await schemaApi.get('/batch/templates');
+  return response.data.templates || [];
+};
+
+/**
+ * 下载动态CSV模板文件
+ * @param schemaType 结构化数据类型
+ * @param filename 自定义文件名（可选）
+ */
+export const downloadDynamicCSVTemplate = async (schemaType: string, filename?: string): Promise<void> => {
+  try {
+    const response = await schemaApi.get(`/batch/template/${schemaType}/download`, {
+      responseType: 'blob'
+    });
+    
+    const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = filename || `${schemaType.toLowerCase()}_dynamic_template.csv`;
+    link.style.display = 'none';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setTimeout(() => URL.revokeObjectURL(link.href), 100);
+  } catch (error) {
+    console.error('下载动态CSV模板失败:', error);
+    throw new Error('下载模板失败，请重试');
+  }
+};
+
+// ========================================
+// 批量处理相关API函数
+// ========================================
+
+/**
+ * 批量上传结构化数据CSV文件（支持动态字段格式）
  * @param files 要上传的CSV文件列表
  * @returns 批量上传响应
  */
@@ -202,7 +254,7 @@ export const previewSchemaBatchData = async (limit: number = 10): Promise<Schema
 };
 
 // ========================================
-// 原有的工具函数（保持不变）
+// 工具函数
 // ========================================
 
 /**
@@ -336,15 +388,15 @@ export const getContentSize = (content: string): {
 };
 
 // ========================================
-// 新增：批量处理工具函数
+// 批量处理工具函数
 // ========================================
 
 /**
- * 验证CSV文件格式
+ * 验证动态CSV文件格式
  * @param file CSV文件
  * @returns 是否为有效的CSV文件
  */
-export const validateCSVFile = (file: File): { isValid: boolean; errors: string[] } => {
+export const validateDynamicCSVFile = (file: File): { isValid: boolean; errors: string[] } => {
   const errors: string[] = [];
   
   // 检查文件类型
@@ -371,11 +423,11 @@ export const validateCSVFile = (file: File): { isValid: boolean; errors: string[
 };
 
 /**
- * 批量验证多个CSV文件
+ * 批量验证多个动态CSV文件
  * @param files 文件列表
  * @returns 验证结果
  */
-export const validateMultipleCSVFiles = (files: File[]): { 
+export const validateMultipleDynamicCSVFiles = (files: File[]): { 
   isValid: boolean; 
   errors: string[]; 
   validFiles: File[];
@@ -396,7 +448,7 @@ export const validateMultipleCSVFiles = (files: File[]): {
   
   // 验证每个文件
   files.forEach(file => {
-    const validation = validateCSVFile(file);
+    const validation = validateDynamicCSVFile(file);
     if (validation.isValid) {
       validFiles.push(file);
     } else {
@@ -454,14 +506,102 @@ export const downloadCSVTemplate = (templateInfo: CSVTemplateInfo, filename?: st
 };
 
 /**
- * 获取所有可用的CSV模板
- * @returns CSV模板列表
+ * 获取增强的可用CSV模板（包含动态字段模板）
+ * @returns 增强的CSV模板列表
  */
-export const getAvailableCSVTemplates = (): CSVTemplateInfo[] => {
+export const getEnhancedCSVTemplates = (): CSVTemplateInfo[] => {
   return [
     {
-      name: "文章模板",
-      description: "适用于博客文章、新闻文章等内容",
+      name: "文章模板（动态字段）",
+      description: "使用分离字段格式，更易于填写和管理",
+      schemaType: "Article",
+      headers: ["url", "schema_type", "headline", "author", "datePublished", "description", "image", "publisher"],
+      sampleData: [
+        {
+          url: "https://example.com/article1",
+          schema_type: "Article",
+          headline: "如何优化网站SEO",
+          author: "张三",
+          datePublished: "2024-01-15",
+          description: "完整的SEO优化指南",
+          image: "https://example.com/images/seo-guide.jpg",
+          publisher: "技术博客"
+        }
+      ],
+      formatType: "dynamic_fields" as CSVFormatType
+    },
+    {
+      name: "产品模板（动态字段）", 
+      description: "使用分离字段格式的产品信息模板",
+      schemaType: "Product",
+      headers: ["url", "schema_type", "name", "description", "brand", "price", "currency"],
+      sampleData: [
+        {
+          url: "https://example.com/product1",
+          schema_type: "Product", 
+          name: "无线蓝牙耳机",
+          description: "高音质无线耳机",
+          brand: "TechBrand",
+          price: "299",
+          currency: "CNY"
+        }
+      ],
+      formatType: "dynamic_fields" as CSVFormatType
+    },
+    {
+      name: "组织模板（动态字段）",
+      description: "使用分离字段格式的组织信息模板",
+      schemaType: "Organization",
+      headers: ["url", "schema_type", "name", "website", "description"],
+      sampleData: [
+        {
+          url: "https://example.com/about",
+          schema_type: "Organization",
+          name: "创新科技公司",
+          website: "https://example.com",
+          description: "专注AI技术的创新公司"
+        }
+      ],
+      formatType: "dynamic_fields" as CSVFormatType
+    },
+    {
+      name: "人物模板（动态字段）",
+      description: "使用分离字段格式的人物信息模板",
+      schemaType: "Person",
+      headers: ["url", "schema_type", "name", "jobTitle", "worksFor", "description"],
+      sampleData: [
+        {
+          url: "https://example.com/team/ceo",
+          schema_type: "Person",
+          name: "王五",
+          jobTitle: "首席执行官",
+          worksFor: "创新科技公司",
+          description: "拥有15年技术管理经验"
+        }
+      ],
+      formatType: "dynamic_fields" as CSVFormatType
+    },
+    {
+      name: "事件模板（动态字段）",
+      description: "使用分离字段格式的事件信息模板",
+      schemaType: "Event",
+      headers: ["url", "schema_type", "name", "startDate", "location", "description"],
+      sampleData: [
+        {
+          url: "https://example.com/events/conference-2024",
+          schema_type: "Event",
+          name: "2024年前端技术大会",
+          startDate: "2024-06-15T09:00:00",
+          location: "北京国际会议中心",
+          description: "探讨最新的前端技术趋势"
+        }
+      ],
+      formatType: "dynamic_fields" as CSVFormatType
+    },
+    // 保留传统data_json格式模板以保持向后兼容
+    {
+      name: "文章模板（传统格式）",
+      description: "传统data_json格式，适合高级用户",
       schemaType: "Article",
       headers: ["url", "schema_type", "data_json"],
       sampleData: [
@@ -475,81 +615,31 @@ export const getAvailableCSVTemplates = (): CSVTemplateInfo[] => {
             description: "完整的SEO优化指南"
           })
         }
-      ]
-    },
-    {
-      name: "产品模板", 
-      description: "适用于电商产品、服务产品等",
-      schemaType: "Product",
-      headers: ["url", "schema_type", "data_json"],
-      sampleData: [
-        {
-          url: "https://example.com/product1",
-          schema_type: "Product", 
-          data_json: JSON.stringify({
-            name: "无线蓝牙耳机",
-            description: "高音质无线耳机",
-            brand: "TechBrand",
-            price: "299",
-            currency: "CNY"
-          })
-        }
-      ]
-    },
-    {
-      name: "组织模板",
-      description: "适用于公司、机构等组织信息",
-      schemaType: "Organization",
-      headers: ["url", "schema_type", "data_json"],
-      sampleData: [
-        {
-          url: "https://example.com/about",
-          schema_type: "Organization",
-          data_json: JSON.stringify({
-            name: "创新科技公司",
-            url: "https://example.com",
-            description: "专注AI技术的创新公司"
-          })
-        }
-      ]
-    },
-    {
-      name: "人物模板",
-      description: "适用于团队成员、专家介绍等",
-      schemaType: "Person",
-      headers: ["url", "schema_type", "data_json"],
-      sampleData: [
-        {
-          url: "https://example.com/team/ceo",
-          schema_type: "Person",
-          data_json: JSON.stringify({
-            name: "王五",
-            jobTitle: "首席执行官",
-            worksFor: "创新科技公司",
-            description: "拥有15年技术管理经验"
-          })
-        }
-      ]
-    },
-    {
-      name: "事件模板",
-      description: "适用于会议、活动、培训等事件",
-      schemaType: "Event",
-      headers: ["url", "schema_type", "data_json"],
-      sampleData: [
-        {
-          url: "https://example.com/events/conference-2024",
-          schema_type: "Event",
-          data_json: JSON.stringify({
-            name: "2024年前端技术大会",
-            startDate: "2024-06-15T09:00:00",
-            location: "北京国际会议中心",
-            description: "探讨最新的前端技术趋势"
-          })
-        }
-      ]
+      ],
+      formatType: "data_json" as CSVFormatType
     }
   ];
+};
+
+/**
+ * 下载增强的CSV模板
+ * @param templateInfo 模板信息
+ * @param filename 文件名（可选）
+ */
+export const downloadEnhancedCSVTemplate = (templateInfo: CSVTemplateInfo, filename?: string): void => {
+  const csvContent = generateCSVTemplate(templateInfo);
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename || `${templateInfo.schemaType.toLowerCase()}_${templateInfo.formatType || 'dynamic'}_template.csv`;
+  link.style.display = 'none';
+  
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  
+  setTimeout(() => URL.revokeObjectURL(link.href), 100);
 };
 
 /**
@@ -661,7 +751,7 @@ export const calculateBatchProgress = (current: number, total: number): number =
 };
 
 // ========================================
-// 原有的生成示例数据函数（保持不变）
+// 生成示例数据函数
 // ========================================
 
 /**
@@ -787,7 +877,7 @@ export const validateFieldData = (
 };
 
 // ========================================
-// 错误处理和拦截器（保持不变）
+// 错误处理和拦截器
 // ========================================
 
 /**
@@ -882,7 +972,7 @@ schemaApi.interceptors.response.use(
 );
 
 // ========================================
-// 常量定义（保持不变并新增批量处理相关）
+// 常量定义
 // ========================================
 
 // 支持的结构化数据类型列表
@@ -924,7 +1014,7 @@ export const SCHEMA_TYPE_DESCRIPTIONS = {
   WebSite: '网站基本信息'
 } as const;
 
-// 新增：批量处理相关常量
+// 批量处理相关常量
 export const BATCH_PROCESSING_CONFIG = {
   MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
   MAX_FILES: 10,

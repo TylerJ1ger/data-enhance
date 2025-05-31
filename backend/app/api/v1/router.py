@@ -1,11 +1,12 @@
 """
-API v1 主路由文件
+API v1 主路由文件 - 完整增强版本
 整合所有业务模块的路由，提供统一的接口入口
+新增动态CSV模板支持
 """
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Path
 from typing import List, Optional, Dict, Any
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 import io
 import json
 import xml.etree.ElementTree as ET
@@ -154,7 +155,7 @@ class SchemaGenerateRequest(BaseModel):
             raise ValueError(f'不支持的结构化数据类型。支持的类型: {", ".join(supported_types)}')
         return v
 
-# 新增：批量处理相关的Pydantic模型
+# 批量处理相关的Pydantic模型
 class SchemaBatchGenerateRequest(BaseModel):
     """批量生成结构化数据请求模型"""
     url_filter: Optional[str] = None  # URL过滤器，可选
@@ -824,18 +825,112 @@ async def generate_schema(request: SchemaGenerateRequest):
             detail=f"生成结构化数据时发生错误: {str(e)}"
         )
 
-# 新增：批量处理相关路由
+# 新增：动态CSV模板相关路由
+@router.get("/schema/batch/template/{schema_type}", tags=["Schema Dynamic Template"])
+async def get_dynamic_csv_template(schema_type: str = Path(..., description="结构化数据类型")):
+    """
+    获取指定类型的动态CSV模板
+    
+    支持的类型包括：Article, Product, Organization, Person, Event, VideoObject, WebSite, Breadcrumb, FAQPage, HowTo
+    """
+    try:
+        result = schema_processor.get_dynamic_csv_template(schema_type)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "生成模板失败")
+            )
+        
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取动态CSV模板时发生错误: {str(e)}"
+        )
+
+@router.get("/schema/batch/templates", tags=["Schema Dynamic Template"])
+async def get_all_dynamic_csv_templates():
+    """
+    获取所有支持类型的动态CSV模板列表
+    """
+    try:
+        schema_types = schema_processor.get_supported_schemas()
+        templates = []
+        
+        for schema_type in schema_types.keys():
+            try:
+                template = schema_processor.get_dynamic_csv_template(schema_type)
+                if template["success"]:
+                    templates.append({
+                        "schema_type": schema_type,
+                        "name": f"{schema_types[schema_type]['name']}模板（动态字段）",
+                        "description": f"使用分离字段格式的{schema_types[schema_type]['name']}信息模板",
+                        "headers": template["headers"],
+                        "required_fields": template["required_fields"],
+                        "field_descriptions": template["field_descriptions"]
+                    })
+            except Exception as e:
+                print(f"生成 {schema_type} 模板时出错: {str(e)}")
+                continue
+        
+        return {
+            "success": True,
+            "templates": templates,
+            "total_count": len(templates)
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取模板列表时发生错误: {str(e)}"
+        )
+
+@router.get("/schema/batch/template/{schema_type}/download", tags=["Schema Dynamic Template"])
+async def download_dynamic_csv_template(schema_type: str = Path(..., description="结构化数据类型")):
+    """
+    下载指定类型的动态CSV模板文件
+    """
+    try:
+        result = schema_processor.get_dynamic_csv_template(schema_type)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "生成模板失败")
+            )
+        
+        csv_content = result["csv_content"]
+        filename = f"{schema_type.lower()}_dynamic_template.csv"
+        
+        return Response(
+            content=csv_content,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"下载模板时发生错误: {str(e)}"
+        )
+
+# 批量处理相关路由（增强版本）
 @router.post("/schema/batch/upload", tags=["Schema Batch"])
 async def upload_schema_batch_files(files: List[UploadFile] = File(...)):
     """
-    批量上传结构化数据CSV文件
+    批量上传结构化数据CSV文件（支持动态字段格式）
     
-    CSV文件格式要求：
-    - url: 目标网页URL
-    - schema_type: 结构化数据类型 (Article, Product, Organization等)
-    - data_json: 结构化数据字段的JSON字符串
+    支持两种CSV格式：
+    1. 动态字段格式：url, schema_type, [dynamic_fields...]
+    2. 传统格式：url, schema_type, data_json
     
-    支持上传多个CSV文件，系统会自动合并和去重
+    系统会自动检测格式类型并进行相应处理
     """
     if not files:
         raise HTTPException(status_code=400, detail="未提供文件")
@@ -873,7 +968,7 @@ async def upload_schema_batch_files(files: List[UploadFile] = File(...)):
 @router.post("/schema/batch/generate", tags=["Schema Batch"])
 async def generate_batch_schemas(request: SchemaBatchGenerateRequest):
     """
-    批量生成结构化数据
+    批量生成结构化数据（支持动态字段格式）
     
     基于已上传的CSV数据批量生成结构化数据
     可选择性过滤特定URL模式
@@ -1068,11 +1163,31 @@ async def api_info():
         "endpoints": {
             "keywords": "/v1/keywords/",
             "backlinks": "/v1/backlinks/", 
+            "cross_analysis": "/v1/backlinks/cross-analysis/",
             "orders": "/v1/orders/",
             "seo": "/v1/seo/",
             "sitemaps": "/v1/sitemaps/",
             "schema": "/v1/schema/",
-            "schema_batch": "/v1/schema/batch/",  # 新增批量处理端点
+            "schema_batch": "/v1/schema/batch/",
+            "schema_dynamic_templates": "/v1/schema/batch/template/",  # 新增：动态模板端点
             "health": "/v1/health"
+        },
+        "new_features": {
+            "dynamic_csv_support": "支持动态字段CSV格式，简化批量数据输入",
+            "auto_format_detection": "自动检测CSV格式类型（动态字段 vs 传统JSON）",
+            "enhanced_templates": "提供增强的CSV模板，包含字段描述和示例",
+            "intelligent_field_mapping": "智能字段映射，支持多种列名变体"
+        },
+        "supported_csv_formats": {
+            "dynamic_fields": {
+                "description": "动态字段格式，每个字段使用独立列",
+                "example": "url,schema_type,headline,author,datePublished,description",
+                "advantages": ["易于编辑", "支持Excel", "不需要JSON知识"]
+            },
+            "data_json": {
+                "description": "传统JSON格式，使用data_json列存储所有字段",
+                "example": "url,schema_type,data_json",
+                "advantages": ["向后兼容", "适合程序化生成", "支持复杂数据结构"]
+            }
         }
     }
