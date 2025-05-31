@@ -1,4 +1,4 @@
-//frontend/src/hooks/use-schema-api.ts - 增强版本
+//frontend/src/hooks/use-schema-api.ts - 完整更新版本
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'react-toastify';
 import * as schemaApi from '@/lib/api/schema-api';
@@ -22,16 +22,12 @@ import type {
   SchemaBatchError,
   CSVTemplateInfo,
   URLFilterOptions,
-  CSVFormatType,
-  // 新增：动态CSV相关类型
-  DynamicCSVTemplateResponse,
-  DynamicFieldValidationResult,
-  CSVFormatDetectionResult
+  CSVFormatType
 } from '@/types';
 
 export function useSchemaApi() {
   // ========================================
-  // 原有单个生成功能的状态管理
+  // 单个生成功能的状态管理
   // ========================================
   
   const [isLoadingTypes, setIsLoadingTypes] = useState(false);
@@ -41,7 +37,7 @@ export function useSchemaApi() {
   const [lastError, setLastError] = useState<string | null>(null);
 
   // ========================================
-  // 增强的批量处理状态管理
+  // 批量处理状态管理
   // ========================================
   
   const [batchState, setBatchState] = useState<SchemaBatchState>({
@@ -58,7 +54,6 @@ export function useSchemaApi() {
     previewData: null,
     lastError: null,
     processingErrors: [],
-    // 新增：格式相关状态
     detectedFormats: [],
     formatValidation: {}
   });
@@ -80,13 +75,15 @@ export function useSchemaApi() {
     isRegex: false
   });
 
-  // 新增：动态模板相关状态
-  const [availableTemplates, setAvailableTemplates] = useState<CSVTemplateInfo[]>([]);
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
-  const [dynamicTemplates, setDynamicTemplates] = useState<Record<string, DynamicCSVTemplateResponse>>({});
+  // ========================================
+  // 新增：后端模板管理状态
+  // ========================================
+  
+  const [backendTemplates, setBackendTemplates] = useState<any[]>([]);
+  const [isLoadingBackendTemplates, setIsLoadingBackendTemplates] = useState(false);
 
   // ========================================
-  // 原有功能实现（保持不变）
+  // API健康检查
   // ========================================
 
   useEffect(() => {
@@ -101,6 +98,10 @@ export function useSchemaApi() {
 
     checkApiHealth();
   }, []);
+
+  // ========================================
+  // 单个生成功能实现
+  // ========================================
 
   const fetchSchemaTypes = useCallback(async () => {
     if (schemaTypes) return schemaTypes;
@@ -194,43 +195,8 @@ export function useSchemaApi() {
     }
   }, []);
 
-  const downloadCode = useCallback((content: string, filename: string, mimeType: string = 'application/json') => {
-    if (!content) {
-      toast.error('没有可下载的内容');
-      return;
-    }
-
-    try {
-      const blob = new Blob([content], { type: mimeType });
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.style.display = 'none';
-      
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      setTimeout(() => URL.revokeObjectURL(url), 100);
-      
-      toast.success(`文件 ${filename} 下载开始`);
-    } catch (error) {
-      console.error('下载文件失败:', error);
-      toast.error('下载文件失败，请重试');
-    }
-  }, []);
-
   const resetData = useCallback(() => {
     console.log('重置结构化数据生成器数据');
-    setGeneratedData(null);
-    setLastError(null);
-  }, []);
-
-  const resetAll = useCallback(() => {
-    console.log('重置所有结构化数据生成器状态');
-    setSchemaTypes(null);
     setGeneratedData(null);
     setLastError(null);
   }, []);
@@ -283,57 +249,55 @@ export function useSchemaApi() {
   }, []);
 
   // ========================================
-  // 新增：动态模板管理功能
+  // 后端模板管理功能
   // ========================================
 
-  const loadDynamicTemplates = useCallback(async () => {
-    setIsLoadingTemplates(true);
+  const loadBackendTemplates = useCallback(async () => {
+    setIsLoadingBackendTemplates(true);
     try {
-      const enhancedTemplates = schemaApi.getEnhancedCSVTemplates();
-      setAvailableTemplates(enhancedTemplates);
-      
-      // 加载动态模板详细信息（如果后端支持）
-      const schemaTypesList = ['Article', 'Product', 'Organization', 'Person', 'Event'];
-      const dynamicTemplatesData: Record<string, DynamicCSVTemplateResponse> = {};
-      
-      for (const schemaType of schemaTypesList) {
-        try {
-          const template = await schemaApi.getDynamicCSVTemplate(schemaType);
-          dynamicTemplatesData[schemaType] = template;
-        } catch (error) {
-          console.warn(`加载 ${schemaType} 动态模板失败:`, error);
-        }
-      }
-      
-      setDynamicTemplates(dynamicTemplatesData);
-      
+      const templates = await schemaApi.getAllDynamicCSVTemplates();
+      setBackendTemplates(templates);
+      console.log('成功加载后端模板:', templates.length, '个');
+      return templates;
     } catch (error) {
-      console.error('加载模板失败:', error);
-      toast.error('加载模板失败，将使用默认模板');
+      console.error('加载后端模板失败:', error);
+      toast.error('加载模板失败，将使用基础模板');
+      // 降级到基础模板
+      setBackendTemplates([]);
+      return [];
     } finally {
-      setIsLoadingTemplates(false);
+      setIsLoadingBackendTemplates(false);
+    }
+  }, []);
+
+  const getTemplateDetails = useCallback(async (schemaType: string) => {
+    try {
+      const details = await schemaApi.getDynamicCSVTemplate(schemaType);
+      return details;
+    } catch (error) {
+      console.error(`获取${schemaType}模板详情失败:`, error);
+      return null;
     }
   }, []);
 
   const downloadCSVTemplate = useCallback((schemaType: string, formatType: CSVFormatType = 'dynamic_fields') => {
     try {
       if (formatType === 'dynamic_fields') {
-        // 下载动态字段模板
+        // 使用后端API下载动态模板
         schemaApi.downloadDynamicCSVTemplate(schemaType);
         toast.success(`${schemaType}动态字段模板下载开始`);
       } else {
-        // 下载传统格式模板
-        const templates = schemaApi.getEnhancedCSVTemplates();
-        const template = templates.find(t => 
-          t.schemaType === schemaType && t.formatType === 'data_json'
-        );
+        // 下载传统格式模板（简化版本）
+        const headers = 'url,schema_type,data_json';
+        const sampleData = `https://example.com/${schemaType.toLowerCase()}-1,${schemaType},"{\\"name\\": \\"示例${schemaType}\\", \\"description\\": \\"这是一个${schemaType}的示例\\"}"`;
+        const csvContent = `${headers}\n${sampleData}`;
         
-        if (template) {
-          schemaApi.downloadEnhancedCSVTemplate(template);
-          toast.success(`${template.name}模板下载开始`);
-        } else {
-          toast.error('未找到对应的传统格式模板');
-        }
+        schemaApi.downloadAsFile(
+          csvContent, 
+          `${schemaType.toLowerCase()}_traditional_template.csv`, 
+          'text/csv'
+        );
+        toast.success(`${schemaType}传统格式模板下载开始`);
       }
     } catch (error) {
       console.error('下载模板失败:', error);
@@ -341,21 +305,32 @@ export function useSchemaApi() {
     }
   }, []);
 
+  const batchDownloadAllTemplates = useCallback(async (formatType: CSVFormatType = 'dynamic_fields') => {
+    try {
+      await schemaApi.batchDownloadAllTemplates(formatType);
+      toast.success(`开始批量下载所有${formatType === 'dynamic_fields' ? '动态字段' : '传统JSON'}格式模板`);
+    } catch (error) {
+      console.error('批量下载失败:', error);
+      toast.error('批量下载失败，请重试');
+    }
+  }, []);
+
+  const getAvailableTemplates = useCallback(() => {
+    if (backendTemplates.length > 0) {
+      return backendTemplates;
+    }
+    // 降级到基础模板
+    return schemaApi.getBasicCSVTemplateInfo();
+  }, [backendTemplates]);
+
   // ========================================
-  // 增强的批量处理核心功能
+  // 批量处理核心功能
   // ========================================
 
   const uploadBatchFiles = useCallback(async (files: File[]) => {
     // 验证文件
-    const validation = schemaApi.validateMultipleDynamicCSVFiles(files);
-    if (!validation.isValid) {
-      const errorMessage = schemaApi.formatBatchProcessingErrors(validation.errors);
-      setBatchState(prev => ({ 
-        ...prev, 
-        lastError: errorMessage, 
-        processingErrors: validation.errors 
-      }));
-      toast.error('文件验证失败');
+    if (!files || files.length === 0) {
+      toast.error('请选择要上传的文件');
       return null;
     }
 
@@ -376,7 +351,7 @@ export function useSchemaApi() {
     }));
 
     try {
-      const result = await schemaApi.uploadSchemaBatchFiles(validation.validFiles);
+      const result = await schemaApi.uploadSchemaBatchFiles(files);
       
       setBatchState(prev => ({
         ...prev,
@@ -385,7 +360,6 @@ export function useSchemaApi() {
         hasUploadedData: true,
         uploadStats: result,
         processingErrors: result.processing_errors || [],
-        // 新增：格式检测结果
         detectedFormats: result.supported_formats || []
       }));
 
@@ -401,7 +375,6 @@ export function useSchemaApi() {
       if (result.processing_errors && result.processing_errors.length > 0) {
         toast.warning(`文件上传成功，但发现 ${result.processing_errors.length} 个警告`);
       } else {
-        // 检查检测到的格式类型
         const formatTypes = result.file_stats.map(stat => stat.detected_format);
         const uniqueFormats = [...new Set(formatTypes)];
         
@@ -412,7 +385,7 @@ export function useSchemaApi() {
           formatMessage = ' (检测到传统JSON格式)';
         }
         
-        toast.success(`成功上传 ${validation.validFiles.length} 个文件，共 ${result.total_rows} 条数据${formatMessage}`);
+        toast.success(`成功上传 ${files.length} 个文件，共 ${result.total_rows} 条数据${formatMessage}`);
       }
 
       return result;
@@ -612,7 +585,6 @@ export function useSchemaApi() {
     canExport: batchState.hasGeneratedData && !batchState.isExporting,
     hasErrors: batchState.processingErrors.length > 0 || !!batchState.lastError,
     progressPercentage: batchProgress.overallProgress,
-    // 新增：格式检测状态
     hasDetectedFormats: batchState.detectedFormats.length > 0,
     supportsDynamicFields: batchState.detectedFormats.includes('dynamic_fields'),
     supportsDataJson: batchState.detectedFormats.includes('data_json')
@@ -630,28 +602,12 @@ export function useSchemaApi() {
       completionRate: batchState.summary.total_rows > 0 
         ? Math.round((batchState.summary.processed_urls / batchState.summary.unique_urls) * 100)
         : 0,
-      // 新增：格式统计
       formatBreakdown: batchState.uploadStats?.file_stats.reduce((acc, stat) => {
         acc[stat.detected_format] = (acc[stat.detected_format] || 0) + 1;
         return acc;
       }, {} as Record<string, number>) || {}
     };
   }, [batchState.summary, batchState.uploadStats]);
-
-  const getStateSummary = useCallback(() => {
-    return {
-      hasSchemaTypes: schemaTypes !== null,
-      typesCount: schemaTypes ? Object.keys(schemaTypes).length : 0,
-      hasGeneratedData: generatedData !== null,
-      isLoading: isLoadingTypes || isGenerating,
-      hasError: lastError !== null,
-      lastError,
-      // 新增：模板状态
-      hasTemplates: availableTemplates.length > 0,
-      templatesCount: availableTemplates.length,
-      isLoadingTemplates
-    };
-  }, [schemaTypes, generatedData, isLoadingTypes, isGenerating, lastError, availableTemplates, isLoadingTemplates]);
 
   // ========================================
   // 自动加载和初始化
@@ -660,10 +616,9 @@ export function useSchemaApi() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        await schemaApi.checkSchemaApiHealth();
         await Promise.all([
           fetchBatchSummary(),
-          loadDynamicTemplates()
+          loadBackendTemplates()
         ]);
       } catch (error) {
         console.error('Schema API初始化失败:', error);
@@ -671,7 +626,7 @@ export function useSchemaApi() {
     };
 
     initialize();
-  }, [fetchBatchSummary, loadDynamicTemplates]);
+  }, [fetchBatchSummary, loadBackendTemplates]);
 
   useEffect(() => {
     if (!schemaTypes && !isLoadingTypes) {
@@ -684,7 +639,7 @@ export function useSchemaApi() {
   // ========================================
 
   return {
-    // 原有单个生成功能
+    // 单个生成功能
     isLoadingTypes,
     isGenerating,
     isLoading: isLoadingTypes || isGenerating,
@@ -692,16 +647,13 @@ export function useSchemaApi() {
     generatedData,
     lastError,
     
-    // 原有操作函数
+    // 单个生成操作函数
     fetchSchemaTypes,
     generateSchema,
     copyCode,
-    downloadCode,
     resetData,
-    resetAll,
     validateFieldData,
     getFieldDefaultValue,
-    getStateSummary,
 
     // 批量处理功能
     batchState,
@@ -717,42 +669,45 @@ export function useSchemaApi() {
     fetchBatchSummary,
     resetBatchData,
     
-    // 新增：动态模板功能
-    availableTemplates,
-    isLoadingTemplates,
-    dynamicTemplates,
-    loadDynamicTemplates,
+    // 后端模板管理功能
+    backendTemplates,
+    isLoadingBackendTemplates,
+    loadBackendTemplates,
+    getTemplateDetails,
     downloadCSVTemplate,
+    batchDownloadAllTemplates,
+    getAvailableTemplates,
     
     // URL过滤器操作
     setUrlFilter,
     applyUrlFilter: (pattern: string) => generateBatchSchemas(pattern),
     
     // 工具函数
-    validateFiles: schemaApi.validateMultipleDynamicCSVFiles,
-    getAvailableTemplates: () => availableTemplates,
-    getEnhancedTemplates: schemaApi.getEnhancedCSVTemplates,
-    formatErrors: schemaApi.formatBatchProcessingErrors,
-    calculateProgress: schemaApi.calculateBatchProgress,
-    
-    // 新增：格式检测和验证
-    detectCSVFormat: (file: File) => {
-      // 这里可以添加客户端格式检测逻辑
-      return 'dynamic_fields' as CSVFormatType;
+    validateFiles: (files: File[]) => {
+      // 简单的文件验证
+      const errors: string[] = [];
+      files.forEach(file => {
+        if (!file.name.toLowerCase().endsWith('.csv') && !file.name.toLowerCase().endsWith('.xlsx')) {
+          errors.push(`${file.name}: 不支持的文件类型`);
+        }
+        if (file.size > 10 * 1024 * 1024) {
+          errors.push(`${file.name}: 文件过大`);
+        }
+      });
+      return {
+        isValid: errors.length === 0,
+        errors,
+        validFiles: files.filter(file => 
+          (file.name.toLowerCase().endsWith('.csv') || file.name.toLowerCase().endsWith('.xlsx')) &&
+          file.size <= 10 * 1024 * 1024
+        ),
+        invalidFiles: []
+      };
     },
     
-    // 模板相关
-    getTemplateByType: (schemaType: string, formatType: CSVFormatType = 'dynamic_fields') => {
-      if (formatType === 'dynamic_fields') {
-        return dynamicTemplates[schemaType];
-      } else {
-        return availableTemplates.find(t => 
-          t.schemaType === schemaType && t.formatType === 'data_json'
-        );
-      }
-    },
-    
-    getDynamicTemplate: (schemaType: string) => dynamicTemplates[schemaType],
+    formatErrors: (errors: string[]) => errors.join('; '),
+    calculateProgress: (current: number, total: number) => 
+      total > 0 ? Math.round((current / total) * 100) : 0,
     
     // 状态检查函数
     canStartBatch: () => !overallState.isProcessing && !batchState.hasUploadedData,
@@ -776,7 +731,7 @@ export function useSchemaApi() {
     hasBatchData: () => batchState.hasGeneratedData,
     hasAnyData: () => !!generatedData || batchState.hasGeneratedData,
     
-    // 新增：格式支持检查
+    // 格式支持检查
     supportsFormat: (formatType: CSVFormatType) => batchState.detectedFormats.includes(formatType),
     getDetectedFormats: () => batchState.detectedFormats,
     getFormatStatistics: () => statistics?.formatBreakdown || {}

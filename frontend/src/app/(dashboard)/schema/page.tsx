@@ -1,4 +1,4 @@
-//frontend/src/app/(dashboard)/schema/page.tsx
+//frontend/src/app/(dashboard)/schema/page.tsx - 修正类型错误版本
 "use client";
 
 import { useState, useEffect } from 'react';
@@ -21,6 +21,7 @@ import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 
 import { FileUpload } from "@/components/file-upload";
+import { SchemaBatchUploader } from "@/components/schema/schema-batch-uploader";
 import { useSchemaApi } from "@/hooks/use-schema-api";
 import type { SchemaTypeConfig } from "@/types";
 
@@ -39,7 +40,7 @@ export default function SchemaPage() {
     validateFieldData,
     getFieldDefaultValue,
     
-    // 新增：批量处理功能
+    // 批量处理功能
     batchState,
     batchProgress,
     urlFilter,
@@ -49,9 +50,15 @@ export default function SchemaPage() {
     generateBatchSchemas,
     exportBatchSchemas,
     resetBatchData,
-    downloadCSVTemplate,
     setUrlFilter,
-    getAvailableTemplates
+    
+    // 更新后的模板功能
+    downloadCSVTemplate,
+    batchDownloadAllTemplates,
+    getAvailableTemplates,
+    backendTemplates,
+    isLoadingBackendTemplates,
+    getTemplateDetails,
   } = useSchemaApi();
 
   // 页面状态管理
@@ -112,10 +119,17 @@ export default function SchemaPage() {
     await generateSchema(selectedType, formData);
   };
 
-  // 批量文件上传
-  const handleBatchFilesSelected = async (files: File[]) => {
+  // 修正：创建适配器函数处理文件上传
+  const handleBatchFilesUpload = async (files: File[]) => {
     if (files.length === 0) return;
-    await uploadBatchFiles(files);
+    
+    try {
+      const result = await uploadBatchFiles(files);
+      console.log('批量上传结果:', result);
+      // 这里不需要额外处理，uploadBatchFiles 已经更新了相关状态
+    } catch (error) {
+      console.error('批量上传文件失败:', error);
+    }
   };
 
   // 批量生成
@@ -124,16 +138,14 @@ export default function SchemaPage() {
     await generateBatchSchemas(filterPattern);
   };
 
-  // 批量导出 - 修复后的逻辑
+  // 批量导出
   const handleBatchExport = async () => {
     const result = await exportBatchSchemas(batchExportType);
     
     if (result && batchExportType === 'separated') {
-      // 对于分离导出，保存结果并显示文件选择对话框
       setBatchExportResult(result);
       setShowExportDialog(true);
     }
-    // 对于合并导出，文件会自动下载，不需要额外处理
   };
 
   // 处理重置
@@ -300,7 +312,6 @@ export default function SchemaPage() {
             <Button
               variant="outline"
               onClick={() => {
-                // 批量下载所有文件
                 files.forEach(([filename, fileInfo]: [string, any], index) => {
                   setTimeout(() => {
                     const blob = new Blob([fileInfo.json_ld], { type: 'application/ld+json' });
@@ -310,7 +321,7 @@ export default function SchemaPage() {
                     link.download = filename;
                     link.click();
                     URL.revokeObjectURL(url);
-                  }, index * 100); // 间隔100ms下载
+                  }, index * 100);
                 });
               }}
               className="gap-2"
@@ -354,6 +365,11 @@ export default function SchemaPage() {
           {activeMode === 'batch' && statistics && (
             <Badge variant="secondary" className="text-xs">
               {statistics.uniqueUrls} URLs
+            </Badge>
+          )}
+          {activeMode === 'batch' && backendTemplates.length > 0 && (
+            <Badge variant="default" className="text-xs">
+              {backendTemplates.length} 个后端模板
             </Badge>
           )}
         </div>
@@ -598,9 +614,9 @@ export default function SchemaPage() {
               {!batchState.hasUploadedData && (
                 <Button
                   onClick={() => {
-                    const templates = getAvailableTemplates();
-                    if (templates.length > 0) {
-                      downloadCSVTemplate(templates[0].schemaType);
+                    const availableTemplates = getAvailableTemplates();
+                    if (availableTemplates.length > 0) {
+                      downloadCSVTemplate(availableTemplates[0].schemaType || 'Article');
                     }
                   }}
                   variant="outline"
@@ -608,6 +624,18 @@ export default function SchemaPage() {
                 >
                   <FileText className="h-4 w-4" />
                   下载CSV模板
+                </Button>
+              )}
+
+              {!batchState.hasUploadedData && (
+                <Button
+                  onClick={() => batchDownloadAllTemplates('dynamic_fields')}
+                  variant="outline"
+                  className="gap-2"
+                  disabled={isLoadingBackendTemplates}
+                >
+                  <Download className="h-4 w-4" />
+                  批量下载全部模板
                 </Button>
               )}
 
@@ -662,8 +690,6 @@ export default function SchemaPage() {
                   </Button>
                 </>
               )}
-
-              {/* 移除预览数据按钮 */}
             </div>
 
             <Button
@@ -683,25 +709,17 @@ export default function SchemaPage() {
             <div className="space-y-6">
               {/* 文件上传 */}
               {!batchState.hasUploadedData && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>上传CSV文件</CardTitle>
-                    <CardDescription>
-                      上传包含URL、结构化数据类型和字段数据的CSV文件
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <FileUpload
-                      onFilesSelected={handleBatchFilesSelected}
-                      disabled={batchState.isUploading}
-                      accept={{
-                        'text/csv': ['.csv'],
-                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-                      }}
-                      multiple={true}
-                    />
-                  </CardContent>
-                </Card>
+                <SchemaBatchUploader
+                  onFilesUploaded={handleBatchFilesUpload}
+                  isUploading={batchState.isUploading}
+                  uploadProgress={batchProgress.stepProgress}
+                  onDownloadTemplate={downloadCSVTemplate}
+                  onBatchDownloadAll={batchDownloadAllTemplates}
+                  getTemplateDetails={getTemplateDetails}
+                  backendTemplates={backendTemplates}
+                  isLoadingTemplates={isLoadingBackendTemplates}
+                  disabled={overallState.isProcessing}
+                />
               )}
 
               {/* 批量统计信息 */}
@@ -795,6 +813,30 @@ export default function SchemaPage() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* 后端模板状态 */}
+              {activeMode === 'batch' && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle>模板状态</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm">后端模板</span>
+                        <Badge variant={backendTemplates.length > 0 ? "default" : "secondary"}>
+                          {isLoadingBackendTemplates ? "加载中..." : `${backendTemplates.length} 个可用`}
+                        </Badge>
+                      </div>
+                      {backendTemplates.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          模板包含丰富的示例数据和字段说明
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* 错误信息 */}
               {batchState.processingErrors.length > 0 && (

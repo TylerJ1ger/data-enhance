@@ -1,4 +1,4 @@
-//frontend/src/lib/api/schema-api.ts
+//frontend/src/lib/api/schema-api.ts - 精简更新版
 import axios from 'axios';
 import type {
   SchemaFieldConfig,
@@ -14,11 +14,8 @@ import type {
   SchemaBatchGenerateResponse,
   SchemaBatchExportRequest,
   SchemaBatchExportResponse,
-  SchemaBatchExportCombinedResponse,
-  SchemaBatchExportSeparatedResponse,
   SchemaBatchSummary,
   SchemaBatchPreviewResponse,
-  SchemaBatchApiError,
   CSVTemplateInfo,
   CSVFormatType
 } from '@/types';
@@ -53,7 +50,7 @@ const schemaApi = axios.create({
 });
 
 // ========================================
-// 原有的核心API调用函数
+// 核心API调用函数
 // ========================================
 
 /**
@@ -85,7 +82,6 @@ export const checkSchemaApiHealth = async (): Promise<{
   version?: string;
 }> => {
   try {
-    // 首先尝试获取Schema类型来验证API是否正常工作
     await getSchemaTypes();
     return {
       status: 'healthy',
@@ -93,7 +89,6 @@ export const checkSchemaApiHealth = async (): Promise<{
       version: 'v1'
     };
   } catch (error) {
-    // 如果Schema API不可用，尝试检查主API健康状态
     const healthApi = axios.create({
       baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
       timeout: 5000
@@ -108,7 +103,7 @@ export const checkSchemaApiHealth = async (): Promise<{
 // ========================================
 
 /**
- * 获取动态CSV模板
+ * 获取指定类型的动态CSV模板
  * @param schemaType 结构化数据类型
  * @returns 动态CSV模板信息
  */
@@ -204,25 +199,10 @@ export const exportBatchSchemas = async (request: SchemaBatchExportRequest): Pro
   });
   
   if (request.export_type === 'combined') {
-    // 合并导出 - 返回文件流
     return response.data as Blob;
   } else {
-    // 分离导出 - 返回JSON响应
     return response.data as SchemaBatchExportResponse;
   }
-};
-
-/**
- * 下载分离导出中的单个文件
- * @param filename 文件名
- * @returns 文件流
- */
-export const downloadSeparatedSchemaFile = async (filename: string): Promise<Blob> => {
-  const response = await schemaApi.get(`/batch/export-separated/${encodeURIComponent(filename)}`, {
-    responseType: 'blob',
-    timeout: 60000,
-  });
-  return response.data;
 };
 
 /**
@@ -319,373 +299,53 @@ export const downloadAsFile = (content: string, filename: string, mimeType: stri
 };
 
 /**
- * 验证JSON格式
- * @param jsonString JSON字符串
- * @returns 是否为有效JSON
+ * 批量下载所有模板
+ * @param formatType 格式类型
+ * @param schemaTypes 要下载的模板类型（可选，默认所有）
  */
-export const isValidJson = (jsonString: string): boolean => {
-  if (!jsonString || typeof jsonString !== 'string') {
-    return false;
-  }
-  
+export const batchDownloadAllTemplates = async (
+  formatType: CSVFormatType = 'dynamic_fields',
+  schemaTypes?: string[]
+): Promise<void> => {
   try {
-    const parsed = JSON.parse(jsonString);
-    return parsed !== null;
-  } catch {
-    return false;
-  }
-};
-
-/**
- * 格式化JSON字符串
- * @param jsonString JSON字符串
- * @param indent 缩进空格数
- * @returns 格式化后的JSON字符串
- */
-export const formatJson = (jsonString: string, indent: number = 2): string => {
-  try {
-    const parsed = JSON.parse(jsonString);
-    return JSON.stringify(parsed, null, indent);
+    const typesToDownload = schemaTypes || [
+      'Article', 'Product', 'Organization', 'Person', 'Event',
+      'VideoObject', 'WebSite', 'Breadcrumb', 'FAQPage', 'HowTo'
+    ];
+    
+    for (let i = 0; i < typesToDownload.length; i++) {
+      const schemaType = typesToDownload[i];
+      
+      // 间隔下载，避免浏览器限制
+      setTimeout(() => {
+        if (formatType === 'dynamic_fields') {
+          downloadDynamicCSVTemplate(schemaType);
+        } else {
+          // 对于传统格式，生成简单的data_json模板
+          downloadTraditionalTemplate(schemaType);
+        }
+      }, i * 200); // 间隔200ms
+    }
   } catch (error) {
-    console.warn('JSON格式化失败:', error);
-    return jsonString;
+    console.error('批量下载模板失败:', error);
+    throw new Error('批量下载失败，请重试');
   }
 };
 
 /**
- * 验证URL格式
- * @param url URL字符串
- * @returns 是否为有效URL
+ * 下载传统格式模板
+ * @param schemaType 结构化数据类型
  */
-export const isValidUrl = (url: string): boolean => {
-  try {
-    new URL(url);
-    return true;
-  } catch {
-    return false;
-  }
+const downloadTraditionalTemplate = (schemaType: string): void => {
+  const headers = 'url,schema_type,data_json';
+  const sampleData = `https://example.com/${schemaType.toLowerCase()}-1,${schemaType},"{\\"name\\": \\"示例${schemaType}\\", \\"description\\": \\"这是一个${schemaType}的示例\\"}"`;
+  const csvContent = `${headers}\n${sampleData}`;
+  
+  downloadAsFile(csvContent, `${schemaType.toLowerCase()}_traditional_template.csv`, 'text/csv');
 };
 
 /**
- * 获取结构化数据的字节大小
- * @param content 内容字符串
- * @returns 字节大小信息
- */
-export const getContentSize = (content: string): {
-  bytes: number;
-  size: string;
-  lines: number;
-} => {
-  const bytes = new Blob([content]).size;
-  const lines = content.split('\n').length;
-  const size = bytes < 1024 
-    ? `${bytes} B` 
-    : bytes < 1024 * 1024
-      ? `${(bytes / 1024).toFixed(2)} KB`
-      : `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
-  
-  return { bytes, size, lines };
-};
-
-// ========================================
-// 批量处理工具函数
-// ========================================
-
-/**
- * 验证动态CSV文件格式
- * @param file CSV文件
- * @returns 是否为有效的CSV文件
- */
-export const validateDynamicCSVFile = (file: File): { isValid: boolean; errors: string[] } => {
-  const errors: string[] = [];
-  
-  // 检查文件类型
-  const validTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'];
-  if (!validTypes.includes(file.type) && !file.name.toLowerCase().endsWith('.csv') && !file.name.toLowerCase().endsWith('.xlsx')) {
-    errors.push('文件类型必须是CSV或XLSX格式');
-  }
-  
-  // 检查文件大小 (10MB限制)
-  const maxSize = 10 * 1024 * 1024;
-  if (file.size > maxSize) {
-    errors.push(`文件大小不能超过 ${(maxSize / 1024 / 1024).toFixed(1)}MB`);
-  }
-  
-  // 检查文件名
-  if (file.name.length === 0) {
-    errors.push('文件名不能为空');
-  }
-  
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
-};
-
-/**
- * 批量验证多个动态CSV文件
- * @param files 文件列表
- * @returns 验证结果
- */
-export const validateMultipleDynamicCSVFiles = (files: File[]): { 
-  isValid: boolean; 
-  errors: string[]; 
-  validFiles: File[];
-  invalidFiles: Array<{ file: File; errors: string[] }>;
-} => {
-  const allErrors: string[] = [];
-  const validFiles: File[] = [];
-  const invalidFiles: Array<{ file: File; errors: string[] }> = [];
-  
-  // 检查文件数量
-  if (files.length === 0) {
-    allErrors.push('请至少选择一个文件');
-  }
-  
-  if (files.length > 10) {
-    allErrors.push('最多只能同时上传10个文件');
-  }
-  
-  // 验证每个文件
-  files.forEach(file => {
-    const validation = validateDynamicCSVFile(file);
-    if (validation.isValid) {
-      validFiles.push(file);
-    } else {
-      invalidFiles.push({ file, errors: validation.errors });
-      allErrors.push(...validation.errors.map(error => `${file.name}: ${error}`));
-    }
-  });
-  
-  return {
-    isValid: allErrors.length === 0 && validFiles.length > 0,
-    errors: allErrors,
-    validFiles,
-    invalidFiles
-  };
-};
-
-/**
- * 生成CSV模板文件
- * @param templateInfo 模板信息
- * @returns CSV内容字符串
- */
-export const generateCSVTemplate = (templateInfo: CSVTemplateInfo): string => {
-  const headers = templateInfo.headers.join(',');
-  const sampleRows = templateInfo.sampleData.map(row => 
-    templateInfo.headers.map(header => {
-      const value = row[header] || '';
-      // 处理包含逗号的值，用引号包围
-      return value.includes(',') ? `"${value}"` : value;
-    }).join(',')
-  );
-  
-  return [headers, ...sampleRows].join('\n');
-};
-
-/**
- * 下载CSV模板
- * @param templateInfo 模板信息
- * @param filename 文件名（可选）
- */
-export const downloadCSVTemplate = (templateInfo: CSVTemplateInfo, filename?: string): void => {
-  const csvContent = generateCSVTemplate(templateInfo);
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = filename || `${templateInfo.schemaType.toLowerCase()}_template.csv`;
-  link.style.display = 'none';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  
-  // 清理URL对象
-  setTimeout(() => URL.revokeObjectURL(link.href), 100);
-};
-
-/**
- * 获取增强的可用CSV模板（包含动态字段模板）
- * @returns 增强的CSV模板列表
- */
-export const getEnhancedCSVTemplates = (): CSVTemplateInfo[] => {
-  return [
-    {
-      name: "文章模板（动态字段）",
-      description: "使用分离字段格式，更易于填写和管理",
-      schemaType: "Article",
-      headers: ["url", "schema_type", "headline", "author", "datePublished", "description", "image", "publisher"],
-      sampleData: [
-        {
-          url: "https://example.com/article1",
-          schema_type: "Article",
-          headline: "如何优化网站SEO",
-          author: "张三",
-          datePublished: "2024-01-15",
-          description: "完整的SEO优化指南",
-          image: "https://example.com/images/seo-guide.jpg",
-          publisher: "技术博客"
-        }
-      ],
-      formatType: "dynamic_fields" as CSVFormatType
-    },
-    {
-      name: "产品模板（动态字段）", 
-      description: "使用分离字段格式的产品信息模板",
-      schemaType: "Product",
-      headers: ["url", "schema_type", "name", "description", "brand", "price", "currency"],
-      sampleData: [
-        {
-          url: "https://example.com/product1",
-          schema_type: "Product", 
-          name: "无线蓝牙耳机",
-          description: "高音质无线耳机",
-          brand: "TechBrand",
-          price: "299",
-          currency: "CNY"
-        }
-      ],
-      formatType: "dynamic_fields" as CSVFormatType
-    },
-    {
-      name: "组织模板（动态字段）",
-      description: "使用分离字段格式的组织信息模板",
-      schemaType: "Organization",
-      headers: ["url", "schema_type", "name", "website", "description"],
-      sampleData: [
-        {
-          url: "https://example.com/about",
-          schema_type: "Organization",
-          name: "创新科技公司",
-          website: "https://example.com",
-          description: "专注AI技术的创新公司"
-        }
-      ],
-      formatType: "dynamic_fields" as CSVFormatType
-    },
-    {
-      name: "人物模板（动态字段）",
-      description: "使用分离字段格式的人物信息模板",
-      schemaType: "Person",
-      headers: ["url", "schema_type", "name", "jobTitle", "worksFor", "description"],
-      sampleData: [
-        {
-          url: "https://example.com/team/ceo",
-          schema_type: "Person",
-          name: "王五",
-          jobTitle: "首席执行官",
-          worksFor: "创新科技公司",
-          description: "拥有15年技术管理经验"
-        }
-      ],
-      formatType: "dynamic_fields" as CSVFormatType
-    },
-    {
-      name: "事件模板（动态字段）",
-      description: "使用分离字段格式的事件信息模板",
-      schemaType: "Event",
-      headers: ["url", "schema_type", "name", "startDate", "location", "description"],
-      sampleData: [
-        {
-          url: "https://example.com/events/conference-2024",
-          schema_type: "Event",
-          name: "2024年前端技术大会",
-          startDate: "2024-06-15T09:00:00",
-          location: "北京国际会议中心",
-          description: "探讨最新的前端技术趋势"
-        }
-      ],
-      formatType: "dynamic_fields" as CSVFormatType
-    },
-    // 保留传统data_json格式模板以保持向后兼容
-    {
-      name: "文章模板（传统格式）",
-      description: "传统data_json格式，适合高级用户",
-      schemaType: "Article",
-      headers: ["url", "schema_type", "data_json"],
-      sampleData: [
-        {
-          url: "https://example.com/article1",
-          schema_type: "Article",
-          data_json: JSON.stringify({
-            headline: "如何优化网站SEO",
-            author: "张三",
-            datePublished: "2024-01-15",
-            description: "完整的SEO优化指南"
-          })
-        }
-      ],
-      formatType: "data_json" as CSVFormatType
-    }
-  ];
-};
-
-/**
- * 下载增强的CSV模板
- * @param templateInfo 模板信息
- * @param filename 文件名（可选）
- */
-export const downloadEnhancedCSVTemplate = (templateInfo: CSVTemplateInfo, filename?: string): void => {
-  const csvContent = generateCSVTemplate(templateInfo);
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-  
-  const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = filename || `${templateInfo.schemaType.toLowerCase()}_${templateInfo.formatType || 'dynamic'}_template.csv`;
-  link.style.display = 'none';
-  
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  
-  setTimeout(() => URL.revokeObjectURL(link.href), 100);
-};
-
-/**
- * 解析导出的分离文件数据为可下载的文件列表
- * @param exportData 分离导出数据
- * @returns 文件信息列表
- */
-export const parseSeparatedExportData = (exportData: any): Array<{
-  filename: string;
-  url: string;
-  schemaCount: number;
-  size: string;
-  downloadAction: () => Promise<void>;
-}> => {
-  if (!exportData || !exportData.data) {
-    return [];
-  }
-  
-  return Object.entries(exportData.data).map(([filename, fileInfo]: [string, any]) => ({
-    filename,
-    url: fileInfo.url,
-    schemaCount: fileInfo.schema_count,
-    size: getContentSize(fileInfo.json_ld).size,
-    downloadAction: async () => {
-      try {
-        const blob = await downloadSeparatedSchemaFile(filename);
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = filename;
-        link.style.display = 'none';
-        
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        setTimeout(() => URL.revokeObjectURL(link.href), 100);
-      } catch (error) {
-        console.error('下载文件失败:', error);
-        throw new Error('下载文件失败，请重试');
-      }
-    }
-  }));
-};
-
-/**
- * 处理批量导出下载
+ * 批量导出下载处理
  * @param exportData 导出数据
  * @param exportType 导出类型
  * @param baseFilename 基础文件名
@@ -711,9 +371,7 @@ export const handleBatchExportDownload = async (
       
     } else if (exportType === 'separated' && !(exportData instanceof Blob)) {
       // 分离导出 - 返回文件列表信息，由用户选择下载
-      const files = parseSeparatedExportData(exportData);
-      console.log('分离导出文件列表:', files);
-      // 这里可以触发UI更新显示文件列表
+      console.log('分离导出文件列表:', exportData);
       return Promise.resolve();
     }
   } catch (error) {
@@ -722,158 +380,44 @@ export const handleBatchExportDownload = async (
   }
 };
 
-/**
- * 格式化批量处理错误信息
- * @param errors 错误列表
- * @returns 格式化的错误信息
- */
-export const formatBatchProcessingErrors = (errors: string[]): string => {
-  if (errors.length === 0) {
-    return '';
-  }
-  
-  if (errors.length === 1) {
-    return errors[0];
-  }
-  
-  return `发现 ${errors.length} 个问题：\n${errors.slice(0, 5).map((error, index) => `${index + 1}. ${error}`).join('\n')}${errors.length > 5 ? `\n... 还有 ${errors.length - 5} 个问题` : ''}`;
-};
-
-/**
- * 计算批量处理进度
- * @param current 当前完成数量
- * @param total 总数量
- * @returns 进度百分比（0-100）
- */
-export const calculateBatchProgress = (current: number, total: number): number => {
-  if (total === 0) return 0;
-  return Math.round((current / total) * 100);
-};
-
 // ========================================
-// 生成示例数据函数
+// 清理后的简化模板信息
 // ========================================
 
 /**
- * 生成示例数据
- * @param schemaType 结构化数据类型
- * @returns 示例数据
+ * 获取基础CSV模板信息（用于向后兼容）
+ * 注意：推荐使用后端API获取模板，这里仅作为fallback
  */
-export const generateSampleData = (schemaType: string): Record<string, any> => {
-  const sampleData: Record<string, Record<string, any>> = {
-    Article: {
-      headline: "如何优化网站SEO - 完整指南",
-      author: "张三",
-      datePublished: new Date().toISOString().split('T')[0],
-      description: "本文详细介绍了网站SEO优化的各种技巧和最佳实践。",
+export const getBasicCSVTemplateInfo = (): CSVTemplateInfo[] => {
+  return [
+    {
+      name: "Article - 动态字段格式",
+      description: "文章类型的动态字段模板",
+      schemaType: "Article",
+      headers: ["url", "schema_type", "headline", "author", "datePublished", "description"],
+      sampleData: [{
+        url: "https://example.com/article-1",
+        schema_type: "Article",
+        headline: "示例文章标题",
+        author: "作者姓名",
+        datePublished: "2024-01-15",
+        description: "文章描述"
+      }],
+      formatType: "dynamic_fields"
     },
-    Product: {
-      name: "无线蓝牙耳机",
-      description: "高音质无线蓝牙耳机，支持降噪功能，续航时间长达20小时。",
-      brand: "TechBrand",
-      price: "299",
-      currency: "CNY"
-    },
-    Organization: {
-      name: "创新科技公司",
-      url: "https://example.com",
-      description: "专注于人工智能和机器学习技术的创新公司。",
-    },
-    Person: {
-      name: "李四",
-      jobTitle: "高级前端工程师",
-      worksFor: "创新科技公司",
-      description: "拥有8年前端开发经验，专注于React和Vue.js开发。"
-    },
-    Event: {
-      name: "2024年前端技术大会",
-      startDate: "2024-06-15T09:00:00",
-      location: "北京国际会议中心",
-      description: "探讨最新的前端技术趋势，包括React、Vue、TypeScript等热门技术。"
-    },
-    WebSite: {
-      name: "技术博客",
-      url: "https://techblog.example.com",
-      description: "分享最新技术动态和开发经验的技术博客"
-    },
-    VideoObject: {
-      name: "React入门教程",
-      description: "详细的React框架入门教程，适合初学者学习",
-      thumbnailUrl: "https://example.com/thumbnail.jpg"
-    },
-    Breadcrumb: {
-      items: "首页|https://example.com\n产品|https://example.com/products\n详情页|https://example.com/products/123"
-    },
-    FAQPage: {
-      faqs: "什么是结构化数据？\n结构化数据是一种标准化的格式，用于向搜索引擎提供有关网页内容的信息。\n\n如何实现结构化数据？\n可以使用JSON-LD、Microdata或RDFa格式来实现结构化数据。"
-    },
-    HowTo: {
-      name: "如何制作咖啡",
-      description: "简单易学的咖啡制作方法",
-      steps: "准备咖啡豆和热水\n将咖啡豆研磨成粉\n用热水冲泡咖啡粉\n静置2-3分钟\n享用美味咖啡",
-      totalTime: "PT10M"
+    {
+      name: "Article - 传统JSON格式", 
+      description: "文章类型的传统data_json模板",
+      schemaType: "Article",
+      headers: ["url", "schema_type", "data_json"],
+      sampleData: [{
+        url: "https://example.com/article-1",
+        schema_type: "Article",
+        data_json: '{"headline": "示例文章标题", "author": "作者姓名", "datePublished": "2024-01-15"}'
+      }],
+      formatType: "data_json"
     }
-  };
-
-  return sampleData[schemaType] || {};
-};
-
-/**
- * 验证字段数据
- * @param schemaType 结构化数据类型
- * @param data 表单数据
- * @param schemaConfig 类型配置
- * @returns 验证结果
- */
-export const validateFieldData = (
-  schemaType: string, 
-  data: Record<string, any>, 
-  schemaConfig: SchemaTypeConfig
-): { isValid: boolean; errors: string[] } => {
-  const errors: string[] = [];
-
-  // 检查必填字段
-  for (const field of schemaConfig.required_fields) {
-    const value = data[field];
-    if (!value || (typeof value === 'string' && value.trim() === '')) {
-      errors.push(`${schemaConfig.fields[field]?.label || field} 是必填项`);
-    }
-  }
-
-  // 检查URL格式
-  Object.entries(schemaConfig.fields).forEach(([fieldKey, fieldConfig]) => {
-    const value = data[fieldKey];
-    if (value && fieldConfig.type === 'url' && !isValidUrl(value)) {
-      errors.push(`${fieldConfig.label} 必须是有效的URL格式`);
-    }
-  });
-
-  // 检查邮箱格式
-  Object.entries(schemaConfig.fields).forEach(([fieldKey, fieldConfig]) => {
-    const value = data[fieldKey];
-    if (value && fieldConfig.type === 'email') {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(value)) {
-        errors.push(`${fieldConfig.label} 必须是有效的邮箱格式`);
-      }
-    }
-  });
-
-  // 检查数字格式
-  Object.entries(schemaConfig.fields).forEach(([fieldKey, fieldConfig]) => {
-    const value = data[fieldKey];
-    if (value && fieldConfig.type === 'number') {
-      const numValue = parseFloat(value);
-      if (isNaN(numValue)) {
-        errors.push(`${fieldConfig.label} 必须是有效的数字`);
-      }
-    }
-  });
-
-  return {
-    isValid: errors.length === 0,
-    errors
-  };
+  ];
 };
 
 // ========================================
@@ -885,7 +429,6 @@ export const validateFieldData = (
  */
 schemaApi.interceptors.request.use(
   (config) => {
-    // 添加请求时间戳用于性能监控
     config.metadata = { startTime: new Date() };
     return config;
   },
@@ -900,13 +443,11 @@ schemaApi.interceptors.request.use(
  */
 schemaApi.interceptors.response.use(
   (response) => {
-    // 计算请求耗时
     const endTime = new Date();
     const startTime = response.config.metadata?.startTime;
     
     if (startTime) {
       const duration = endTime.getTime() - startTime.getTime();
-      
       if (duration > 5000) {
         console.warn(`Schema API请求耗时较长: ${duration}ms`, response.config.url);
       }
@@ -915,7 +456,6 @@ schemaApi.interceptors.response.use(
     return response;
   },
   (error) => {
-    // 详细的错误处理
     const errorMessage = error.response?.data?.detail || error.message || '未知错误';
     const statusCode = error.response?.status;
     
@@ -934,26 +474,11 @@ schemaApi.interceptors.response.use(
       case 400:
         friendlyMessage = '请求参数错误，请检查输入数据格式';
         break;
-      case 401:
-        friendlyMessage = '身份验证失败，请重新登录';
-        break;
-      case 403:
-        friendlyMessage = '没有权限访问此功能';
-        break;
-      case 404:
-        friendlyMessage = '请求的资源不存在';
-        break;
       case 422:
         friendlyMessage = '数据验证失败，请检查必填字段';
         break;
-      case 429:
-        friendlyMessage = '请求过于频繁，请稍后再试';
-        break;
       case 500:
         friendlyMessage = '服务器内部错误，请稍后重试';
-        break;
-      case 503:
-        friendlyMessage = '服务暂时不可用，请稍后重试';
         break;
       default:
         if (!navigator.onLine) {
@@ -961,7 +486,6 @@ schemaApi.interceptors.response.use(
         }
     }
     
-    // 创建增强的错误对象
     const enhancedError = new Error(friendlyMessage);
     enhancedError.name = 'SchemaApiError';
     (enhancedError as any).originalError = error;
@@ -977,62 +501,20 @@ schemaApi.interceptors.response.use(
 
 // 支持的结构化数据类型列表
 export const SUPPORTED_SCHEMA_TYPES = [
-  'Article',
-  'Product', 
-  'Organization',
-  'Person',
-  'Event',
-  'Breadcrumb',
-  'FAQPage',
-  'HowTo',
-  'VideoObject',
-  'WebSite'
+  'Article', 'Product', 'Organization', 'Person', 'Event',
+  'VideoObject', 'WebSite', 'Breadcrumb', 'FAQPage', 'HowTo'
 ] as const;
-
-// 字段类型映射
-export const FIELD_TYPE_LABELS = {
-  text: '文本',
-  textarea: '多行文本',
-  url: '网址',
-  email: '邮箱',
-  date: '日期',
-  'datetime-local': '日期时间',
-  number: '数字'
-} as const;
-
-// 结构化数据类型描述
-export const SCHEMA_TYPE_DESCRIPTIONS = {
-  Article: '新闻文章、博客文章或其他文本内容',
-  Product: '商品或服务信息',
-  Organization: '公司、组织或机构信息',
-  Person: '个人或人物信息',
-  Event: '会议、演出、活动等事件信息',
-  Breadcrumb: '页面导航路径',
-  FAQPage: '常见问题页面',
-  HowTo: '分步骤的操作教程',
-  VideoObject: '视频内容信息',
-  WebSite: '网站基本信息'
-} as const;
 
 // 批量处理相关常量
 export const BATCH_PROCESSING_CONFIG = {
   MAX_FILE_SIZE: 10 * 1024 * 1024, // 10MB
   MAX_FILES: 10,
   SUPPORTED_FILE_TYPES: ['text/csv', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-  CHUNK_SIZE: 1000,
-  PREVIEW_LIMIT: 10,
   TIMEOUT: {
     UPLOAD: 120000, // 2分钟
     GENERATE: 300000, // 5分钟
     EXPORT: 180000, // 3分钟
   }
-} as const;
-
-// CSV文件必需列
-export const REQUIRED_CSV_COLUMNS = {
-  URL: ['url', 'page_url', 'target_url', 'link'],
-  SCHEMA_TYPE: ['schema_type', 'type', 'structured_data_type', 'markup_type'],
-  DATA_JSON: ['data_json', 'data', 'schema_data', 'fields_json']
 } as const;
 
 // ========================================
