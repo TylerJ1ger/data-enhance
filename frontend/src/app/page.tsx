@@ -1,9 +1,9 @@
-// frontend-new/src/app/page.tsx
+// frontend/src/app/page.tsx
 "use client";
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Globe, Search, BarChart2, Database } from "lucide-react";
+import { FileText, Globe, Search, BarChart2, Database, Code2 } from "lucide-react";
 import Link from "next/link";
 
 export default function HomePage() {
@@ -42,6 +42,13 @@ export default function HomePage() {
       icon: <Globe className="h-10 w-10 text-primary" />,
       href: "/sitemap",
       color: "bg-amber-50"
+    },
+    {
+      title: "结构化数据生成器",
+      description: "生成符合Google和Schema.org标准的结构化数据，支持文章、产品、事件等多种类型。",
+      icon: <Code2 className="h-10 w-10 text-primary" />,
+      href: "/schema",
+      color: "bg-teal-50"
     }
   ];
 
@@ -50,7 +57,7 @@ export default function HomePage() {
       <div className="text-center py-12">
         <h1 className="text-4xl font-bold tracking-tight text-foreground mb-4">数据分析工具</h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          针对SEMRush导出数据衍生的一站式解决方案，帮助您交叉/合并分析导出后的关键词、外链、SEO和网站结构数据，同时支持虚拟订单数据生成与分析
+          针对SEMRush导出数据衍生的一站式解决方案，帮助您交叉/合并分析导出后的关键词、外链、SEO和网站结构数据，同时支持虚拟订单数据生成与分析和结构化数据生成
         </p>
       </div>
 
