@@ -6,8 +6,10 @@ import {
   ContentExtractor
 } from '@/types/seo';
 
-// API base URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+// API base URL - 更新为v1版本
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
+  ? `${process.env.NEXT_PUBLIC_API_URL}/v1`
+  : 'http://localhost:8000/api/v1';
 
 // Create axios instance
 const api = axios.create({
@@ -60,16 +62,20 @@ export async function getSEOCategories(): Promise<{ categories: SEOCategory[] }>
 }
 
 /**
- * 检查API健康状态
+ * 检查API健康状态 - 使用通用健康检查端点
  * @returns 健康状态信息
  */
 export async function checkHealth(): Promise<{ status: string; service: string }> {
-  const response = await api.get<{ status: string; service: string }>('/health');
+  // 使用通用的健康检查端点
+  const rootApi = axios.create({
+    baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api',
+  });
+  const response = await rootApi.get<{ status: string; service: string }>('/health');
   return response.data;
 }
 
 /**
- * 导出分析报告为PDF（新增功能）
+ * 导出分析报告为PDF（保留原有功能）
  * @param reportId 分析报告ID
  * @returns 导出的URL
  */
@@ -78,7 +84,7 @@ export function exportSEOReport(reportId: string): string {
 }
 
 /**
- * 获取特定页面的历史分析记录
+ * 获取特定页面的历史分析记录（保留原有功能）
  * @param url 页面URL
  * @returns 历史分析记录
  */
@@ -88,3 +94,16 @@ export async function getSEOHistory(url: string): Promise<any> {
   });
   return response.data;
 }
+
+/**
+ * 全局请求错误处理器
+ */
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    console.error('SEO API请求错误:', error.response?.data || error.message);
+    return Promise.reject(error);
+  }
+);
+
+export default api;

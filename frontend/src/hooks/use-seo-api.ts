@@ -72,7 +72,7 @@ export function useSeoApi() {
                           data.issues_count.warnings + 
                           data.issues_count.opportunities;
       
-      toast.success(`分析完成! 发现 ${totalIssues} 个SEO相关问题`);
+      toast.success(`SEO分析完成! 发现 ${totalIssues} 个相关问题（使用API v1）`);
       
       return data;
     } catch (error) {
@@ -111,13 +111,14 @@ export function useSeoApi() {
     });
   }, []);
 
-  // 检查API健康状态
+  // 检查API健康状态 - 使用通用健康检查端点
   useEffect(() => {
     const checkApiHealth = async () => {
       try {
         await seoApi.checkHealth();
+        console.log('API健康检查通过，SEO功能可用（使用v1端点）');
       } catch (error) {
-        toast.error('无法连接到SEO分析API。请检查后端服务器是否正在运行。');
+        toast.error('无法连接到API服务器。请检查后端服务器是否正在运行。');
       }
     };
 

@@ -67,11 +67,14 @@ export default function SeoPage() {
 
   return (
     <div className="space-y-6">
-      {/* 标题 */}
+      {/* 页面标题 */}
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">单页SEO分析</h1>
+        <h1 className="text-3xl font-bold text-foreground">单页SEO分析</h1>
+        {/* 添加v1 API指示 */}
+        <div className="text-sm text-muted-foreground bg-primary/10 px-2 py-1 rounded">
+          API v1
+        </div>
       </div>
-      
       <Separator />
 
       {/* 操作栏 */}
@@ -105,6 +108,9 @@ export default function SeoPage() {
             <CardTitle>上传HTML文件进行SEO分析</CardTitle>
             <CardDescription>
               上传你的HTML文件，我们将对其进行全面的SEO分析，包括标题、元描述、内容、图片、链接等多个方面，并提供详细的改进建议。
+              <span className="block text-xs text-muted-foreground mt-1">
+                正在使用API v1 - 新的SEO分析接口
+              </span>
             </CardDescription>
           </CardHeader>
           <CardContent>
