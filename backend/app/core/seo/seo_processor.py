@@ -3,6 +3,9 @@ import tempfile
 from typing import Dict, Any, List, Optional, Set, Tuple
 from fastapi import UploadFile
 from bs4 import BeautifulSoup
+import pandas as pd
+import asyncio
+import logging
 
 # 更新后的导入路径 - checkers
 from app.core.seo.checkers.meta_checker import MetaChecker
@@ -12,10 +15,13 @@ from app.core.seo.checkers.structure_checker import StructureChecker
 from app.core.seo.checkers.technical_checker import TechnicalChecker
 from app.core.seo.checkers.accessibility_checker import AccessibilityChecker
 
+logger = logging.getLogger(__name__)
+
 
 class SEOProcessor:
     def __init__(self):
         """初始化SEO处理器"""
+        # 单文件分析相关属性（保持向后兼容）
         self.html_content = None
         self.soup = None
         self.page_url = None
@@ -33,12 +39,24 @@ class SEOProcessor:
             "structure": []
         }
         
+        # 批量分析相关属性（新增）
+        self.batch_results = []  # 存储批量分析结果
+        self.batch_stats = {
+            "total_files": 0,
+            "processed_files": 0,
+            "failed_files": 0,
+            "total_issues": 0,
+            "total_warnings": 0,
+            "total_opportunities": 0
+        }
+        
     async def process_file(
         self, 
         file: UploadFile, 
         content_extractor: str = "auto", 
         enable_advanced_analysis: bool = True
     ) -> Dict[str, Any]:
+        """处理单个文件（保持原有接口不变）"""
         # 创建临时文件存储上传内容
         with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
             # 写入上传文件内容到临时文件
@@ -77,6 +95,299 @@ class SEOProcessor:
             "has_critical_issues": self.has_critical_issues()
         }
     
+    async def process_files(
+        self, 
+        files: List[UploadFile],
+        content_extractor: str = "auto", 
+        enable_advanced_analysis: bool = True
+    ) -> Dict[str, Any]:
+        """批量处理多个HTML文件（新增）"""
+        if not files:
+            raise ValueError("No files provided")
+        
+        # 重置批量分析状态
+        self.batch_results = []
+        self.batch_stats = {
+            "total_files": len(files),
+            "processed_files": 0,
+            "failed_files": 0,
+            "total_issues": 0,
+            "total_warnings": 0,
+            "total_opportunities": 0
+        }
+        
+        file_stats = []
+        
+        # 并发处理文件（控制并发数量）
+        semaphore = asyncio.Semaphore(3)  # 限制同时处理3个文件
+        
+        async def process_single_file(file: UploadFile) -> Dict[str, Any]:
+            async with semaphore:
+                try:
+                    # 为每个文件创建独立的临时处理器实例
+                    temp_processor = SEOProcessor()
+                    result = await temp_processor.process_file(file, content_extractor, enable_advanced_analysis)
+                    
+                    # 更新统计信息
+                    self.batch_stats["processed_files"] += 1
+                    self.batch_stats["total_issues"] += result["issues_count"]["issues"]
+                    self.batch_stats["total_warnings"] += result["issues_count"]["warnings"]
+                    self.batch_stats["total_opportunities"] += result["issues_count"]["opportunities"]
+                    
+                    logger.info(f"Successfully processed file: {file.filename}")
+                    return result
+                    
+                except Exception as e:
+                    self.batch_stats["failed_files"] += 1
+                    logger.error(f"Failed to process file {file.filename}: {str(e)}")
+                    
+                    # 返回错误结果
+                    return {
+                        "file_name": file.filename,
+                        "error": str(e),
+                        "page_url": None,
+                        "seo_score": 0,
+                        "issues_count": {"issues": 0, "warnings": 0, "opportunities": 0},
+                        "issues": {"issues": [], "warnings": [], "opportunities": []},
+                        "extracted_content": {},
+                        "categories": [],
+                        "high_priority_issues": [],
+                        "has_critical_issues": False
+                    }
+        
+        # 并发处理所有文件
+        tasks = [process_single_file(file) for file in files]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # 处理结果
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                # 处理异常情况
+                self.batch_stats["failed_files"] += 1
+                error_result = {
+                    "file_name": files[i].filename,
+                    "error": str(result),
+                    "page_url": None,
+                    "seo_score": 0,
+                    "issues_count": {"issues": 0, "warnings": 0, "opportunities": 0},
+                    "issues": {"issues": [], "warnings": [], "opportunities": []},
+                    "extracted_content": {},
+                    "categories": [],
+                    "high_priority_issues": [],
+                    "has_critical_issues": False
+                }
+                self.batch_results.append(error_result)
+                file_stats.append({
+                    "filename": files[i].filename,
+                    "status": "error",
+                    "error": str(result),
+                    "issues_count": {"issues": 0, "warnings": 0, "opportunities": 0}
+                })
+            else:
+                # 正常结果
+                self.batch_results.append(result)
+                file_stats.append({
+                    "filename": result["file_name"],
+                    "status": "success",
+                    "seo_score": result["seo_score"],
+                    "issues_count": result["issues_count"],
+                    "has_critical_issues": result["has_critical_issues"]
+                })
+        
+        logger.info(f"Batch processing completed: {self.batch_stats['processed_files']} successful, {self.batch_stats['failed_files']} failed")
+        
+        return {
+            "file_stats": file_stats,
+            "batch_stats": self.batch_stats,
+            "total_files": len(files),
+            "successful_files": self.batch_stats["processed_files"],
+            "failed_files": self.batch_stats["failed_files"],
+            "analysis_summary": self._get_batch_analysis_summary()
+        }
+    
+    def _get_batch_analysis_summary(self) -> Dict[str, Any]:
+        """获取批量分析摘要"""
+        if not self.batch_results:
+            return {}
+        
+        successful_results = [r for r in self.batch_results if "error" not in r]
+        
+        if not successful_results:
+            return {"message": "No files were successfully processed"}
+        
+        # 计算平均SEO得分
+        total_score = sum(r["seo_score"] for r in successful_results)
+        avg_score = total_score / len(successful_results) if successful_results else 0
+        
+        # 统计最常见的问题类别
+        all_categories = []
+        for result in successful_results:
+            all_categories.extend(result.get("categories", []))
+        
+        category_counts = {}
+        for category in all_categories:
+            category_counts[category] = category_counts.get(category, 0) + 1
+        
+        # 获取前5个最常见的问题类别
+        top_categories = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        
+        return {
+            "avg_seo_score": round(avg_score, 1),
+            "files_with_critical_issues": len([r for r in successful_results if r.get("has_critical_issues", False)]),
+            "top_issue_categories": [{"category": cat, "count": count} for cat, count in top_categories],
+            "total_unique_issues": len(set(
+                issue["issue"] for result in successful_results 
+                for issue_type in ["issues", "warnings", "opportunities"]
+                for issue in result.get("issues", {}).get(issue_type, [])
+            ))
+        }
+    
+    def export_batch_results_csv(self) -> bytes:
+        """导出批量分析结果为CSV格式"""
+        if not self.batch_results:
+            return b"No batch analysis results to export"
+        
+        # 准备CSV数据
+        csv_rows = []
+        
+        for result in self.batch_results:
+            file_name = result.get("file_name", "Unknown")
+            page_url = result.get("page_url", "")
+            seo_score = result.get("seo_score", 0)
+            has_error = "error" in result
+            error_message = result.get("error", "")
+            
+            if has_error:
+                # 错误文件的记录
+                csv_rows.append({
+                    "文件名": file_name,
+                    "页面URL": page_url,
+                    "SEO得分": 0,
+                    "状态": "错误",
+                    "错误信息": error_message,
+                    "问题数量": 0,
+                    "警告数量": 0,
+                    "机会数量": 0,
+                    "是否有关键问题": "否",
+                    "问题类别": "",
+                    "具体问题": ""
+                })
+            else:
+                # 成功分析的文件
+                issues_count = result.get("issues_count", {})
+                issues_data = result.get("issues", {})
+                categories = result.get("categories", [])
+                
+                # 收集所有问题的详细信息
+                all_issues = []
+                for issue_type in ["issues", "warnings", "opportunities"]:
+                    for issue in issues_data.get(issue_type, []):
+                        all_issues.append(f"[{issue_type.upper()}] {issue.get('issue', '')}: {issue.get('description', '')}")
+                
+                csv_rows.append({
+                    "文件名": file_name,
+                    "页面URL": page_url,
+                    "SEO得分": seo_score,
+                    "状态": "成功",
+                    "错误信息": "",
+                    "问题数量": issues_count.get("issues", 0),
+                    "警告数量": issues_count.get("warnings", 0),
+                    "机会数量": issues_count.get("opportunities", 0),
+                    "是否有关键问题": "是" if result.get("has_critical_issues", False) else "否",
+                    "问题类别": "; ".join(categories),
+                    "具体问题": " | ".join(all_issues[:5]) + ("..." if len(all_issues) > 5 else "")  # 限制长度
+                })
+        
+        # 转换为DataFrame并导出CSV
+        df = pd.DataFrame(csv_rows)
+        csv_content = df.to_csv(index=False, encoding='utf-8-sig')  # 使用utf-8-sig确保中文正常显示
+        
+        return csv_content.encode('utf-8-sig')
+    
+    def export_detailed_results_csv(self) -> bytes:
+        """导出详细的问题分析结果为CSV格式"""
+        if not self.batch_results:
+            return b"No batch analysis results to export"
+        
+        # 准备详细的CSV数据
+        csv_rows = []
+        
+        for result in self.batch_results:
+            file_name = result.get("file_name", "Unknown")
+            page_url = result.get("page_url", "")
+            
+            if "error" in result:
+                # 错误文件的记录
+                csv_rows.append({
+                    "文件名": file_name,
+                    "页面URL": page_url,
+                    "问题类型": "ERROR",
+                    "问题类别": "System",
+                    "问题标题": "文件处理错误",
+                    "问题描述": result.get("error", ""),
+                    "优先级": "high",
+                    "受影响元素": "",
+                    "受影响资源": ""
+                })
+            else:
+                # 成功分析的文件，展开所有问题
+                issues_data = result.get("issues", {})
+                
+                for issue_type in ["issues", "warnings", "opportunities"]:
+                    for issue in issues_data.get(issue_type, []):
+                        csv_rows.append({
+                            "文件名": file_name,
+                            "页面URL": page_url,
+                            "问题类型": issue_type.upper(),
+                            "问题类别": issue.get("category", ""),
+                            "问题标题": issue.get("issue", ""),
+                            "问题描述": issue.get("description", ""),
+                            "优先级": issue.get("priority", ""),
+                            "受影响元素": issue.get("affected_element", ""),
+                            "受影响资源": "; ".join(issue.get("affected_resources", [])) if issue.get("affected_resources") else ""
+                        })
+                
+                # 如果文件没有任何问题，也添加一条记录
+                if not any(issues_data.get(issue_type, []) for issue_type in ["issues", "warnings", "opportunities"]):
+                    csv_rows.append({
+                        "文件名": file_name,
+                        "页面URL": page_url,
+                        "问题类型": "INFO",
+                        "问题类别": "General",
+                        "问题标题": "无问题发现",
+                        "问题描述": "此文件未发现任何SEO问题",
+                        "优先级": "low",
+                        "受影响元素": "",
+                        "受影响资源": ""
+                    })
+        
+        # 转换为DataFrame并导出CSV
+        df = pd.DataFrame(csv_rows)
+        csv_content = df.to_csv(index=False, encoding='utf-8-sig')
+        
+        return csv_content.encode('utf-8-sig')
+    
+    def get_batch_results(self) -> List[Dict[str, Any]]:
+        """获取批量分析结果"""
+        return self.batch_results
+    
+    def get_batch_stats(self) -> Dict[str, Any]:
+        """获取批量分析统计信息"""
+        return self.batch_stats
+    
+    def reset_batch_data(self) -> None:
+        """重置批量分析数据"""
+        self.batch_results = []
+        self.batch_stats = {
+            "total_files": 0,
+            "processed_files": 0,
+            "failed_files": 0,
+            "total_issues": 0,
+            "total_warnings": 0,
+            "total_opportunities": 0
+        }
+    
+    # 以下保持原有方法不变...
     def extract_page_url(self) -> None:
         """从HTML中提取页面URL"""
         # 尝试从<link rel="canonical"> 标签获取

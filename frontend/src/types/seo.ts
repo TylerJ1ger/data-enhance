@@ -115,17 +115,85 @@ export interface SEOPageMetadata {
 }
 
 /**
- * SEO上传响应
+ * SEO上传响应（单文件）
  */
 export interface SEOUploadResponse {
   file_name: string;                // 文件名
   page_url: string | null;          // 页面URL
+  seo_score: number;                // SEO得分
   issues_count: SEOIssueCount;      // 问题数量统计
   issues: SEOIssueGroups;           // 问题分组
   extracted_content: ExtractedContent; // 提取的内容
+  categories: string[];             // 问题类别列表
+  high_priority_issues: SEOIssue[]; // 高优先级问题
+  has_critical_issues: boolean;     // 是否有关键问题
   metadata?: SEOPageMetadata;       // 页面元数据（可选）
   analysis_time?: number;           // 分析耗时（毫秒）
   extractor_used?: ContentExtractor; // 实际使用的提取器
+  error?: string;                   // 错误信息（如果有）
+}
+
+/**
+ * 批量SEO分析文件统计
+ */
+export interface SEOFileStats {
+  filename: string;                 // 文件名
+  status: 'success' | 'error';      // 处理状态
+  seo_score?: number;               // SEO得分
+  issues_count: SEOIssueCount;      // 问题数量统计
+  has_critical_issues?: boolean;    // 是否有关键问题
+  error?: string;                   // 错误信息（如果有）
+}
+
+/**
+ * 批量SEO分析统计信息
+ */
+export interface SEOBatchStats {
+  total_files: number;              // 总文件数
+  processed_files: number;          // 成功处理的文件数
+  failed_files: number;             // 失败的文件数
+  total_issues: number;             // 总问题数
+  total_warnings: number;           // 总警告数
+  total_opportunities: number;      // 总机会数
+}
+
+/**
+ * 批量分析摘要
+ */
+export interface SEOBatchAnalysisSummary {
+  avg_seo_score?: number;           // 平均SEO得分
+  files_with_critical_issues?: number; // 有关键问题的文件数
+  top_issue_categories?: Array<{    // 最常见的问题类别
+    category: string;
+    count: number;
+  }>;
+  total_unique_issues?: number;     // 总的唯一问题数
+  message?: string;                 // 摘要信息
+}
+
+/**
+ * 批量SEO分析响应
+ */
+export interface SEOBatchUploadResponse {
+  success: boolean;                 // 是否成功
+  message: string;                  // 响应消息
+  file_stats: SEOFileStats[];       // 文件处理统计
+  batch_stats: SEOBatchStats;       // 批量处理统计
+  total_files: number;              // 总文件数
+  successful_files: number;         // 成功处理的文件数
+  failed_files: number;             // 失败的文件数
+  analysis_summary: SEOBatchAnalysisSummary; // 分析摘要
+  processing_timeout?: number;      // 处理超时时间
+}
+
+/**
+ * 批量SEO结果响应
+ */
+export interface SEOBatchResultsResponse {
+  success: boolean;                 // 是否成功
+  results: SEOUploadResponse[];     // 详细分析结果列表
+  stats: SEOBatchStats;             // 统计信息
+  total_results: number;            // 结果总数
 }
 
 /**
@@ -147,12 +215,33 @@ export interface SEOCategoriesResponse {
 }
 
 /**
- * 上传SEO文件参数
+ * 上传SEO文件参数（单文件）
  */
 export interface UploadSEOFileParams {
   file: File;                               // 上传的文件
   contentExtractor?: ContentExtractor;      // 内容提取器
   enableAdvancedAnalysis?: boolean;         // 是否启用高级分析
+}
+
+/**
+ * 批量上传SEO文件参数
+ */
+export interface BatchUploadSEOFilesParams {
+  files: File[];                            // 上传的文件列表
+  contentExtractor?: ContentExtractor;      // 内容提取器
+  enableAdvancedAnalysis?: boolean;         // 是否启用高级分析
+}
+
+/**
+ * SEO导出请求类型
+ */
+export type SEOExportType = 'summary' | 'detailed';
+
+/**
+ * SEO导出请求
+ */
+export interface SEOExportRequest {
+  export_type: SEOExportType;
 }
 
 /**
@@ -206,6 +295,7 @@ export interface SEOAnalysisConfig {
   enableAdvancedAnalysis: boolean;        // 是否启用高级分析
   maxFileSize?: number;                   // 最大文件大小（字节）
   timeout?: number;                       // 分析超时时间（毫秒）
+  batchMode?: boolean;                    // 是否批量模式
 }
 
 /**
@@ -216,6 +306,9 @@ export interface SEOAnalysisProgress {
   progress: number;                       // 进度百分比 (0-100)
   message?: string;                       // 进度消息
   eta?: number;                          // 预计剩余时间（毫秒）
+  current_file?: string;                  // 当前处理的文件（批量模式）
+  processed_files?: number;               // 已处理文件数（批量模式）
+  total_files?: number;                   // 总文件数（批量模式）
 }
 
 /**
@@ -223,14 +316,15 @@ export interface SEOAnalysisProgress {
  */
 export interface SEOAnalysisSession {
   id: string;                            // 会话ID
-  fileName: string;                      // 文件名
+  fileName: string;                      // 文件名（单文件）或描述（多文件）
   status: SEOAnalysisStatus;             // 分析状态
   config: SEOAnalysisConfig;             // 分析配置
   progress?: SEOAnalysisProgress;        // 分析进度
-  result?: SEOUploadResponse;            // 分析结果
+  result?: SEOUploadResponse | SEOBatchUploadResponse;  // 分析结果
   error?: SEOAnalysisError;              // 错误信息
   startTime: number;                     // 开始时间戳
   endTime?: number;                      // 结束时间戳
+  isBatch?: boolean;                     // 是否批量分析
 }
 
 /**
@@ -296,11 +390,54 @@ export interface HealthCheckResponse {
   version?: string;                      // 版本信息
 }
 
+/**
+ * 批量分析模式设置
+ */
+export interface SEOBatchModeConfig {
+  enabled: boolean;                      // 是否启用批量模式
+  maxFiles: number;                      // 最大文件数限制
+  concurrentLimit: number;               // 并发处理限制
+  timeoutPerFile: number;                // 每文件超时时间（秒）
+}
+
+/**
+ * SEO分析统计摘要（用于仪表板展示）
+ */
+export interface SEOAnalysisStatsSummary {
+  mode: 'single' | 'batch';              // 分析模式
+  totalAnalyzed: number;                 // 总分析数量
+  averageScore: number;                  // 平均得分
+  highPriorityIssues: number;            // 高优先级问题数
+  lastAnalysisDate?: Date;               // 最后分析日期
+  topIssueCategory?: string;             // 最主要问题类别
+}
+
+/**
+ * 文件验证结果
+ */
+export interface FileValidationResult {
+  valid: boolean;                        // 是否有效
+  error?: string;                        // 错误信息
+  warnings?: string[];                   // 警告信息
+}
+
+/**
+ * 批量文件验证结果
+ */
+export interface BatchFileValidationResult {
+  valid: boolean;                        // 整体是否有效
+  errors: string[];                      // 错误列表
+  validFiles: File[];                    // 有效文件列表
+  invalidFiles: File[];                  // 无效文件列表
+  warnings?: string[];                   // 警告信息
+}
+
 // 导出所有类型的联合类型，便于类型检查
 export type SEOTypes = 
   | SEOIssue
   | SEOIssueGroups
   | SEOUploadResponse
+  | SEOBatchUploadResponse
   | ExtractedContent
   | StructureElement
   | SpellingError
@@ -308,4 +445,7 @@ export type SEOTypes =
   | SEOCategory
   | SEOAnalysisSession
   | SEORecommendation
-  | SEOPerformanceScore;
+  | SEOPerformanceScore
+  | SEOFileStats
+  | SEOBatchStats
+  | SEOBatchAnalysisSummary;
