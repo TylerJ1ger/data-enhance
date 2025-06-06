@@ -1,15 +1,16 @@
 """
 API v1 主路由文件 - 完整增强版本
 整合所有业务模块的路由，提供统一的接口入口
-新增动态CSV模板支持
+新增动态CSV模板支持和SEO批量处理功能
 """
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Path
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Path, Request
 from typing import List, Optional, Dict, Any
 from fastapi.responses import StreamingResponse, Response
 import io
 import json
 import xml.etree.ElementTree as ET
+import asyncio
 from pydantic import BaseModel, validator
 from datetime import datetime
 
@@ -178,6 +179,18 @@ class SchemaBatchExportRequest(BaseModel):
             raise ValueError('导出类型必须是 "combined" 或 "separated"')
         return v
 
+# SEO批量处理相关模型（新增）
+class SEOExportRequest(BaseModel):
+    """SEO导出请求模型"""
+    export_type: str = "summary"  # "summary" 或 "detailed"
+    
+    @validator('export_type')
+    def validate_export_type(cls, v):
+        """验证导出类型"""
+        if v not in ['summary', 'detailed']:
+            raise ValueError('导出类型必须是 "summary" 或 "detailed"')
+        return v
+
 # ================================
 # 通用辅助函数
 # ================================
@@ -193,6 +206,17 @@ async def check_file_size(files: List[UploadFile]):
             )
         # 重置文件指针，以便后续处理
         await file.seek(0)
+
+def calculate_seo_timeout_for_files(file_count: int, base_timeout: int = 300) -> int:
+    """根据文件数量动态计算SEO分析超时时间"""
+    # 基础超时时间 + 每个文件额外时间
+    # 单文件SEO分析通常需要10-30秒，我们预留60秒每个文件
+    additional_time_per_file = 60
+    total_timeout = base_timeout + (file_count - 1) * additional_time_per_file
+    
+    # 设置最大超时时间防止过长
+    max_timeout = 1800  # 30分钟
+    return min(total_timeout, max_timeout)
 
 # ================================
 # 关键词分析相关路由 (Keywords)
@@ -505,6 +529,157 @@ async def get_seo_categories():
         {"id": "robots_directives", "name": "Robots Directives", "description": "机器人指令相关问题，包括meta robots标签和X-Robots-Tag设置"}
     ]
     return {"categories": categories}
+
+# ================================
+# SEO批量分析相关路由 (SEO Batch) - 新增
+# ================================
+
+@router.post("/seo/batch-upload", tags=["SEO"])
+async def batch_upload_seo_files(
+    files: List[UploadFile] = File(...),
+    content_extractor: Optional[str] = Form("auto"),
+    enable_advanced_analysis: bool = Form(True)
+):
+    """
+    批量上传HTML文件进行SEO分析
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    # 限制文件数量
+    if len(files) > 50:
+        raise HTTPException(status_code=400, detail="Maximum 50 files allowed per batch")
+    
+    await check_file_size(files)
+    
+    # 检查所有文件是否为HTML
+    for file in files:
+        if not file.filename.lower().endswith(('.html', '.htm')):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"File {file.filename} is not an HTML file. Only HTML files are supported"
+            )
+    
+    try:
+        # 批量处理文件
+        result = await seo_processor.process_files(files, content_extractor, enable_advanced_analysis)
+        
+        return {
+            "success": True,
+            "message": f"Successfully processed {len(files)} files",
+            **result
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Batch processing failed: {str(e)}"
+        )
+
+@router.get("/seo/batch-results", tags=["SEO"])
+async def get_seo_batch_results():
+    """
+    获取批量SEO分析结果
+    """
+    results = seo_processor.get_batch_results()
+    stats = seo_processor.get_batch_stats()
+    
+    if not results:
+        raise HTTPException(status_code=404, detail="No batch analysis results found")
+    
+    return {
+        "success": True,
+        "results": results,
+        "stats": stats,
+        "total_results": len(results)
+    }
+
+@router.get("/seo/batch-export", tags=["SEO"])
+async def export_seo_batch_results(
+    export_type: str = "summary"
+):
+    """
+    导出批量SEO分析结果为CSV文件
+    """
+    if export_type not in ["summary", "detailed"]:
+        raise HTTPException(status_code=400, detail="export_type must be 'summary' or 'detailed'")
+    
+    try:
+        if export_type == "summary":
+            csv_data = seo_processor.export_batch_results_csv()
+            filename = "seo_batch_analysis_summary.csv"
+        else:
+            csv_data = seo_processor.export_detailed_results_csv()
+            filename = "seo_batch_analysis_detailed.csv"
+        
+        if not csv_data or csv_data == b"No batch analysis results to export":
+            raise HTTPException(status_code=404, detail="No batch analysis results available for export")
+        
+        return StreamingResponse(
+            io.BytesIO(csv_data),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Export failed: {str(e)}"
+        )
+
+@router.post("/seo/batch-export", tags=["SEO"])
+async def export_seo_batch_results_post(request: SEOExportRequest):
+    """
+    通过POST请求导出批量SEO分析结果（支持更复杂的导出选项）
+    """
+    try:
+        if request.export_type == "summary":
+            csv_data = seo_processor.export_batch_results_csv()
+            filename = "seo_batch_analysis_summary.csv"
+        elif request.export_type == "detailed":
+            csv_data = seo_processor.export_detailed_results_csv()
+            filename = "seo_batch_analysis_detailed.csv"
+        else:
+            raise HTTPException(status_code=400, detail="export_type must be 'summary' or 'detailed'")
+        
+        if not csv_data or csv_data == b"No batch analysis results to export":
+            raise HTTPException(status_code=404, detail="No batch analysis results available for export")
+        
+        return StreamingResponse(
+            io.BytesIO(csv_data),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Export failed: {str(e)}"
+        )
+
+@router.delete("/seo/batch-results", tags=["SEO"])
+async def clear_seo_batch_results():
+    """
+    清除批量SEO分析结果
+    """
+    seo_processor.reset_batch_data()
+    
+    return {
+        "success": True,
+        "message": "Batch analysis results cleared"
+    }
+
+@router.get("/seo/batch-stats", tags=["SEO"])
+async def get_seo_batch_stats():
+    """
+    获取批量SEO分析统计信息
+    """
+    stats = seo_processor.get_batch_stats()
+    
+    return {
+        "success": True,
+        "stats": stats
+    }
 
 # ================================
 # 站点地图相关路由 (Sitemaps)
@@ -1166,13 +1341,16 @@ async def api_info():
             "cross_analysis": "/v1/backlinks/cross-analysis/",
             "orders": "/v1/orders/",
             "seo": "/v1/seo/",
+            "seo_batch": "/v1/seo/batch-*",  # 新增：SEO批量处理端点
             "sitemaps": "/v1/sitemaps/",
             "schema": "/v1/schema/",
             "schema_batch": "/v1/schema/batch/",
-            "schema_dynamic_templates": "/v1/schema/batch/template/",  # 新增：动态模板端点
+            "schema_dynamic_templates": "/v1/schema/batch/template/",
             "health": "/v1/health"
         },
         "new_features": {
+            "seo_batch_analysis": "支持批量HTML文件SEO分析，自动调整超时时间",
+            "seo_csv_export": "支持导出批量SEO分析结果为CSV格式（摘要和详细两种模式）",
             "dynamic_csv_support": "支持动态字段CSV格式，简化批量数据输入",
             "auto_format_detection": "自动检测CSV格式类型（动态字段 vs 传统JSON）",
             "enhanced_templates": "提供增强的CSV模板，包含字段描述和示例",
@@ -1189,5 +1367,12 @@ async def api_info():
                 "example": "url,schema_type,data_json",
                 "advantages": ["向后兼容", "适合程序化生成", "支持复杂数据结构"]
             }
+        },
+        "seo_batch_features": {
+            "max_files": 50,
+            "supported_formats": [".html", ".htm"],
+            "timeout_calculation": "基础5分钟 + 每个文件1分钟，最大30分钟",
+            "export_formats": ["summary", "detailed"],
+            "concurrent_processing": "支持并发处理，限制3个文件同时分析"
         }
     }
