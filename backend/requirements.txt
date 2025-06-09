@@ -22,3 +22,5 @@ jieba
 certifi
 cssselect
 pillow
+redis
+aioredis

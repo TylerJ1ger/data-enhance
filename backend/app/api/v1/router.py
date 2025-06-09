@@ -23,7 +23,7 @@ from app.core.backlinks.backlinks_processor import BacklinksProcessor
 from app.core.backlinks.cross_analysis_processor import CrossAnalysisProcessor
 from app.core.orders.orders_processor import OrdersProcessor
 from app.core.schema.schema_processor import SchemaProcessor
-from app.core.keystore.keystore_processor import KeystoreProcessor  # 关键词库处理器
+from app.core.keystore.keystore_processor_redis import KeystoreProcessorRedis  # Redis关键词库处理器
 
 # 创建主路由器
 router = APIRouter(tags=["API v1"])
@@ -42,7 +42,7 @@ backlinks_processor = BacklinksProcessor()
 cross_analysis_processor = CrossAnalysisProcessor()
 orders_processor = OrdersProcessor()
 schema_processor = SchemaProcessor()
-keystore_processor = KeystoreProcessor()  # 关键词库处理器实例
+keystore_processor = KeystoreProcessorRedis()  # Redis关键词库处理器实例
 
 # ================================
 # Pydantic 模型定义
@@ -408,8 +408,8 @@ async def upload_keystore_files(files: List[UploadFile] = File(...)):
 @router.get("/keystore/summary", tags=["Keystore"])
 async def get_keystore_summary():
     """获取关键词库摘要信息"""
-    summary = keystore_processor._get_summary()
-    groups_overview = keystore_processor._get_groups_overview()
+    summary = keystore_processor.get_summary()
+    groups_overview = keystore_processor.get_groups_overview()
     
     return {
         "success": True,
@@ -536,18 +536,32 @@ async def export_keystore_data():
 async def reset_keystore_data():
     """重置关键词库数据"""
     try:
-        keystore_processor.reset_data()
+        result = keystore_processor.reset_data()
         logger.info("关键词库数据已重置")
-        return {
-            "success": True,
-            "message": "关键词库数据已重置"
-        }
+        return result
     except Exception as e:
         logger.error(f"重置关键词库数据时发生错误: {str(e)}")
         raise HTTPException(
             status_code=500,
             detail=f"重置关键词库数据失败: {str(e)}"
         )
+
+@router.get("/keystore/health", tags=["Keystore"])
+async def get_keystore_health():
+    """检查关键词库和Redis连接健康状态"""
+    try:
+        health_result = keystore_processor.health_check()
+        return {
+            "success": True,
+            **health_result
+        }
+    except Exception as e:
+        logger.error(f"健康检查失败: {str(e)}")
+        return {
+            "success": False,
+            "processor_status": "unhealthy",
+            "error": str(e)
+        }
 
 # ================================
 # 外链分析相关路由 (Backlinks)
