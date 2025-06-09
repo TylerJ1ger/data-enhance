@@ -318,37 +318,58 @@ class KeystoreProcessor:
         """获取重复关键词分析"""
         duplicate_details = []
         
-        for keyword, groups in self.duplicate_keywords.items():
-            keyword_data = []
-            total_qpm = 0
-            
-            for group in groups:
-                group_data = self.keywords_data[
-                    (self.keywords_data['Keywords'] == keyword) & 
-                    (self.keywords_data['group_name_map'] == group)
-                ]
-                
-                if not group_data.empty:
-                    row = group_data.iloc[0]
-                    keyword_data.append({
-                        "group": group,
-                        "qpm": float(row['QPM']),  # 确保是Python float
-                        "diff": float(row['DIFF'])  # 确保是Python float
-                    })
-                    total_qpm += float(row['QPM'])
-            
-            duplicate_details.append({
-                "keyword": keyword,
-                "groups": keyword_data,
-                "group_count": len(groups),
-                "total_qpm": float(total_qpm)  # 确保是Python float
+        if self.keywords_data.empty:
+            return self._convert_to_python_types({
+                "total_duplicates": 0,
+                "details": []
             })
+        
+        # 重新计算当前的重复关键词（不依赖缓存的duplicate_keywords）
+        keyword_groups = defaultdict(list)
+        keyword_data_cache = {}
+        
+        # 收集每个关键词在哪些组中出现
+        for _, row in self.keywords_data.iterrows():
+            keyword = row['Keywords']
+            group = row['group_name_map']
+            
+            if group not in keyword_groups[keyword]:
+                keyword_groups[keyword].append(group)
+                
+            # 缓存关键词数据
+            key = f"{keyword}_{group}"
+            keyword_data_cache[key] = {
+                "group": group,
+                "qpm": float(row['QPM']),
+                "diff": float(row['DIFF'])
+            }
+        
+        # 只处理真正重复的关键词（出现在多个组中）
+        for keyword, groups in keyword_groups.items():
+            if len(groups) > 1:
+                keyword_data = []
+                total_qpm = 0
+                
+                for group in groups:
+                    key = f"{keyword}_{group}"
+                    if key in keyword_data_cache:
+                        data = keyword_data_cache[key]
+                        keyword_data.append(data)
+                        total_qpm += data["qpm"]
+                
+                if len(keyword_data) > 1:  # 双重确认确实是重复的
+                    duplicate_details.append({
+                        "keyword": keyword,
+                        "groups": keyword_data,
+                        "group_count": len(keyword_data),
+                        "total_qpm": float(total_qpm)
+                    })
         
         # 按组数量和QPM排序
         duplicate_details.sort(key=lambda x: (x['group_count'], x['total_qpm']), reverse=True)
         
         return self._convert_to_python_types({
-            "total_duplicates": len(self.duplicate_keywords),
+            "total_duplicates": len(duplicate_details),
             "details": duplicate_details
         })
     

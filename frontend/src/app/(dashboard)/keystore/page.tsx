@@ -361,6 +361,7 @@ export default function KeystorePage() {
 
             <TabsContent value="visualization">
               <KeystoreVisualization
+                key={`visualization-${triggerId}`}
                 visualizationData={visualizationData}
                 isLoading={isLoadingVisualization}
                 height={600}
@@ -370,6 +371,7 @@ export default function KeystorePage() {
 
             <TabsContent value="groups">
               <KeystoreGroupsManager
+                key={`groups-${triggerId}`}
                 groupsData={groupsData}
                 clustersData={clustersData}
                 isLoading={isLoadingGroups}
@@ -378,6 +380,7 @@ export default function KeystorePage() {
 
             <TabsContent value="clusters">
               <KeystoreClustersManager
+                key={`clusters-${triggerId}`}
                 clustersData={clustersData}
                 groupsData={groupsData}
                 isLoading={isLoadingClusters}
@@ -386,6 +389,7 @@ export default function KeystorePage() {
 
             <TabsContent value="duplicates">
               <KeystoreDuplicatesManager
+                key={`duplicates-${triggerId}`}
                 duplicatesData={duplicatesData}
                 groupsData={groupsData}
                 previewMode={false}
