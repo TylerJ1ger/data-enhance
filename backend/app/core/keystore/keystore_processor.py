@@ -32,13 +32,7 @@ class KeystoreProcessor:
     
     def _convert_to_python_types(self, obj: Any) -> Any:
         """将numpy和pandas类型转换为Python原生类型"""
-        if pd.isna(obj):
-            return None
-        elif isinstance(obj, (np.integer, np.int64, np.int32)):
-            return int(obj)
-        elif isinstance(obj, (np.floating, np.float64, np.float32)):
-            return float(obj)
-        elif isinstance(obj, np.ndarray):
+        if isinstance(obj, np.ndarray):
             return obj.tolist()
         elif isinstance(obj, pd.Series):
             return obj.tolist()
@@ -46,6 +40,12 @@ class KeystoreProcessor:
             return {k: self._convert_to_python_types(v) for k, v in obj.items()}
         elif isinstance(obj, (list, tuple)):
             return [self._convert_to_python_types(item) for item in obj]
+        elif pd.isna(obj):
+            return None
+        elif isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            return float(obj)
         else:
             return obj
         
@@ -240,7 +240,8 @@ class KeystoreProcessor:
         links = []
         categories = [
             {"name": "关键词组", "itemStyle": {"color": "#5470c6"}},
-            {"name": "关键词族", "itemStyle": {"color": "#91cc75"}}
+            {"name": "关键词族", "itemStyle": {"color": "#91cc75"}},
+            {"name": "重复关键词", "itemStyle": {"color": "#fac858"}}
         ]
         
         # 添加组节点
@@ -279,6 +280,33 @@ class KeystoreProcessor:
                         "target": group_name,
                         "lineStyle": {"width": 2}
                     })
+        
+        # 添加重复关键词节点和连接
+        for keyword, groups in self.duplicate_keywords.items():
+            if len(groups) > 1:  # 只处理真正的重复关键词
+                keyword_node_id = f"keyword_{keyword}"
+                nodes.append({
+                    "id": keyword_node_id,
+                    "name": keyword,
+                    "category": 2,
+                    "value": len(groups),
+                    "symbolSize": min(80, max(15, len(groups) * 8)),
+                    "itemStyle": {"color": "#fac858"},
+                    "label": {"show": True, "fontSize": 8},
+                    "tooltip": {
+                        "formatter": f"重复关键词: {keyword}<br/>出现在 {len(groups)} 个组中<br/>组: {', '.join(groups)}"
+                    }
+                })
+                
+                # 连接重复关键词到所有包含它的组
+                for group_name in groups:
+                    if group_name in self.groups_data:
+                        links.append({
+                            "source": keyword_node_id,
+                            "target": group_name,
+                            "lineStyle": {"width": 1, "color": "#fac858", "type": "dashed"},
+                            "label": {"show": False}
+                        })
         
         return self._convert_to_python_types({
             "nodes": nodes,
@@ -365,9 +393,14 @@ class KeystoreProcessor:
             if not keyword_exists:
                 raise DataProcessingException(f"关键词 '{keyword}' 不存在于组 '{group}' 中")
             
-            # 删除关键词
+            # 删除关键词 - 同时更新原始数据和处理后数据
             mask = (self.keywords_data['Keywords'] == keyword) & (self.keywords_data['group_name_map'] == group)
             self.keywords_data = self.keywords_data[~mask]
+            
+            # 同样更新原始数据以保持一致性
+            if not self.raw_data.empty:
+                raw_mask = (self.raw_data['Keywords'] == keyword) & (self.raw_data['group_name_map'] == group)
+                self.raw_data = self.raw_data[~raw_mask]
             
             # 重新处理数据
             self._process_keywords_data()

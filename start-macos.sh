@@ -7,6 +7,12 @@ RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
+# Global variables for process management
+BACKEND_PID=""
+FRONTEND_PID=""
+MONITOR_PID=""
+CLEANUP_DONE=false
+
 # Print header
 echo -e "${BLUE}=================================${NC}"
 echo -e "${BLUE}    Tyler's SEO Tool Launcher    ${NC}"
@@ -33,61 +39,106 @@ log_with_timestamp() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $message" >> "$log_file"
 }
 
-# Clear/initialize log files
-echo -e "${YELLOW}Initializing log files...${NC}"
-echo "=== CSV Processor Tool Backend Log ===" > "$BACKEND_LOG"
-echo "=== Started at: $(date) ===" >> "$BACKEND_LOG"
-echo "" >> "$BACKEND_LOG"
+# Initialize log files
+initialize_logs() {
+    echo -e "${YELLOW}Initializing log files...${NC}"
+    echo "=== CSV Processor Tool Backend Log ===" > "$BACKEND_LOG"
+    echo "=== Started at: $(date) ===" >> "$BACKEND_LOG"
+    echo "" >> "$BACKEND_LOG"
 
-echo "=== CSV Processor Tool Frontend Log ===" > "$FRONTEND_LOG"
-echo "=== Started at: $(date) ===" >> "$FRONTEND_LOG"
-echo "" >> "$FRONTEND_LOG"
+    echo "=== CSV Processor Tool Frontend Log ===" > "$FRONTEND_LOG"
+    echo "=== Started at: $(date) ===" >> "$FRONTEND_LOG"
+    echo "" >> "$FRONTEND_LOG"
 
-echo -e "${GREEN}Logs will be available at:${NC}"
-echo -e "  Backend: ${BLUE}$BACKEND_LOG${NC}"
-echo -e "  Frontend: ${BLUE}$FRONTEND_LOG${NC}"
+    echo -e "${GREEN}Logs will be available at:${NC}"
+    echo -e "  Backend: ${BLUE}$BACKEND_LOG${NC}"
+    echo -e "  Frontend: ${BLUE}$FRONTEND_LOG${NC}"
+}
 
 # Function to check if a command exists
 command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# Check if Python is installed
-if ! command_exists python3; then
-    echo -e "${RED}Error: Python 3 is not installed.${NC}"
-    echo -e "${YELLOW}Please install Python 3 using Homebrew:${NC}"
-    echo "brew install python"
-    exit 1
-fi
+# Check prerequisites
+check_prerequisites() {
+    # Check if Python is installed
+    if ! command_exists python3; then
+        echo -e "${RED}Error: Python 3 is not installed.${NC}"
+        echo -e "${YELLOW}Please install Python 3 using Homebrew:${NC}"
+        echo "brew install python"
+        exit 1
+    fi
 
-# Check if Node.js is installed
-if ! command_exists node; then
-    echo -e "${RED}Error: Node.js is not installed.${NC}"
-    echo -e "${YELLOW}Please install Node.js using Homebrew:${NC}"
-    echo "brew install node"
-    exit 1
-fi
+    # Check if Node.js is installed
+    if ! command_exists node; then
+        echo -e "${RED}Error: Node.js is not installed.${NC}"
+        echo -e "${YELLOW}Please install Node.js using Homebrew:${NC}"
+        echo "brew install node"
+        exit 1
+    fi
 
-# Check if npm is installed
-if ! command_exists npm; then
-    echo -e "${RED}Error: npm is not installed.${NC}"
-    echo -e "${YELLOW}Please install npm:${NC}"
-    echo "brew install npm"
-    exit 1
-fi
+    # Check if npm is installed
+    if ! command_exists npm; then
+        echo -e "${RED}Error: npm is not installed.${NC}"
+        echo -e "${YELLOW}Please install npm:${NC}"
+        echo "brew install npm"
+        exit 1
+    fi
+}
 
-# Set frontend directory directly to frontend
-FRONTEND_DIR="$SCRIPT_DIR/frontend"
+# Function to stop backend server
+stop_backend() {
+    if [ -n "$BACKEND_PID" ] && ps -p $BACKEND_PID > /dev/null; then
+        echo -e "${YELLOW}Stopping backend server (PID: $BACKEND_PID)...${NC}"
+        log_with_timestamp "$BACKEND_LOG" "Stopping backend server (PID: $BACKEND_PID)"
+        kill $BACKEND_PID 2>/dev/null
+        sleep 2
+        
+        # Force kill if still running
+        if ps -p $BACKEND_PID > /dev/null; then
+            kill -9 $BACKEND_PID 2>/dev/null
+        fi
+        
+        log_with_timestamp "$BACKEND_LOG" "Backend server stopped"
+        BACKEND_PID=""
+    fi
+    
+    # Ensure port is free
+    BACKEND_PORT=$(grep -o "PORT=[0-9]*" "$SCRIPT_DIR/backend/.env" 2>/dev/null | cut -d= -f2)
+    if [ -z "$BACKEND_PORT" ]; then
+        BACKEND_PORT=8000  # Default port
+    fi
+    
+    BACKEND_PROCESSES=$(lsof -i:$BACKEND_PORT -t 2>/dev/null)
+    if [ -n "$BACKEND_PROCESSES" ]; then
+        echo $BACKEND_PROCESSES | xargs kill -9 2>/dev/null
+    fi
+}
 
-# Log the frontend directory
-log_with_timestamp "$FRONTEND_LOG" "Using frontend directory: $FRONTEND_DIR"
-echo -e "${GREEN}Using frontend directory: ${BLUE}$FRONTEND_DIR${NC}"
-
-# Check if the frontend directory exists
-if [ ! -d "$FRONTEND_DIR" ]; then
-    echo -e "${RED}Error: The frontend directory '$FRONTEND_DIR' does not exist.${NC}"
-    exit 1
-fi
+# Function to stop frontend server
+stop_frontend() {
+    if [ -n "$FRONTEND_PID" ] && ps -p $FRONTEND_PID > /dev/null; then
+        echo -e "${YELLOW}Stopping frontend server (PID: $FRONTEND_PID)...${NC}"
+        log_with_timestamp "$FRONTEND_LOG" "Stopping frontend server (PID: $FRONTEND_PID)"
+        kill $FRONTEND_PID 2>/dev/null
+        sleep 2
+        
+        # Force kill if still running
+        if ps -p $FRONTEND_PID > /dev/null; then
+            kill -9 $FRONTEND_PID 2>/dev/null
+        fi
+        
+        log_with_timestamp "$FRONTEND_LOG" "Frontend server stopped"
+        FRONTEND_PID=""
+    fi
+    
+    # Ensure port 3000 is free
+    FRONTEND_PROCESSES=$(lsof -i:3000 -t 2>/dev/null)
+    if [ -n "$FRONTEND_PROCESSES" ]; then
+        echo $FRONTEND_PROCESSES | xargs kill -9 2>/dev/null
+    fi
+}
 
 # Function to start the backend server
 start_backend() {
@@ -138,7 +189,7 @@ start_backend() {
     fi
     
     # Start the FastAPI server using module startup
-    echo -e "${GREEN}Starting FastAPI server using module startup...${NC}"
+    echo -e "${GREEN}Starting FastAPI server...${NC}"
     log_with_timestamp "$BACKEND_LOG" "Starting FastAPI server using python -m app.main"
     
     # Run Python as module and output redirected to log file
@@ -154,11 +205,13 @@ start_backend() {
         if ! ps -p $BACKEND_PID > /dev/null; then
             echo -e "${RED}Backend server failed to start. Check logs for details.${NC}"
             log_with_timestamp "$BACKEND_LOG" "ERROR: Backend server failed to start"
+            BACKEND_PID=""
             return 1
         fi
     else
         echo -e "${RED}Failed to start backend server${NC}"
         log_with_timestamp "$BACKEND_LOG" "ERROR: Failed to start backend server"
+        BACKEND_PID=""
         return 1
     fi
     
@@ -169,6 +222,8 @@ start_backend() {
 start_frontend() {
     echo -e "${GREEN}Starting frontend server...${NC}"
     log_with_timestamp "$FRONTEND_LOG" "Starting frontend server initialization"
+    
+    FRONTEND_DIR="$SCRIPT_DIR/frontend"
     
     cd "$FRONTEND_DIR" || { 
         echo -e "${RED}Frontend directory not found: $FRONTEND_DIR${NC}"
@@ -207,64 +262,79 @@ start_frontend() {
         if ! ps -p $FRONTEND_PID > /dev/null; then
             echo -e "${RED}Frontend server failed to start. Check logs for details.${NC}"
             log_with_timestamp "$FRONTEND_LOG" "ERROR: Frontend server failed to start"
+            FRONTEND_PID=""
             return 1
         fi
     else
         echo -e "${RED}Failed to start frontend server${NC}"
         log_with_timestamp "$FRONTEND_LOG" "ERROR: Failed to start frontend server"
+        FRONTEND_PID=""
         return 1
     fi
     
     return 0
 }
 
+# Restart functions
+restart_backend() {
+    echo -e "${BLUE}Restarting backend server...${NC}"
+    stop_backend
+    sleep 1
+    start_backend
+    return $?
+}
+
+restart_frontend() {
+    echo -e "${BLUE}Restarting frontend server...${NC}"
+    stop_frontend
+    sleep 1
+    start_frontend
+    return $?
+}
+
+restart_all() {
+    echo -e "${BLUE}Restarting all services...${NC}"
+    stop_backend
+    stop_frontend
+    sleep 1
+    
+    start_backend
+    backend_status=$?
+    
+    if [ $backend_status -eq 0 ]; then
+        start_frontend
+        frontend_status=$?
+        
+        if [ $frontend_status -eq 0 ]; then
+            echo -e "${GREEN}All services restarted successfully!${NC}"
+            return 0
+        else
+            echo -e "${RED}Failed to restart frontend server.${NC}"
+            return 1
+        fi
+    else
+        echo -e "${RED}Failed to restart backend server.${NC}"
+        return 1
+    fi
+}
+
 # Cleanup function
 cleanup() {
+    if [ "$CLEANUP_DONE" = true ]; then
+        return
+    fi
+    
+    CLEANUP_DONE=true
+    
     echo -e "\n${YELLOW}Stopping servers...${NC}"
     
-    if [ -n "$BACKEND_PID" ]; then
-        echo -e "${YELLOW}Stopping backend server (PID: $BACKEND_PID)...${NC}"
-        log_with_timestamp "$BACKEND_LOG" "Stopping backend server (PID: $BACKEND_PID)"
-        kill $BACKEND_PID 2>/dev/null
-        if [ $? -eq 0 ]; then
-            log_with_timestamp "$BACKEND_LOG" "Backend server stopped successfully"
-        else
-            log_with_timestamp "$BACKEND_LOG" "Failed to stop backend server gracefully"
-        fi
+    # Stop monitoring process
+    if [ -n "$MONITOR_PID" ] && ps -p $MONITOR_PID > /dev/null; then
+        kill $MONITOR_PID 2>/dev/null
     fi
     
-    if [ -n "$FRONTEND_PID" ]; then
-        echo -e "${YELLOW}Stopping frontend server (PID: $FRONTEND_PID)...${NC}"
-        log_with_timestamp "$FRONTEND_LOG" "Stopping frontend server (PID: $FRONTEND_PID)"
-        kill $FRONTEND_PID 2>/dev/null
-        if [ $? -eq 0 ]; then
-            log_with_timestamp "$FRONTEND_LOG" "Frontend server stopped successfully"
-        else
-            log_with_timestamp "$FRONTEND_LOG" "Failed to stop frontend server gracefully"
-        fi
-    fi
-    
-    # Also kill any processes on the ports we're using
-    BACKEND_PORT=$(grep -o "PORT=[0-9]*" "$SCRIPT_DIR/backend/.env" | cut -d= -f2)
-    if [ -z "$BACKEND_PORT" ]; then
-        BACKEND_PORT=8000  # Default port
-    fi
-    
-    echo -e "${YELLOW}Ensuring port $BACKEND_PORT is free...${NC}"
-    log_with_timestamp "$BACKEND_LOG" "Ensuring port $BACKEND_PORT is free"
-    BACKEND_PROCESSES=$(lsof -i:$BACKEND_PORT -t 2>/dev/null)
-    if [ -n "$BACKEND_PROCESSES" ]; then
-        log_with_timestamp "$BACKEND_LOG" "Killing processes on port $BACKEND_PORT: $BACKEND_PROCESSES"
-        echo $BACKEND_PROCESSES | xargs kill -9 2>/dev/null
-    fi
-    
-    echo -e "${YELLOW}Ensuring port 3000 is free...${NC}"
-    log_with_timestamp "$FRONTEND_LOG" "Ensuring port 3000 is free"
-    FRONTEND_PROCESSES=$(lsof -i:3000 -t 2>/dev/null)
-    if [ -n "$FRONTEND_PROCESSES" ]; then
-        log_with_timestamp "$FRONTEND_LOG" "Killing processes on port 3000: $FRONTEND_PROCESSES"
-        echo $FRONTEND_PROCESSES | xargs kill -9 2>/dev/null
-    fi
+    stop_backend
+    stop_frontend
     
     # Final log entries
     log_with_timestamp "$BACKEND_LOG" "=== Backend server shutdown complete ==="
@@ -274,18 +344,42 @@ cleanup() {
     echo -e "${BLUE}Log files are available at:${NC}"
     echo -e "  Backend: ${BLUE}$BACKEND_LOG${NC}"
     echo -e "  Frontend: ${BLUE}$FRONTEND_LOG${NC}"
-    exit 0
 }
 
 # Function to display log watching options
 show_log_options() {
-    echo -e "\n${BLUE}Log commands:${NC}"
+    echo -e "\n${BLUE}Available commands:${NC}"
     echo -e "  ${YELLOW}backend${NC} - View backend logs"
     echo -e "  ${YELLOW}frontend${NC} - View frontend logs"
     echo -e "  ${YELLOW}both${NC} - View both logs side by side (requires tmux)"
+    echo -e "  ${YELLOW}restart backend${NC} - Restart backend server"
+    echo -e "  ${YELLOW}restart frontend${NC} - Restart frontend server"
+    echo -e "  ${YELLOW}restart all${NC} - Restart all services"
+    echo -e "  ${YELLOW}status${NC} - Check service status"
     echo -e "  ${YELLOW}q${NC} - Return to this menu"
     echo -e "  ${YELLOW}exit${NC} - Exit the application"
     echo -e "\nType a command and press Enter:"
+}
+
+# Function to check service status
+check_status() {
+    echo -e "\n${BLUE}Service Status:${NC}"
+    
+    if [ -n "$BACKEND_PID" ] && ps -p $BACKEND_PID > /dev/null; then
+        echo -e "  Backend: ${GREEN}Running${NC} (PID: $BACKEND_PID)"
+    else
+        echo -e "  Backend: ${RED}Not running${NC}"
+    fi
+    
+    if [ -n "$FRONTEND_PID" ] && ps -p $FRONTEND_PID > /dev/null; then
+        echo -e "  Frontend: ${GREEN}Running${NC} (PID: $FRONTEND_PID)"
+    else
+        echo -e "  Frontend: ${RED}Not running${NC}"
+    fi
+    
+    echo -e "\n${BLUE}URLs:${NC}"
+    echo -e "  Backend: http://localhost:8000/api"
+    echo -e "  Frontend: http://localhost:3000"
 }
 
 # Function to watch logs interactively
@@ -315,12 +409,25 @@ watch_logs() {
                     echo -e "${YELLOW}tmux is not installed. Please install it with 'brew install tmux' to use this feature.${NC}"
                 fi
                 ;;
+            "restart backend")
+                restart_backend
+                ;;
+            "restart frontend")
+                restart_frontend
+                ;;
+            "restart all")
+                restart_all
+                ;;
+            status)
+                check_status
+                ;;
             q)
                 break
                 ;;
             exit)
                 echo -e "${YELLOW}Exiting application...${NC}"
                 cleanup
+                exit 0
                 ;;
             *)
                 echo -e "${RED}Invalid command: $choice${NC}"
@@ -333,6 +440,12 @@ watch_logs() {
 monitor_services() {
     while true; do
         sleep 5
+        
+        # Skip monitoring if cleanup is done
+        if [ "$CLEANUP_DONE" = true ]; then
+            break
+        fi
+        
         # Check if backend is still running
         if [ -n "$BACKEND_PID" ] && ! ps -p $BACKEND_PID > /dev/null; then
             echo -e "${RED}Backend server (PID: $BACKEND_PID) stopped unexpectedly.${NC}"
@@ -349,16 +462,30 @@ monitor_services() {
             FRONTEND_PID=""
         fi
         
-        # If both services are down, exit
+        # If both services are down, suggest restart
         if [ -z "$BACKEND_PID" ] && [ -z "$FRONTEND_PID" ]; then
-            echo -e "${RED}Both servers are down. Exiting...${NC}"
-            cleanup
+            echo -e "${RED}Both servers are down. Type 'restart all' to restart services or 'exit' to quit.${NC}"
+            # Don't exit automatically, let user decide
         fi
     done
 }
 
 # Set up cleanup on script exit (Ctrl+C or terminal close)
 trap cleanup EXIT INT TERM
+
+# Main execution
+initialize_logs
+check_prerequisites
+
+# Set frontend directory
+FRONTEND_DIR="$SCRIPT_DIR/frontend"
+echo -e "${GREEN}Using frontend directory: ${BLUE}$FRONTEND_DIR${NC}"
+
+# Check if the frontend directory exists
+if [ ! -d "$FRONTEND_DIR" ]; then
+    echo -e "${RED}Error: The frontend directory '$FRONTEND_DIR' does not exist.${NC}"
+    exit 1
+fi
 
 # Start backend and frontend servers
 start_backend
@@ -370,14 +497,13 @@ if [ $backend_status -eq 0 ]; then
     
     if [ $frontend_status -eq 0 ]; then
         echo -e "\n${GREEN}Both servers started successfully!${NC}"
-        echo -e "${BLUE}Backend URL:${NC} http://localhost:8000/api"
-        echo -e "${BLUE}Frontend URL:${NC} http://localhost:3000"
+        check_status
         
         # Start monitoring in background
         monitor_services &
         MONITOR_PID=$!
         
-        # Interactive log watching
+        # Interactive command interface
         echo -e "\n${YELLOW}Services are running in the background.${NC}"
         echo -e "${GREEN}Log files are being updated at:${NC}"
         echo -e "  Backend: ${BLUE}$BACKEND_LOG${NC}"
@@ -389,9 +515,11 @@ if [ $backend_status -eq 0 ]; then
         cleanup
     else
         echo -e "${RED}Failed to start frontend server.${NC}"
+        cleanup
         exit 1
     fi
 else
     echo -e "${RED}Failed to start backend server.${NC}"
+    cleanup
     exit 1
 fi

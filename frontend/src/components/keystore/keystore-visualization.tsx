@@ -89,6 +89,11 @@ export function KeystoreVisualization({
             }
             return content;
           } else if (params.dataType === 'edge') {
+            const source = params.data.source;
+            const target = params.data.target;
+            if (source.includes('keyword_')) {
+              return `<div>重复关键词连接</div><div class="text-sm">关键词: ${source.replace('keyword_', '')}</div>`;
+            }
             return `<div>关系连接</div>`;
           }
           return '';
@@ -277,7 +282,7 @@ export function KeystoreVisualization({
                 <div>• 拖拽节点可以调整位置</div>
                 <div>• 滚轮可以缩放图表</div>
                 <div>• 点击节点查看详细信息</div>
-                <div>• 蓝色节点代表关键词组，绿色节点代表关键词族</div>
+                <div>• 蓝色节点代表关键词组，绿色节点代表关键词族，黄色节点代表重复关键词</div>
               </div>
             </AlertDescription>
           </Alert>
