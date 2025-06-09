@@ -17,7 +17,7 @@ KEYWORD_COLUMN_MAPPINGS = {
     'traffic': ['Traffic'],
     
     # 关键词列名
-    'keyword': ['Keyword', 'Keywords'],
+    'keyword': ['Keyword', 'Keywords', '关键词'],
     
     # 品牌列名
     'brand': ['Brand'],
@@ -35,7 +35,7 @@ KEYWORD_COLUMN_MAPPINGS = {
     'cpc': ['CPC', 'CPC (USD)', 'Cost Per Click', '点击成本', 'Cost', 'Avg CPC', 'Average CPC'],
     
     # 搜索量列名（独立于traffic，用于特定场景）
-    'search_volume': ['Search Volume', 'Volume', 'Monthly Searches', '搜索量', 'Searches'],
+    'search_volume': ['Search Volume', 'Volume', 'Monthly Searches', '搜索量', 'Searches', 'QPM'],
     
     # 点击率列名
     'ctr': ['CTR', 'Click Through Rate', '点击率', 'Click Rate'],
