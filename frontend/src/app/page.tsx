@@ -3,7 +3,7 @@
 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { FileText, Globe, Search, BarChart2, Database, Code2 } from "lucide-react";
+import { FileText, Globe, Search, BarChart2, Database, Code2, Layers } from "lucide-react";
 import Link from "next/link";
 
 export default function HomePage() {
@@ -14,6 +14,13 @@ export default function HomePage() {
       icon: <FileText className="h-10 w-10 text-primary" />,
       href: "/keyword",
       color: "bg-blue-50"
+    },
+    {
+      title: "关键词库",
+      description: "构建和管理关键词库，分析关键词组关系，处理重复关键词并创建关键词族。",
+      icon: <Layers className="h-10 w-10 text-primary" />,
+      href: "/keystore",
+      color: "bg-indigo-50"
     },
     {
       title: "外链分析",
@@ -57,7 +64,7 @@ export default function HomePage() {
       <div className="text-center py-12">
         <h1 className="text-4xl font-bold tracking-tight text-foreground mb-4">数据分析工具</h1>
         <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-          针对SEMRush导出数据衍生的一站式解决方案，帮助您交叉/合并分析导出后的关键词、外链、SEO和网站结构数据，同时支持虚拟订单数据生成与分析和结构化数据生成
+          针对SEMRush导出数据衍生的一站式解决方案，帮助您交叉/合并分析导出后的关键词、外链、SEO和网站结构数据，同时支持虚拟订单数据生成与分析、关键词库管理和结构化数据生成
         </p>
       </div>
 
