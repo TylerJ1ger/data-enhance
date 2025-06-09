@@ -85,31 +85,31 @@ export function KeystoreStats({
         <StatCard
           icon={<FileText className="h-5 w-5" />}
           title="总关键词数"
-          value={summary.total_keywords}
-          description={`唯一关键词: ${summary.unique_keywords}`}
+          value={summary.total_keywords || 0}
+          description={`唯一关键词: ${summary.unique_keywords || 0}`}
         />
         
         <StatCard
           icon={<Users className="h-5 w-5" />}
           title="关键词组数"
-          value={summary.total_groups}
-          description={`关键词族: ${summary.total_clusters}`}
+          value={summary.total_groups || 0}
+          description={`关键词族: ${summary.total_clusters || 0}`}
         />
         
         <StatCard
           icon={<TrendingUp className="h-5 w-5" />}
           title="总搜索量"
-          value={summary.total_qpm.toLocaleString()}
-          description={`平均难度: ${summary.avg_diff.toFixed(1)}`}
+          value={summary.total_qpm?.toLocaleString() || '0'}
+          description={`平均难度: ${(summary.avg_diff || 0).toFixed(1)}`}
         />
         
         <StatCard
           icon={<AlertTriangle className="h-5 w-5" />}
           title="重复关键词"
-          value={summary.duplicate_keywords_count}
+          value={summary.duplicate_keywords_count || 0}
           description="需要处理的重复项"
-          badgeText={summary.duplicate_keywords_count > 0 ? "需关注" : "无重复"}
-          badgeVariant={summary.duplicate_keywords_count > 0 ? "destructive" : "secondary"}
+          badgeText={(summary.duplicate_keywords_count || 0) > 0 ? "需关注" : "无重复"}
+          badgeVariant={(summary.duplicate_keywords_count || 0) > 0 ? "destructive" : "secondary"}
         />
       </div>
 
@@ -128,10 +128,10 @@ export function KeystoreStats({
                     <div>
                       <div className="font-medium text-sm">{file.filename}</div>
                       <div className="text-xs text-muted-foreground">
-                        {file.rows} 行 • {file.keywords} 关键词 • {file.groups} 组
+                        {file.rows || 0} 行 • {file.keywords || 0} 关键词 • {file.groups || 0} 组
                       </div>
                     </div>
-                    <Badge variant="outline">{file.keywords}</Badge>
+                    <Badge variant="outline">{file.keywords || 0}</Badge>
                   </div>
                 ))}
               </div>
@@ -151,7 +151,7 @@ export function KeystoreStats({
                   <div className="flex-1">
                     <div className="font-medium text-sm">{group.group_name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {group.keyword_count} 关键词 • 难度: {group.avg_diff.toFixed(1)}
+                      {group.keyword_count || 0} 关键词 • 难度: {(group.avg_diff || 0).toFixed(1)}
                       {group.cluster_name && (
                         <span className="ml-2">
                           <Badge variant="outline" className="text-xs">
@@ -162,7 +162,7 @@ export function KeystoreStats({
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-medium text-sm">{group.total_qpm.toLocaleString()}</div>
+                    <div className="font-medium text-sm">{(group.total_qpm || 0).toLocaleString()}</div>
                     <div className="text-xs text-muted-foreground">QPM</div>
                   </div>
                 </div>

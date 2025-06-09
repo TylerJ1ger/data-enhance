@@ -67,12 +67,12 @@ export interface KeystoreUploadResponse {
 // 关键词库摘要
 export interface KeystoreSummary {
   total_keywords: number;
-  unique_keywords: number;
+  unique_keywords?: number;
   total_groups: number;
   total_clusters: number;
   duplicate_keywords_count: number;
   total_qpm: number;
-  avg_diff: number;
+  avg_diff?: number;
 }
 
 // 组概览
@@ -81,7 +81,7 @@ export interface GroupOverview {
   cluster_name?: string;
   keyword_count: number;
   total_qpm: number;
-  avg_diff: number;
+  avg_diff?: number;
 }
 
 // 可视化数据

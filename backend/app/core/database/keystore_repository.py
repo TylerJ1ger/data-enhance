@@ -212,6 +212,8 @@ class KeystoreRepository:
     
     def get_group_info(self, group_name: str) -> Dict[str, Any]:
         """Get group statistics and information"""
+        import math
+        
         try:
             # Get keyword IDs in group
             keyword_ids = self.get_group_keywords(group_name)
@@ -239,20 +241,45 @@ class KeystoreRepository:
                     keywords_data.append(keyword_data['Keywords'])
                     qpm = float(keyword_data.get('QPM', 0))
                     diff = float(keyword_data.get('DIFF', 0))
+                    
+                    # 处理无效的浮点数
+                    if math.isnan(qpm) or math.isinf(qpm):
+                        qpm = 0.0
+                    if math.isnan(diff) or math.isinf(diff):
+                        diff = 0.0
+                    
                     total_qpm += qpm
                     total_diff += diff
                     qpm_values.append(qpm)
             
             count = len(keywords_data)
             
+            # 确保所有计算结果都是有效的浮点数
+            avg_qpm = total_qpm / count if count > 0 else 0.0
+            avg_diff = total_diff / count if count > 0 else 0.0
+            max_qpm = max(qpm_values) if qpm_values else 0.0
+            min_qpm = min(qpm_values) if qpm_values else 0.0
+            
+            # 最后检查所有值
+            if math.isnan(avg_qpm) or math.isinf(avg_qpm):
+                avg_qpm = 0.0
+            if math.isnan(avg_diff) or math.isinf(avg_diff):
+                avg_diff = 0.0
+            if math.isnan(max_qpm) or math.isinf(max_qpm):
+                max_qpm = 0.0
+            if math.isnan(min_qpm) or math.isinf(min_qpm):
+                min_qpm = 0.0
+            if math.isnan(total_qpm) or math.isinf(total_qpm):
+                total_qpm = 0.0
+            
             return {
                 'keywords': keywords_data,
                 'keyword_count': count,
                 'total_qpm': total_qpm,
-                'avg_qpm': total_qpm / count if count > 0 else 0.0,
-                'avg_diff': total_diff / count if count > 0 else 0.0,
-                'max_qpm': max(qpm_values) if qpm_values else 0.0,
-                'min_qpm': min(qpm_values) if qpm_values else 0.0
+                'avg_qpm': avg_qpm,
+                'avg_diff': avg_diff,
+                'max_qpm': max_qpm,
+                'min_qpm': min_qpm
             }
             
         except Exception as e:
@@ -529,6 +556,8 @@ class KeystoreRepository:
     
     def get_global_stats(self) -> Dict[str, Any]:
         """Get global statistics"""
+        import math
+        
         try:
             total_keywords = self.redis.scard(self._make_key("keywords"))
             total_groups = self.redis.scard(self._make_key("groups"))
@@ -543,9 +572,22 @@ class KeystoreRepository:
                     keyword_id = keyword_id.decode('utf-8')
                 keyword_data = self.get_keyword(keyword_id)
                 if keyword_data:
-                    total_qpm += float(keyword_data.get('QPM', 0))
+                    qpm = float(keyword_data.get('QPM', 0))
+                    # 处理无效的浮点数
+                    if math.isnan(qpm) or math.isinf(qpm):
+                        qpm = 0.0
+                    total_qpm += qpm
             
             duplicates = self.get_duplicate_keywords()
+            
+            # 计算平均QPM
+            avg_qpm_per_keyword = total_qpm / total_keywords if total_keywords > 0 else 0.0
+            
+            # 确保所有浮点数都是有效的
+            if math.isnan(total_qpm) or math.isinf(total_qpm):
+                total_qpm = 0.0
+            if math.isnan(avg_qpm_per_keyword) or math.isinf(avg_qpm_per_keyword):
+                avg_qpm_per_keyword = 0.0
             
             return {
                 "total_keywords": total_keywords,
@@ -553,7 +595,7 @@ class KeystoreRepository:
                 "total_clusters": total_clusters,
                 "total_qpm": total_qpm,
                 "duplicate_keywords": len(duplicates),
-                "avg_qpm_per_keyword": total_qpm / total_keywords if total_keywords > 0 else 0.0,
+                "avg_qpm_per_keyword": avg_qpm_per_keyword,
                 "last_updated": datetime.now().isoformat()
             }
             

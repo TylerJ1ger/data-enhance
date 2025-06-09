@@ -117,12 +117,12 @@ KEYSTORE_REDIS_CONFIG = {
     "host": REDIS_HOST,
     "port": REDIS_PORT,
     "db": REDIS_DB,
-    "password": REDIS_PASSWORD,
+    "password": REDIS_PASSWORD if REDIS_PASSWORD else None,
     "max_connections": REDIS_MAX_CONNECTIONS,
     "retry_on_timeout": REDIS_RETRY_ON_TIMEOUT,
     "health_check_interval": REDIS_HEALTH_CHECK_INTERVAL,
-    "key_prefix": "keystore:",
-    "key_expiry": int(os.getenv("KEYSTORE_KEY_EXPIRY", 86400))  # 24 hours default
+    "key_prefix": os.getenv("KEYSTORE_REDIS_KEY_PREFIX", "keystore:"),
+    "key_expiry": int(os.getenv("KEYSTORE_REDIS_KEY_EXPIRY", 86400))  # 24 hours default
 }
 
 # =====================================

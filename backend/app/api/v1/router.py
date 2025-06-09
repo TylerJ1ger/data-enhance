@@ -421,9 +421,26 @@ async def get_keystore_summary():
 async def get_keystore_groups_data():
     """获取所有关键词组数据"""
     groups_data = keystore_processor.get_groups_data()
+    
+    # Apply additional float validation to ensure JSON compliance
+    def validate_floats(obj):
+        import math
+        if isinstance(obj, dict):
+            return {k: validate_floats(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [validate_floats(item) for item in obj]
+        elif isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return 0.0
+            return obj
+        else:
+            return obj
+    
+    validated_groups_data = validate_floats(groups_data)
+    
     return {
         "success": True,
-        "groups": groups_data
+        "groups": validated_groups_data
     }
 
 @router.get("/keystore/clusters", tags=["Keystore"])

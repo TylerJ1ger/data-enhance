@@ -31,7 +31,9 @@ class KeystoreProcessorRedis:
         self._file_stats = []
     
     def _convert_to_python_types(self, obj: Any) -> Any:
-        """将numpy和pandas类型转换为Python原生类型"""
+        """将numpy和pandas类型转换为Python原生类型，并处理无效的浮点数"""
+        import math
+        
         if isinstance(obj, np.ndarray):
             return obj.tolist()
         elif isinstance(obj, pd.Series):
@@ -45,7 +47,16 @@ class KeystoreProcessorRedis:
         elif isinstance(obj, (np.integer, np.int64, np.int32)):
             return int(obj)
         elif isinstance(obj, (np.floating, np.float64, np.float32)):
-            return float(obj)
+            val = float(obj)
+            # 检查并处理无效的浮点数
+            if math.isnan(val) or math.isinf(val):
+                return 0.0
+            return val
+        elif isinstance(obj, float):
+            # 检查并处理无效的浮点数
+            if math.isnan(obj) or math.isinf(obj):
+                return 0.0
+            return obj
         else:
             return obj
     
@@ -122,6 +133,8 @@ class KeystoreProcessorRedis:
     
     def _clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """清理和标准化单个数据框"""
+        import math
+        
         # 移除空行
         df = df.dropna(subset=['Keywords', 'group_name_map'])
         
@@ -133,9 +146,17 @@ class KeystoreProcessorRedis:
         df['Keywords'] = df['Keywords'].astype(str).str.strip().str.lower()
         df['group_name_map'] = df['group_name_map'].astype(str).str.strip()
         
-        # 转换数值列
+        # 转换数值列并处理无效值
         df['QPM'] = pd.to_numeric(df['QPM'], errors='coerce').fillna(0)
         df['DIFF'] = pd.to_numeric(df['DIFF'], errors='coerce').fillna(0)
+        
+        # 处理无限大和NaN值
+        df['QPM'] = df['QPM'].replace([np.inf, -np.inf], 0)
+        df['DIFF'] = df['DIFF'].replace([np.inf, -np.inf], 0)
+        
+        # 确保没有NaN值
+        df['QPM'] = df['QPM'].fillna(0)
+        df['DIFF'] = df['DIFF'].fillna(0)
         
         # 移除重复的关键词（保留QPM最高的）
         df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
@@ -180,25 +201,56 @@ class KeystoreProcessorRedis:
     
     def get_summary(self) -> Dict[str, Any]:
         """获取关键词库摘要"""
+        import math
+        
         try:
             stats = self.repository.get_global_stats()
+            duplicates = self.repository.get_duplicate_keywords()
+            
+            # 计算平均难度
+            avg_diff = 0.0
+            total_keywords = stats.get("total_keywords", 0)
+            if total_keywords > 0:
+                total_diff = 0.0
+                keyword_ids = self.repository.redis.smembers(self.repository._make_key("keywords"))
+                valid_count = 0
+                
+                for keyword_id in keyword_ids:
+                    if isinstance(keyword_id, bytes):
+                        keyword_id = keyword_id.decode('utf-8')
+                    keyword_data = self.repository.get_keyword(keyword_id)
+                    if keyword_data:
+                        diff = float(keyword_data.get('DIFF', 0))
+                        if not (math.isnan(diff) or math.isinf(diff)):
+                            total_diff += diff
+                            valid_count += 1
+                
+                if valid_count > 0:
+                    avg_diff = total_diff / valid_count
+            
             return {
-                "total_keywords": stats.get("total_keywords", 0),
+                "total_keywords": total_keywords,
+                "unique_keywords": total_keywords,  # 在这个上下文中，所有关键词都是唯一的
                 "total_groups": stats.get("total_groups", 0),
                 "total_clusters": stats.get("total_clusters", 0),
                 "duplicate_keywords": stats.get("duplicate_keywords", 0),
+                "duplicate_keywords_count": len(duplicates),
                 "total_qpm": stats.get("total_qpm", 0.0),
-                "avg_qpm_per_keyword": stats.get("avg_qpm_per_keyword", 0.0)
+                "avg_qpm_per_keyword": stats.get("avg_qpm_per_keyword", 0.0),
+                "avg_diff": avg_diff
             }
         except Exception as e:
             logger.error(f"获取摘要数据时出错: {str(e)}")
             return {
                 "total_keywords": 0,
+                "unique_keywords": 0,
                 "total_groups": 0,
                 "total_clusters": 0,
                 "duplicate_keywords": 0,
+                "duplicate_keywords_count": 0,
                 "total_qpm": 0.0,
-                "avg_qpm_per_keyword": 0.0
+                "avg_qpm_per_keyword": 0.0,
+                "avg_diff": 0.0
             }
     
     def get_groups_overview(self) -> List[Dict[str, Any]]:
@@ -213,7 +265,8 @@ class KeystoreProcessorRedis:
                     "group_name": group_name,
                     "keyword_count": group_info.get("keyword_count", 0),
                     "total_qpm": group_info.get("total_qpm", 0.0),
-                    "avg_qpm": group_info.get("avg_qpm", 0.0)
+                    "avg_qpm": group_info.get("avg_qpm", 0.0),
+                    "avg_diff": group_info.get("avg_diff", 0.0)
                 })
             
             # 按关键词数量排序
