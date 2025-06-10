@@ -449,25 +449,34 @@ class KeystoreRepository:
         """Get keywords that appear in multiple groups"""
         try:
             duplicates = {}
+            keyword_groups_map = {}  # keyword_text -> [group1, group2, ...]
             
-            # Get all keyword-group mappings
-            pattern = self._make_key("keyword_groups:*")
+            # 遍历所有关键词键，构建关键词到组的映射
+            pattern = self._make_key("kw:*")
             keys = self.redis.keys(pattern)
             
             for key in keys:
-                if isinstance(key, bytes):
-                    key = key.decode('utf-8')
-                
-                # Extract keyword from key
-                keyword = key.replace(self.redis_manager.key_prefix + "keyword_groups:", "")
-                
-                # Get groups containing this keyword
-                groups = self.redis.smembers(key)
-                groups = {g.decode('utf-8') if isinstance(g, bytes) else g for g in groups}
-                
-                # Only include if keyword appears in multiple groups
+                try:
+                    # 获取关键词数据
+                    data = self.redis.hgetall(key)
+                    if data:
+                        # 解码关键词文本和组名
+                        keyword_text = data.get(b'Keywords', b'').decode('utf-8').strip('"').lower()
+                        group_name = data.get(b'group_name_map', b'').decode('utf-8').strip('"')
+                        
+                        if keyword_text and group_name:
+                            if keyword_text not in keyword_groups_map:
+                                keyword_groups_map[keyword_text] = []
+                            if group_name not in keyword_groups_map[keyword_text]:
+                                keyword_groups_map[keyword_text].append(group_name)
+                except Exception as e:
+                    logger.warning(f"Failed to process key {key}: {str(e)}")
+                    continue
+            
+            # 找出出现在多个组中的关键词
+            for keyword_text, groups in keyword_groups_map.items():
                 if len(groups) > 1:
-                    duplicates[keyword] = list(groups)
+                    duplicates[keyword_text] = groups
             
             return duplicates
             
@@ -477,35 +486,46 @@ class KeystoreRepository:
     
     def get_duplicate_keywords_analysis(self) -> Dict[str, Any]:
         """Get detailed analysis of duplicate keywords"""
+        import math
+        
         try:
             duplicates = self.get_duplicate_keywords()
             duplicate_details = []
             
-            for keyword, groups in duplicates.items():
+            for keyword_text, groups in duplicates.items():
                 keyword_data = []
                 total_qpm = 0.0
                 
                 for group_name in groups:
-                    # Find keyword data in this group
-                    group_keywords = self.get_group_keywords(group_name)
+                    # 在该组中查找匹配的关键词
+                    group_uids = self.get_group_keywords(group_name)
                     
-                    for keyword_id in group_keywords:
-                        kdata = self.get_keyword(keyword_id)
-                        if kdata and kdata['Keywords'] == keyword:
-                            qpm = float(kdata.get('QPM', 0))
-                            diff = float(kdata.get('DIFF', 0))
-                            
-                            keyword_data.append({
-                                "group": group_name,
-                                "qpm": qpm,
-                                "diff": diff
-                            })
-                            total_qpm += qpm
-                            break
+                    for uid in group_uids:
+                        kdata = self.get_keyword_by_uid(uid)
+                        if kdata:
+                            stored_keyword = kdata.get('Keywords', '').lower()
+                            if stored_keyword == keyword_text:
+                                qpm = float(kdata.get('QPM', 0))
+                                diff = float(kdata.get('DIFF', 0))
+                                
+                                # 处理无效的浮点数
+                                if math.isnan(qpm) or math.isinf(qpm):
+                                    qpm = 0.0
+                                if math.isnan(diff) or math.isinf(diff):
+                                    diff = 0.0
+                                
+                                keyword_data.append({
+                                    "group": group_name,
+                                    "qpm": qpm,
+                                    "diff": diff,
+                                    "uid": uid
+                                })
+                                total_qpm += qpm
+                                break
                 
                 if keyword_data:
                     duplicate_details.append({
-                        "keyword": keyword,
+                        "keyword": keyword_text,
                         "groups": keyword_data,
                         "group_count": len(keyword_data),
                         "total_qpm": total_qpm
