@@ -482,6 +482,16 @@ async def get_keystore_clusters_data():
         "clusters": clusters_data
     }
 
+@router.get("/keystore/files", tags=["Keystore"])
+async def get_keystore_files_data():
+    """获取所有导入文件的统计信息"""
+    files_data = keystore_processor.get_files_data()
+    return {
+        "success": True,
+        "files": files_data,
+        "total_files": len(files_data)
+    }
+
 @router.get("/keystore/visualization", tags=["Keystore"])
 async def get_keystore_groups_visualization():
     """获取关键词组可视化数据"""

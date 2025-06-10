@@ -136,23 +136,30 @@ class KeystoreProcessorRedis:
                     parsing_error=str(e)
                 )
         
-        # 合并所有数据并存储到Redis
+        # 清空现有数据
         if dataframes:
-            merged_df = pd.concat(dataframes, ignore_index=True)
-            merged_df = self._clean_merged_data(merged_df)
-            
-            # 清空现有数据
             self.repository.clear_all_data()
             
-            # 批量存储到Redis（使用UID方式）
-            keywords_data = merged_df.to_dict('records')
+            # 逐个文件处理并存储到Redis，保持文件来源信息
+            total_keywords_created = 0
             
-            # 从第一个文件名中提取文件名作为源文件记录
-            source_filename = file_stats[0]["filename"] if file_stats else ""
+            for i, (df, file_stat) in enumerate(zip(dataframes, file_stats)):
+                # 清理单个文件的数据
+                df_cleaned = self._clean_merged_data(df)
+                
+                # 转换为字典格式
+                keywords_data = df_cleaned.to_dict('records')
+                
+                # 使用具体的文件名存储关键词
+                keyword_uids = self.repository.bulk_create_keywords_with_uids(
+                    keywords_data, 
+                    file_stat["filename"]
+                )
+                
+                total_keywords_created += len(keyword_uids)
+                logger.info(f"从文件 {file_stat['filename']} 存储了 {len(keyword_uids)} 个关键词到Redis")
             
-            keyword_uids = self.repository.bulk_create_keywords_with_uids(keywords_data, source_filename)
-            
-            logger.info(f"成功存储 {len(keyword_uids)} 个关键词到Redis")
+            logger.info(f"总共成功存储 {total_keywords_created} 个关键词到Redis")
             self._file_stats = file_stats
         
         result = {
@@ -409,6 +416,44 @@ class KeystoreProcessorRedis:
             
         except Exception as e:
             logger.error(f"获取族数据时出错: {str(e)}")
+            return {}
+    
+    def get_files_data(self) -> Dict[str, Any]:
+        """获取文件统计信息"""
+        import math
+        
+        try:
+            files = self.repository.get_all_files()
+            files_data = {}
+            
+            for filename in files:
+                keyword_uids = self.repository.get_file_keywords(filename)
+                
+                # 统计该文件的关键词信息
+                total_qpm = 0.0
+                total_keywords = len(keyword_uids)
+                groups_set = set()
+                
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
+                    if keyword_data:
+                        qpm = float(keyword_data.get('QPM', 0))
+                        if not (math.isnan(qpm) or math.isinf(qpm)):
+                            total_qpm += qpm
+                        groups_set.add(keyword_data.get('group_name_map', ''))
+                
+                files_data[filename] = {
+                    "filename": filename,
+                    "keyword_count": total_keywords,
+                    "total_qpm": total_qpm,
+                    "groups_count": len(groups_set),
+                    "groups": list(groups_set)
+                }
+            
+            return files_data
+            
+        except Exception as e:
+            logger.error(f"获取文件数据时出错: {str(e)}")
             return {}
     
     def get_duplicate_keywords_analysis(self) -> Dict[str, Any]:

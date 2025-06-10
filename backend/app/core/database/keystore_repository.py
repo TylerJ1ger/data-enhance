@@ -87,10 +87,10 @@ class KeystoreRepository:
             logger.error(f"Failed to create keyword: {str(e)}")
             raise
     
-    def get_keyword(self, keyword_id: str) -> Optional[Dict[str, Any]]:
-        """Get keyword data by ID"""
+    def get_keyword_by_uid(self, uid: str) -> Optional[Dict[str, Any]]:
+        """Get keyword data by UID"""
         try:
-            keyword_key = self._make_key(f"keyword:{keyword_id}")
+            keyword_key = self._make_key(f"kw:{uid}")
             data = self.redis.hgetall(keyword_key)
             
             if not data:
@@ -111,7 +111,7 @@ class KeystoreRepository:
             return result
             
         except Exception as e:
-            logger.error(f"Failed to get keyword {keyword_id}: {str(e)}")
+            logger.error(f"Failed to get keyword by UID {uid}: {str(e)}")
             return None
     
     def update_keyword(self, keyword_id: str, updates: Dict[str, Any]) -> bool:
@@ -199,9 +199,9 @@ class KeystoreRepository:
     # =====================================================
     
     def get_group_keywords(self, group_name: str) -> Set[str]:
-        """Get all keyword IDs in a group"""
+        """Get all keyword UIDs in a group"""
         try:
-            key = self._make_key(f"group:{group_name}:keywords")
+            key = self._make_key(f"group:{group_name}")
             members = self.redis.smembers(key)
             return {m.decode('utf-8') if isinstance(m, bytes) else m for m in members}
         except Exception as e:
@@ -394,6 +394,26 @@ class KeystoreRepository:
             return {m.decode('utf-8') if isinstance(m, bytes) else m for m in members}
         except Exception as e:
             logger.error(f"Failed to get all clusters: {str(e)}")
+            return set()
+    
+    def get_all_files(self) -> Set[str]:
+        """Get all imported file names"""
+        try:
+            key = self._make_key("files")
+            members = self.redis.smembers(key)
+            return {m.decode('utf-8') if isinstance(m, bytes) else m for m in members}
+        except Exception as e:
+            logger.error(f"Failed to get all files: {str(e)}")
+            return set()
+    
+    def get_file_keywords(self, filename: str) -> Set[str]:
+        """Get all keyword UIDs from a specific file"""
+        try:
+            key = self._make_key(f"file:{filename}")
+            members = self.redis.smembers(key)
+            return {m.decode('utf-8') if isinstance(m, bytes) else m for m in members}
+        except Exception as e:
+            logger.error(f"Failed to get keywords for file {filename}: {str(e)}")
             return set()
     
     def update_cluster(self, cluster_name: str, group_names: List[str]) -> bool:
