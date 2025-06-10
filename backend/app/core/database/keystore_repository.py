@@ -170,6 +170,39 @@ class KeystoreRepository:
             logger.error(f"Failed to delete keyword {keyword_id}: {str(e)}")
             return False
     
+    def delete_keyword_by_uid(self, uid: str) -> bool:
+        """Delete a keyword by UID"""
+        try:
+            # Get keyword data first
+            keyword_data = self.get_keyword_by_uid(uid)
+            if not keyword_data:
+                logger.warning(f"Keyword with UID {uid} not found")
+                return False
+            
+            keyword_text = keyword_data['Keywords']
+            group_name = keyword_data['group_name_map']
+            filename = keyword_data.get('source_file', '')
+            
+            with self.redis.pipeline() as pipe:
+                # Remove keyword hash
+                pipe.delete(self._make_key(f"kw:{uid}"))
+                
+                # Remove from group keywords set
+                pipe.srem(self._make_key(f"group:{group_name}"), uid)
+                
+                # Remove from file keywords set if filename exists
+                if filename:
+                    pipe.srem(self._make_key(f"file:{filename}"), uid)
+                
+                pipe.execute()
+            
+            logger.debug(f"Deleted keyword by UID {uid}: {keyword_text}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to delete keyword by UID {uid}: {str(e)}")
+            return False
+    
     def remove_keyword_from_group(self, keyword_text: str, group_name: str) -> bool:
         """Remove a keyword from a specific group"""
         try:
