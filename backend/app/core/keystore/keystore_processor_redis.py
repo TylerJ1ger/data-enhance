@@ -569,23 +569,46 @@ class KeystoreProcessorRedis:
     # =====================================================
     
     def remove_keyword_from_group(self, keyword: str, group: str) -> Dict[str, Any]:
-        """从组中删除关键词（使用UID方式）"""
+        """从组中删除关键词（使用UID方式，幂等操作）"""
         try:
             # 生成UID来查找关键词
             uid = self.generate_keyword_uid(keyword, group, "")
+            
+            # 检查关键词是否存在
+            keyword_data = self.repository.get_keyword_by_uid(uid)
+            
+            if not keyword_data:
+                # 关键词不存在，但这不是错误（幂等操作）
+                logger.info(f"关键词 '{keyword}' 在组 '{group}' 中不存在，可能已被删除")
+                return {
+                    "success": True,
+                    "message": f"关键词 '{keyword}' 已从组 '{group}' 中删除（或已不存在）"
+                }
+            
+            # 执行删除操作
             success = self.repository.delete_keyword_by_uid(uid)
             
             if success:
+                logger.info(f"成功删除关键词 '{keyword}' 从组 '{group}'")
                 return {
                     "success": True,
                     "message": f"关键词 '{keyword}' 已从组 '{group}' 中删除"
                 }
             else:
-                raise DataProcessingException(f"关键词 '{keyword}' 不存在于组 '{group}' 中")
+                # 删除失败，但我们已经检查过存在性，所以这可能是并发删除
+                logger.warning(f"删除关键词 '{keyword}' 时失败，可能已被并发删除")
+                return {
+                    "success": True,
+                    "message": f"关键词 '{keyword}' 已从组 '{group}' 中删除（可能已被并发删除）"
+                }
                 
         except Exception as e:
-            logger.error(f"删除关键词时出错: {str(e)}")
-            raise DataProcessingException(str(e))
+            logger.error(f"删除关键词时出现意外错误: {str(e)}")
+            # 不抛出异常，返回错误信息但保持操作的幂等性
+            return {
+                "success": False,
+                "message": f"删除关键词 '{keyword}' 时出现错误: {str(e)}"
+            }
     
     def move_keyword_to_group(self, keyword: str, source_group: str, target_group: str) -> Dict[str, Any]:
         """将关键词从一个组移动到另一个组（使用UID方式）"""

@@ -171,32 +171,52 @@ class KeystoreRepository:
             return False
     
     def delete_keyword_by_uid(self, uid: str) -> bool:
-        """Delete a keyword by UID"""
+        """Delete a keyword by UID with complete cleanup"""
         try:
             # Get keyword data first
             keyword_data = self.get_keyword_by_uid(uid)
             if not keyword_data:
                 logger.warning(f"Keyword with UID {uid} not found")
-                return False
+                return True  # 幂等操作：如果关键词不存在，认为删除成功
             
             keyword_text = keyword_data['Keywords']
             group_name = keyword_data['group_name_map']
             filename = keyword_data.get('source_file', '')
+            cluster_name = keyword_data.get('cluster_name', '')
             
             with self.redis.pipeline() as pipe:
-                # Remove keyword hash
+                # 1. Remove keyword hash (主要数据)
                 pipe.delete(self._make_key(f"kw:{uid}"))
                 
-                # Remove from group keywords set
+                # 2. Remove from group keywords set
                 pipe.srem(self._make_key(f"group:{group_name}"), uid)
                 
-                # Remove from file keywords set if filename exists
+                # 3. Remove from file keywords set if filename exists
                 if filename:
                     pipe.srem(self._make_key(f"file:{filename}"), uid)
                 
+                # 4. Check if this was the last keyword in the group
+                # 如果组变为空，清理相关的组数据
+                remaining_keywords_in_group = self.redis.scard(self._make_key(f"group:{group_name}"))
+                if remaining_keywords_in_group <= 1:  # <= 1 because we haven't executed the removal yet
+                    # Remove empty group from groups set
+                    pipe.srem(self._make_key("groups"), group_name)
+                    
+                    # Remove group from any clusters
+                    clusters = self.get_all_clusters()
+                    for cluster in clusters:
+                        pipe.srem(self._make_key(f"cluster:{cluster}"), group_name)
+                
+                # 5. Check if this was the last keyword in the file
+                if filename:
+                    remaining_keywords_in_file = self.redis.scard(self._make_key(f"file:{filename}"))
+                    if remaining_keywords_in_file <= 1:  # <= 1 because we haven't executed the removal yet
+                        # Remove empty file from files set
+                        pipe.srem(self._make_key("files"), filename)
+                
                 pipe.execute()
             
-            logger.debug(f"Deleted keyword by UID {uid}: {keyword_text}")
+            logger.debug(f"Deleted keyword by UID {uid}: {keyword_text} from group {group_name}")
             return True
             
         except Exception as e:

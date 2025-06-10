@@ -276,10 +276,24 @@ class OfflineManager {
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify(operation.params)
+            body: JSON.stringify({
+              keyword: operation.params.keyword,
+              group: operation.params.group
+            })
           });
-          return response.ok;
+          
+          if (response.ok) {
+            const result = await response.json();
+            // 后端现在返回幂等操作结果，即使关键词不存在也会返回成功
+            console.log(`Offline keyword deletion executed: ${result.message}`);
+            return true;
+          } else {
+            const error = await response.json();
+            console.warn(`Offline keyword deletion failed: ${error.message}`);
+            return false;
+          }
         } catch (error) {
+          console.error(`Network error during offline keyword deletion:`, error);
           return false;
         }
 
@@ -348,7 +362,7 @@ class OfflineManager {
   /**
    * 执行离线删除关键词操作
    */
-  async deleteKeywordOffline(keyword: string, group: string): Promise<void> {
+  async deleteKeywordOffline(keyword: string, group: string, uid?: string): Promise<void> {
     if (this.isOnline()) {
       // 如果在线，直接执行
       try {
@@ -361,17 +375,24 @@ class OfflineManager {
           body: JSON.stringify({ keyword, group })
         });
         
-        if (!response.ok) {
-          throw new Error('Failed to delete keyword');
+        const result = await response.json();
+        
+        // 后端现在返回幂等操作结果，检查是否成功
+        if (!response.ok && !result.success) {
+          // 只有在明确失败时才抛出错误
+          throw new Error(`Failed to delete keyword: ${result.message || 'Unknown error'}`);
         }
+        
+        // 成功删除或关键词已不存在，都认为是成功的
+        console.log(`Keyword deletion successful: ${result.message}`);
       } catch (error) {
-        // 网络错误，添加到离线队列
-        await this.addOfflineOperation('deleteKeyword', { keyword, group });
+        // 网络错误或其他错误，添加到离线队列
+        await this.addOfflineOperation('deleteKeyword', { keyword, group, uid });
         throw error;
       }
     } else {
       // 离线状态，添加到队列
-      await this.addOfflineOperation('deleteKeyword', { keyword, group });
+      await this.addOfflineOperation('deleteKeyword', { keyword, group, uid });
     }
   }
 

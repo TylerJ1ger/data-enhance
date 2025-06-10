@@ -334,11 +334,36 @@ class DataSyncService {
 
         case 'delete':
           if (operation.table === 'keywords') {
-            const response = await keystoreApi.post('/keywords/remove', {
-              keyword: operation.data.keyword,
-              group: operation.data.group
-            });
-            return response.data.success;
+            try {
+              const response = await keystoreApi.post('/keywords/remove', {
+                keyword: operation.data.keyword,
+                group: operation.data.group
+              });
+              
+              // 后端现在返回幂等操作结果，即使关键词不存在也会返回成功
+              if (response.data.success) {
+                // 同时从本地IndexedDB删除
+                if (operation.data.uid) {
+                  await indexedDBManager.deleteKeyword(operation.data.uid);
+                }
+                console.log(`Successfully deleted keyword: ${operation.data.keyword} from group: ${operation.data.group}`);
+                return true;
+              } else {
+                console.warn(`Backend deletion failed for keyword: ${operation.data.keyword}, but continuing as it might be idempotent`);
+                return response.data.success !== false; // 如果后端明确返回false才认为失败
+              }
+            } catch (error) {
+              console.error(`Failed to delete keyword ${operation.data.keyword}:`, error);
+              // 检查是否是幂等操作相关的错误（如关键词已不存在）
+              if (error.response?.status === 404 || error.response?.data?.message?.includes('不存在')) {
+                console.log(`Keyword ${operation.data.keyword} already deleted, treating as success`);
+                if (operation.data.uid) {
+                  await indexedDBManager.deleteKeyword(operation.data.uid);
+                }
+                return true;
+              }
+              return false;
+            }
           }
           break;
       }
@@ -401,8 +426,8 @@ class DataSyncService {
     // 1. 从本地IndexedDB删除
     await indexedDBManager.deleteKeyword(uid);
     
-    // 2. 添加到待同步队列
-    await this.addLocalOperation('delete', 'keywords', { keyword, group });
+    // 2. 添加到待同步队列，包含UID信息
+    await this.addLocalOperation('delete', 'keywords', { uid, keyword, group });
   }
 
   /**
