@@ -17,6 +17,7 @@ import { KeystoreVisualization } from "@/components/keystore/keystore-visualizat
 import { KeystoreGroupsManager } from "@/components/keystore/keystore-groups-manager";
 import { KeystoreClustersManager } from "@/components/keystore/keystore-clusters-manager";
 import { KeystoreDuplicatesManager } from "@/components/keystore/keystore-duplicates-manager";
+import { SyncStatusIndicator } from "@/components/sync/sync-status-indicator";
 
 import { useKeystoreApi } from "@/hooks/use-keystore-api";
 import { toast } from 'react-toastify';
@@ -151,7 +152,7 @@ export default function KeystorePage() {
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start">
         <div>
           <h1 className="text-3xl font-bold text-foreground flex items-center gap-2">
             <Database className="h-8 w-8" />
@@ -161,22 +162,29 @@ export default function KeystorePage() {
             构建和管理您的关键词库，分析关键词组关系和重复情况
           </p>
         </div>
-        {/* API版本指示 */}
-        <div className="flex items-center gap-2">
-          {hasData && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRefreshAll}
-              disabled={isAnyLoading}
-              className="gap-1"
-            >
-              <RefreshCw className={`h-4 w-4 ${isAnyLoading ? 'animate-spin' : ''}`} />
-              刷新
-            </Button>
-          )}
-          <div className="text-sm text-muted-foreground bg-primary/10 px-2 py-1 rounded">
-            API v1
+        
+        {/* 右侧控制区域 */}
+        <div className="flex flex-col items-end gap-3">
+          {/* 同步状态指示器 */}
+          <SyncStatusIndicator showDetails={false} />
+          
+          {/* API版本指示和操作按钮 */}
+          <div className="flex items-center gap-2">
+            {hasData && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleRefreshAll}
+                disabled={isAnyLoading}
+                className="gap-1"
+              >
+                <RefreshCw className={`h-4 w-4 ${isAnyLoading ? 'animate-spin' : ''}`} />
+                刷新
+              </Button>
+            )}
+            <div className="text-sm text-muted-foreground bg-primary/10 px-2 py-1 rounded">
+              API v1
+            </div>
           </div>
         </div>
       </div>
