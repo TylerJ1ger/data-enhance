@@ -7,10 +7,12 @@ import os
 import pandas as pd
 import tempfile
 import numpy as np
+import hashlib
 from typing import List, Dict, Any, Tuple, Optional, Set
 from fastapi import UploadFile
 import logging
 from collections import defaultdict
+from datetime import datetime
 
 from app.shared.utils.data_utils import read_file, get_dataframe_stats
 from app.shared.exceptions.custom_exceptions import (
@@ -29,6 +31,33 @@ class KeystoreProcessorRedis:
         self.redis_manager = get_redis_manager()
         self.repository = KeystoreRepository(self.redis_manager)
         self._file_stats = []
+    
+    @staticmethod
+    def generate_keyword_uid(keyword: str, group: str, cluster: str = "") -> str:
+        """
+        生成基于关键词内容的确定性UID
+        
+        Args:
+            keyword: 关键词文本
+            group: 关键词组
+            cluster: 关键词族（可选）
+            
+        Returns:
+            str: 确定性的UID，格式为 kw_<hash前8位>
+        """
+        # 标准化输入
+        keyword_norm = keyword.strip().lower()
+        group_norm = group.strip().lower()
+        cluster_norm = cluster.strip().lower() if cluster else ""
+        
+        # 创建唯一标识字符串
+        unique_string = f"{keyword_norm}|{group_norm}|{cluster_norm}"
+        
+        # 生成SHA256哈希并取前8位
+        hash_object = hashlib.sha256(unique_string.encode('utf-8'))
+        hash_hex = hash_object.hexdigest()[:8]
+        
+        return f"kw_{hash_hex}"
     
     def _convert_to_python_types(self, obj: Any) -> Any:
         """将numpy和pandas类型转换为Python原生类型，并处理无效的浮点数"""
@@ -115,11 +144,15 @@ class KeystoreProcessorRedis:
             # 清空现有数据
             self.repository.clear_all_data()
             
-            # 批量存储到Redis
+            # 批量存储到Redis（使用UID方式）
             keywords_data = merged_df.to_dict('records')
-            keyword_ids = self.repository.bulk_create_keywords(keywords_data)
             
-            logger.info(f"成功存储 {len(keyword_ids)} 个关键词到Redis")
+            # 从第一个文件名中提取文件名作为源文件记录
+            source_filename = file_stats[0]["filename"] if file_stats else ""
+            
+            keyword_uids = self.repository.bulk_create_keywords_with_uids(keywords_data, source_filename)
+            
+            logger.info(f"成功存储 {len(keyword_uids)} 个关键词到Redis")
             self._file_stats = file_stats
         
         result = {
@@ -157,6 +190,17 @@ class KeystoreProcessorRedis:
         # 确保没有NaN值
         df['QPM'] = df['QPM'].fillna(0)
         df['DIFF'] = df['DIFF'].fillna(0)
+        
+        # 标准化 Force Group 字段
+        if 'Force Group' in df.columns:
+            df['Force Group'] = df['Force Group'].fillna(False)
+            df['Force Group'] = df['Force Group'].astype(str).str.upper().isin(['TRUE', '1', 'YES'])
+        
+        # 清理 Task Name 和 Date and time 字段中的 NaN
+        if 'Task Name' in df.columns:
+            df['Task Name'] = df['Task Name'].fillna('')
+        if 'Date and time' in df.columns:
+            df['Date and time'] = df['Date and time'].fillna('')
         
         # 移除重复的关键词（保留QPM最高的）
         df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
@@ -212,18 +256,21 @@ class KeystoreProcessorRedis:
             total_keywords = stats.get("total_keywords", 0)
             if total_keywords > 0:
                 total_diff = 0.0
-                keyword_ids = self.repository.redis.smembers(self.repository._make_key("keywords"))
+                # 获取所有组的关键词UIDs来计算平均难度
+                groups = self.repository.get_all_groups()
                 valid_count = 0
                 
-                for keyword_id in keyword_ids:
-                    if isinstance(keyword_id, bytes):
-                        keyword_id = keyword_id.decode('utf-8')
-                    keyword_data = self.repository.get_keyword(keyword_id)
-                    if keyword_data:
-                        diff = float(keyword_data.get('DIFF', 0))
-                        if not (math.isnan(diff) or math.isinf(diff)):
-                            total_diff += diff
-                            valid_count += 1
+                for group_name in groups:
+                    keyword_uids = self.repository.get_group_keywords(group_name)
+                    for uid in keyword_uids:
+                        if isinstance(uid, bytes):
+                            uid = uid.decode('utf-8')
+                        keyword_data = self.repository.get_keyword_by_uid(uid)
+                        if keyword_data:
+                            diff = float(keyword_data.get('DIFF', 0))
+                            if not (math.isnan(diff) or math.isinf(diff)):
+                                total_diff += diff
+                                valid_count += 1
                 
                 if valid_count > 0:
                     avg_diff = total_diff / valid_count
@@ -278,7 +325,7 @@ class KeystoreProcessorRedis:
             return []
     
     def get_groups_data(self) -> Dict[str, Any]:
-        """获取所有组数据"""
+        """获取所有组数据（优化版本，减少数据传输）"""
         try:
             groups = self.repository.get_all_groups()
             groups_data = {}
@@ -286,24 +333,66 @@ class KeystoreProcessorRedis:
             for group_name in groups:
                 group_info = self.repository.get_group_info(group_name)
                 
-                # 获取组中的关键词详细数据
-                keyword_ids = self.repository.get_group_keywords(group_name)
-                keywords_detail = []
+                # 只获取关键词的基本信息，避免传输大量冗余数据
+                keyword_uids = self.repository.get_group_keywords(group_name)
+                keywords_summary = []
                 
-                for keyword_id in keyword_ids:
-                    keyword_data = self.repository.get_keyword(keyword_id)
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
                     if keyword_data:
-                        keywords_detail.append(keyword_data)
+                        # 只保留前端需要的核心字段
+                        keywords_summary.append({
+                            "id": uid,  # 使用UID作为前端ID
+                            "keyword": keyword_data.get("Keywords"),  # 统一使用 keyword 字段名
+                            "qpm": keyword_data.get("QPM", 0),
+                            "diff": keyword_data.get("DIFF", 0),
+                            "group": keyword_data.get("group_name_map"),
+                            "force_group": keyword_data.get("Force Group", False)
+                        })
                 
                 groups_data[group_name] = {
                     **group_info,
-                    "data": keywords_detail
+                    "data": keywords_summary
                 }
             
             return groups_data
             
         except Exception as e:
             logger.error(f"获取组数据时出错: {str(e)}")
+            return {}
+    
+    def get_group_detail(self, group_name: str) -> Dict[str, Any]:
+        """获取单个组的详细数据（包含完整关键词信息）"""
+        try:
+            group_info = self.repository.get_group_info(group_name)
+            keyword_uids = self.repository.get_group_keywords(group_name)
+            keywords_detail = []
+            
+            for uid in keyword_uids:
+                keyword_data = self.repository.get_keyword_by_uid(uid)
+                if keyword_data:
+                    # 清理和标准化关键词数据
+                    clean_keyword = {
+                        "id": uid,  # 使用UID作为前端ID
+                        "keyword": keyword_data.get("Keywords"),
+                        "qpm": keyword_data.get("QPM", 0),
+                        "diff": keyword_data.get("DIFF", 0),
+                        "group": keyword_data.get("group_name_map"),
+                        "original_group": keyword_data.get("Group"),
+                        "force_group": keyword_data.get("Force Group", False),
+                        "task_name": keyword_data.get("Task Name"),
+                        "created_at": keyword_data.get("created_at"),
+                        "source_file": keyword_data.get("source_file")
+                    }
+                    keywords_detail.append(clean_keyword)
+            
+            return {
+                **group_info,
+                "data": keywords_detail
+            }
+            
+        except Exception as e:
+            logger.error(f"获取组详细数据时出错: {str(e)}")
             return {}
     
     def get_clusters_data(self) -> Dict[str, List[str]]:
@@ -435,9 +524,11 @@ class KeystoreProcessorRedis:
     # =====================================================
     
     def remove_keyword_from_group(self, keyword: str, group: str) -> Dict[str, Any]:
-        """从组中删除关键词"""
+        """从组中删除关键词（使用UID方式）"""
         try:
-            success = self.repository.remove_keyword_from_group(keyword, group)
+            # 生成UID来查找关键词
+            uid = self.generate_keyword_uid(keyword, group, "")
+            success = self.repository.delete_keyword_by_uid(uid)
             
             if success:
                 return {
@@ -452,47 +543,34 @@ class KeystoreProcessorRedis:
             raise DataProcessingException(str(e))
     
     def move_keyword_to_group(self, keyword: str, source_group: str, target_group: str) -> Dict[str, Any]:
-        """将关键词从一个组移动到另一个组"""
+        """将关键词从一个组移动到另一个组（使用UID方式）"""
         try:
-            # 找到源组中的关键词
-            source_keywords = self.repository.get_group_keywords(source_group)
-            keyword_id = None
+            # 生成源UID和目标UID
+            source_uid = self.generate_keyword_uid(keyword, source_group, "")
+            target_uid = self.generate_keyword_uid(keyword, target_group, "")
             
-            for kid in source_keywords:
-                kdata = self.repository.get_keyword(kid)
-                if kdata and kdata['Keywords'] == keyword:
-                    keyword_id = kid
-                    break
-            
-            if not keyword_id:
+            # 获取源关键词数据
+            keyword_data = self.repository.get_keyword_by_uid(source_uid)
+            if not keyword_data:
                 raise DataProcessingException(f"关键词 '{keyword}' 不存在于组 '{source_group}' 中")
             
-            # 更新关键词的组映射
-            success = self.repository.update_keyword(keyword_id, {
-                'group_name_map': target_group
-            })
+            # 删除源关键词
+            self.repository.delete_keyword_by_uid(source_uid)
             
-            if success:
-                # 更新Redis中的组关系
-                redis_client = self.repository.redis
-                with redis_client.pipeline() as pipe:
-                    # 从源组移除
-                    pipe.srem(self.repository._make_key(f"group:{source_group}:keywords"), keyword_id)
-                    # 添加到目标组
-                    pipe.sadd(self.repository._make_key(f"group:{target_group}:keywords"), keyword_id)
-                    # 更新关键词-组映射
-                    pipe.srem(self.repository._make_key(f"keyword_groups:{keyword}"), source_group)
-                    pipe.sadd(self.repository._make_key(f"keyword_groups:{keyword}"), target_group)
-                    # 添加目标组到组集合
-                    pipe.sadd(self.repository._make_key("groups"), target_group)
-                    pipe.execute()
-                
-                return {
-                    "success": True,
-                    "message": f"关键词 '{keyword}' 已从组 '{source_group}' 移动到组 '{target_group}'"
-                }
-            else:
-                raise DataProcessingException("移动关键词失败")
+            # 更新关键词数据中的组信息
+            keyword_data['group_name_map'] = target_group
+            keyword_data['updated_at'] = datetime.now().isoformat()
+            
+            # 获取文件名（如果存在）
+            filename = keyword_data.get('source_file', '')
+            
+            # 创建新的关键词条目
+            self.repository.create_keyword_with_uid(target_uid, keyword_data, filename)
+            
+            return {
+                "success": True,
+                "message": f"关键词 '{keyword}' 已从组 '{source_group}' 移动到组 '{target_group}'"
+            }
                 
         except Exception as e:
             logger.error(f"移动关键词时出错: {str(e)}")
@@ -579,9 +657,9 @@ class KeystoreProcessorRedis:
             groups = self.repository.get_all_groups()
             
             for group_name in groups:
-                keyword_ids = self.repository.get_group_keywords(group_name)
-                for keyword_id in keyword_ids:
-                    keyword_data = self.repository.get_keyword(keyword_id)
+                keyword_uids = self.repository.get_group_keywords(group_name)
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
                     if keyword_data:
                         # 添加族信息
                         cluster_name = self._get_cluster_for_group(group_name)

@@ -13,16 +13,14 @@ class KeystoreRepository:
     """
     Redis-based repository for keystore data management
     
-    Data Structure Design:
-    - keystore:keyword:{keyword_id} -> Hash (keyword data)
-    - keystore:group:{group_name}:info -> Hash (group statistics)
-    - keystore:group:{group_name}:keywords -> Set (keyword IDs in group)
-    - keystore:cluster:{cluster_name} -> Set (group names in cluster)
-    - keystore:keyword_groups:{keyword} -> Set (groups containing keyword)
-    - keystore:keywords -> Set (all keyword IDs)
+    New Optimized Data Structure Design:
+    - keystore:kw:{uid} -> Hash (complete keyword data with uid as key)
     - keystore:groups -> Set (all group names)
     - keystore:clusters -> Set (all cluster names)
-    - keystore:stats -> Hash (global statistics)
+    - keystore:files -> Set (all imported file names)
+    - keystore:group:{group_name} -> Set (keyword UIDs in group)
+    - keystore:cluster:{cluster_name} -> Set (group names in cluster)
+    - keystore:file:{filename} -> Set (keyword UIDs from file)
     """
     
     def __init__(self, redis_manager: RedisManager = None):
@@ -34,10 +32,10 @@ class KeystoreRepository:
         return self.redis_manager._make_key(key)
     
     # =====================================================
-    # Keyword Operations
+    # New UID-based Keyword Operations
     # =====================================================
     
-    def create_keyword(self, keyword_data: Dict[str, Any]) -> str:
+    def create_keyword_with_uid(self, uid: str, keyword_data: Dict[str, Any], filename: str = "") -> bool:
         """
         Create a new keyword entry
         
@@ -235,8 +233,8 @@ class KeystoreRepository:
             total_diff = 0.0
             qpm_values = []
             
-            for keyword_id in keyword_ids:
-                keyword_data = self.get_keyword(keyword_id)
+            for uid in keyword_ids:
+                keyword_data = self.get_keyword_by_uid(uid)
                 if keyword_data:
                     keywords_data.append(keyword_data['Keywords'])
                     qpm = float(keyword_data.get('QPM', 0))
@@ -509,42 +507,54 @@ class KeystoreRepository:
     # Bulk Operations
     # =====================================================
     
-    def bulk_create_keywords(self, keywords_data: List[Dict[str, Any]]) -> List[str]:
-        """Create multiple keywords in a batch"""
+    def bulk_create_keywords_with_uids(self, keywords_data: List[Dict[str, Any]], filename: str = "") -> List[str]:
+        """Create multiple keywords in a batch using UIDs"""
         try:
-            keyword_ids = []
+            uids = []
             
             with self.redis.pipeline() as pipe:
                 for keyword_data in keywords_data:
-                    keyword_id = str(uuid.uuid4())
                     keyword_text = keyword_data['Keywords']
                     group_name = keyword_data['group_name_map']
+                    cluster_name = keyword_data.get('cluster_name', '')
+                    
+                    # Generate deterministic UID
+                    from app.core.keystore.keystore_processor_redis import KeystoreProcessorRedis
+                    uid = KeystoreProcessorRedis.generate_keyword_uid(keyword_text, group_name, cluster_name)
                     
                     # Store keyword data
-                    keyword_key = self._make_key(f"keyword:{keyword_id}")
-                    keyword_data['id'] = keyword_id
+                    keyword_key = self._make_key(f"kw:{uid}")
+                    keyword_data['uid'] = uid
                     keyword_data['created_at'] = datetime.now().isoformat()
+                    if filename:
+                        keyword_data['source_file'] = filename
                     
                     # Store keyword hash
                     pipe.hset(keyword_key, mapping={
                         k: serialize_for_redis(v) for k, v in keyword_data.items()
                     })
                     
-                    # Add to various sets
-                    pipe.sadd(self._make_key("keywords"), keyword_id)
-                    pipe.sadd(self._make_key(f"group:{group_name}:keywords"), keyword_id)
-                    pipe.sadd(self._make_key(f"keyword_groups:{keyword_text}"), group_name)
+                    # Add to global sets
                     pipe.sadd(self._make_key("groups"), group_name)
+                    pipe.sadd(self._make_key(f"group:{group_name}"), uid)
+                    
+                    if cluster_name:
+                        pipe.sadd(self._make_key("clusters"), cluster_name)
+                        pipe.sadd(self._make_key(f"cluster:{cluster_name}"), group_name)
+                    
+                    if filename:
+                        pipe.sadd(self._make_key("files"), filename)
+                        pipe.sadd(self._make_key(f"file:{filename}"), uid)
                     
                     # Set expiry
                     pipe.expire(keyword_key, self.redis_manager.key_expiry)
                     
-                    keyword_ids.append(keyword_id)
+                    uids.append(uid)
                 
                 pipe.execute()
             
-            logger.info(f"Bulk created {len(keyword_ids)} keywords")
-            return keyword_ids
+            logger.info(f"Bulk created {len(uids)} keywords")
+            return uids
             
         except Exception as e:
             logger.error(f"Failed to bulk create keywords: {str(e)}")
@@ -559,24 +569,33 @@ class KeystoreRepository:
         import math
         
         try:
-            total_keywords = self.redis.scard(self._make_key("keywords"))
             total_groups = self.redis.scard(self._make_key("groups"))
             total_clusters = self.redis.scard(self._make_key("clusters"))
             
-            # Calculate total QPM across all keywords
+            # Calculate total keywords and QPM across all groups
+            total_keywords = 0
             total_qpm = 0.0
-            keyword_ids = self.redis.smembers(self._make_key("keywords"))
             
-            for keyword_id in keyword_ids:
-                if isinstance(keyword_id, bytes):
-                    keyword_id = keyword_id.decode('utf-8')
-                keyword_data = self.get_keyword(keyword_id)
-                if keyword_data:
-                    qpm = float(keyword_data.get('QPM', 0))
-                    # 处理无效的浮点数
-                    if math.isnan(qpm) or math.isinf(qpm):
-                        qpm = 0.0
-                    total_qpm += qpm
+            # Get all group names
+            groups = self.redis.smembers(self._make_key("groups"))
+            for group in groups:
+                if isinstance(group, bytes):
+                    group = group.decode('utf-8')
+                
+                # Get UIDs in this group
+                group_uids = self.redis.smembers(self._make_key(f"group:{group}"))
+                total_keywords += len(group_uids)
+                
+                for uid in group_uids:
+                    if isinstance(uid, bytes):
+                        uid = uid.decode('utf-8')
+                    keyword_data = self.get_keyword_by_uid(uid)
+                    if keyword_data:
+                        qpm = float(keyword_data.get('QPM', 0))
+                        # 处理无效的浮点数
+                        if math.isnan(qpm) or math.isinf(qpm):
+                            qpm = 0.0
+                        total_qpm += qpm
             
             duplicates = self.get_duplicate_keywords()
             

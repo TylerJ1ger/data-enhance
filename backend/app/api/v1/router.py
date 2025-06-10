@@ -419,7 +419,7 @@ async def get_keystore_summary():
 
 @router.get("/keystore/groups", tags=["Keystore"])
 async def get_keystore_groups_data():
-    """获取所有关键词组数据"""
+    """获取所有关键词组数据（优化版本，减少数据传输）"""
     groups_data = keystore_processor.get_groups_data()
     
     # Apply additional float validation to ensure JSON compliance
@@ -440,7 +440,37 @@ async def get_keystore_groups_data():
     
     return {
         "success": True,
-        "groups": validated_groups_data
+        "groups": validated_groups_data,
+        "total_groups": len(validated_groups_data)
+    }
+
+@router.get("/keystore/groups/{group_name}", tags=["Keystore"])
+async def get_keystore_group_detail(group_name: str):
+    """获取单个关键词组的详细数据"""
+    group_detail = keystore_processor.get_group_detail(group_name)
+    
+    if not group_detail:
+        raise HTTPException(status_code=404, detail=f"组 '{group_name}' 不存在")
+    
+    # Apply float validation
+    def validate_floats(obj):
+        import math
+        if isinstance(obj, dict):
+            return {k: validate_floats(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [validate_floats(item) for item in obj]
+        elif isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return 0.0
+            return obj
+        else:
+            return obj
+    
+    validated_group_detail = validate_floats(group_detail)
+    
+    return {
+        "success": True,
+        "group": validated_group_detail
     }
 
 @router.get("/keystore/clusters", tags=["Keystore"])

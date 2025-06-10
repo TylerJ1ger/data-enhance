@@ -1,16 +1,20 @@
 // src/types/keystore.ts
 
-// 关键词实体
+// 关键词实体（优化版本）
 export interface Keyword {
+  id: string;
   keyword: string;
-  group_name_map: string;
   qpm: number;
   diff: number;
-  group?: string;
-  force_group?: string;
-  group_name?: string;
+  group: string;
+  force_group?: boolean;
+}
+
+// 详细关键词实体（用于单个组详情）
+export interface KeywordDetail extends Keyword {
+  original_group?: string;
   task_name?: string;
-  date_time?: string;
+  created_at?: string;
 }
 
 // 关键词组信息
