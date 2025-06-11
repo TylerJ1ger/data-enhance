@@ -717,6 +717,29 @@ class KeystoreProcessorRedis:
             logger.error(f"更新族时出错: {str(e)}")
             raise DataProcessingException(str(e))
     
+    def delete_cluster(self, cluster_name: str) -> Dict[str, Any]:
+        """删除关键词族"""
+        try:
+            # 检查族是否存在
+            existing_clusters = self.repository.get_all_clusters()
+            if cluster_name not in existing_clusters:
+                raise DataProcessingException(f"族 '{cluster_name}' 不存在")
+            
+            success = self.repository.delete_cluster(cluster_name)
+            
+            if success:
+                logger.info(f"成功删除族 '{cluster_name}'")
+                return {
+                    "success": True,
+                    "message": f"族 '{cluster_name}' 删除成功"
+                }
+            else:
+                raise DataProcessingException("删除族失败")
+                
+        except Exception as e:
+            logger.error(f"删除族时出错: {str(e)}")
+            raise DataProcessingException(str(e))
+    
     def export_keystore_data(self) -> bytes:
         """导出关键词库数据"""
         try:

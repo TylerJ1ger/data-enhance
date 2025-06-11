@@ -494,6 +494,25 @@ class KeystoreRepository:
             logger.error(f"Failed to update cluster '{cluster_name}': {str(e)}")
             return False
     
+    def delete_cluster(self, cluster_name: str) -> bool:
+        """Delete a cluster"""
+        try:
+            cluster_key = self._make_key(f"cluster:{cluster_name}")
+            clusters_key = self._make_key("clusters")
+            
+            with self.redis.pipeline() as pipe:
+                # Delete cluster key and remove from clusters set
+                pipe.delete(cluster_key)
+                pipe.srem(clusters_key, cluster_name)
+                pipe.execute()
+            
+            logger.info(f"Deleted cluster '{cluster_name}'")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to delete cluster '{cluster_name}': {str(e)}")
+            return False
+    
     # =====================================================
     # Analysis Operations
     # =====================================================
