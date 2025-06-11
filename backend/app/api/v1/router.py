@@ -570,6 +570,32 @@ async def delete_keystore_cluster(cluster_name: str):
     result = keystore_processor.delete_cluster(cluster_name)
     return result
 
+@router.get("/keystore/clusters/suggestions", tags=["Keystore"])
+async def get_cluster_suggestions():
+    """
+    基于组间重复关键词分析生成族建议
+    
+    分析逻辑：
+    1. 找出所有组之间共享的关键词
+    2. 基于共享关键词的传递性建议族
+    3. 如果A组和B组有共同关键词，B组和C组有共同关键词，则建议将A、B、C放入同一族
+    
+    返回族建议列表，每个建议包含：
+    - 建议的族名称（可修改）
+    - 应该组合的组列表
+    - 共享关键词数量和示例
+    - 置信度评分
+    """
+    try:
+        result = keystore_processor.analyze_group_overlaps_for_clusters()
+        return result
+    except Exception as e:
+        logger.error(f"获取族建议时发生错误: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取族建议失败: {str(e)}"
+        )
+
 @router.get("/keystore/export", tags=["Keystore"])
 async def export_keystore_data():
     """导出关键词库数据为CSV文件，包含族信息和清理后的数据"""

@@ -173,6 +173,14 @@ export const deleteCluster = async (clusterName: string): Promise<KeystoreApiRes
 };
 
 /**
+ * 获取基于组间重复关键词的族建议
+ */
+export const getClusterSuggestions = async (): Promise<any> => {
+  const response = await keystoreApi.get<any>('/clusters/suggestions');
+  return response.data;
+};
+
+/**
  * 导出关键词库数据
  */
 export const exportKeystoreData = (): string => {

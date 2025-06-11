@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Edit, Trash2, Layers, AlertCircle, CheckCircle2, Loader2, RefreshCw, Upload, X, MoreVertical, Check, AlertTriangle } from "lucide-react";
+import { Plus, Edit, Trash2, Layers, AlertCircle, CheckCircle2, Loader2, RefreshCw, Upload, X, MoreVertical, Check, AlertTriangle, Wand2 } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useKeystoreApi } from "@/hooks/use-keystore-api";
@@ -47,7 +47,13 @@ export function KeystoreClustersManager({
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   
-  const { createCluster, updateCluster, deleteCluster, isProcessing } = useKeystoreApi();
+  // 自动创建族相关状态
+  const [isAutoCreateDialogOpen, setIsAutoCreateDialogOpen] = useState(false);
+  const [clusterSuggestions, setClusterSuggestions] = useState<any[]>([]);
+  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([]);
+  
+  const { createCluster, updateCluster, deleteCluster, getClusterSuggestions, isProcessing } = useKeystoreApi();
 
   // 同步外部数据到本地状态
   useEffect(() => {
@@ -252,6 +258,57 @@ export function KeystoreClustersManager({
     setIsCreateDialogOpen(true);
   };
 
+  // 自动创建族相关函数
+  const openAutoCreateDialog = async () => {
+    setIsAutoCreateDialogOpen(true);
+    setIsLoadingSuggestions(true);
+    setSelectedSuggestions([]);
+    
+    try {
+      const result = await getClusterSuggestions();
+      if (result.success) {
+        setClusterSuggestions(result.cluster_suggestions || []);
+      } else {
+        console.error('获取族建议失败:', result.error);
+        setClusterSuggestions([]);
+      }
+    } catch (error) {
+      console.error('获取族建议时出错:', error);
+      setClusterSuggestions([]);
+    } finally {
+      setIsLoadingSuggestions(false);
+    }
+  };
+
+  const handleSuggestionToggle = (suggestionId: string, checked: boolean) => {
+    if (checked) {
+      setSelectedSuggestions(prev => [...prev, suggestionId]);
+    } else {
+      setSelectedSuggestions(prev => prev.filter(id => id !== suggestionId));
+    }
+  };
+
+  const handleAutoCreateClusters = async () => {
+    if (selectedSuggestions.length === 0) {
+      return;
+    }
+
+    for (const suggestionId of selectedSuggestions) {
+      const suggestion = clusterSuggestions.find(s => s.suggested_cluster_name === suggestionId);
+      if (suggestion) {
+        // 添加到缓存操作中
+        addPendingAction({
+          type: 'create',
+          clusterName: suggestion.suggested_cluster_name,
+          groupNames: suggestion.groups
+        });
+      }
+    }
+
+    setIsAutoCreateDialogOpen(false);
+    setSelectedSuggestions([]);
+  };
+
   const getUnassignedGroups = () => {
     const assignedGroups = new Set<string>();
     Object.values(localClusters).forEach(groups => {
@@ -356,6 +413,15 @@ export function KeystoreClustersManager({
             <Button onClick={openCreateDialog} disabled={availableGroups.length === 0}>
               <Plus className="h-4 w-4 mr-2" />
               创建族
+            </Button>
+            <Button 
+              variant="outline" 
+              onClick={openAutoCreateDialog}
+              disabled={Object.keys(groupsData).length < 2}
+              className="gap-1"
+            >
+              <Wand2 className="h-4 w-4" />
+              自动创建
             </Button>
           </div>
         </div>
@@ -665,6 +731,127 @@ export function KeystoreClustersManager({
           </div>
         )}
         
+        {/* 自动创建族弹窗 */}
+        <Dialog open={isAutoCreateDialogOpen} onOpenChange={setIsAutoCreateDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>自动创建族建议</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {isLoadingSuggestions ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                  <span className="ml-2">正在分析组间重复关键词...</span>
+                </div>
+              ) : clusterSuggestions.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <AlertCircle className="h-10 w-10 mx-auto mb-2" />
+                  <p>未发现可以自动创建族的组合</p>
+                  <p className="text-sm">组之间需要有共同的关键词才能生成族建议</p>
+                </div>
+              ) : (
+                <>
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>
+                      系统分析了组间的重复关键词，发现 <strong>{clusterSuggestions.length}</strong> 个族建议。
+                      选择您希望创建的族，点击确认后将添加到待操作列表中。
+                    </AlertDescription>
+                  </Alert>
+                  
+                  <div className="space-y-4">
+                    {clusterSuggestions.map((suggestion, index) => (
+                      <div key={suggestion.suggested_cluster_name} className="border rounded-lg p-4 space-y-3">
+                        <div className="flex items-start space-x-3">
+                          <Checkbox
+                            id={`suggestion-${suggestion.suggested_cluster_name}`}
+                            checked={selectedSuggestions.includes(suggestion.suggested_cluster_name)}
+                            onCheckedChange={(checked) => handleSuggestionToggle(suggestion.suggested_cluster_name, !!checked)}
+                          />
+                          <div className="flex-1 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <h4 className="font-medium">{suggestion.suggested_cluster_name}</h4>
+                              <Badge variant="secondary">
+                                置信度: {Math.round(suggestion.confidence)}%
+                              </Badge>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                              <div>
+                                <span className="text-muted-foreground">包含组数:</span>
+                                <span className="ml-1 font-medium">{suggestion.group_count}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">共享关键词:</span>
+                                <span className="ml-1 font-medium">{suggestion.total_shared_keywords}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">总关键词:</span>
+                                <span className="ml-1 font-medium">{suggestion.total_keywords}</span>
+                              </div>
+                              <div>
+                                <span className="text-muted-foreground">重叠率:</span>
+                                <span className="ml-1 font-medium">
+                                  {((suggestion.total_shared_keywords / suggestion.total_keywords) * 100).toFixed(1)}%
+                                </span>
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <div className="text-sm text-muted-foreground mb-1">包含的组:</div>
+                              <div className="flex flex-wrap gap-1">
+                                {suggestion.groups.map((groupName: string) => (
+                                  <Badge key={groupName} variant="outline" className="text-xs">
+                                    {groupName}
+                                    <span className="ml-1 text-muted-foreground">
+                                      ({suggestion.group_stats.find((g: any) => g.group_name === groupName)?.keyword_count || 0})
+                                    </span>
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                            
+                            {suggestion.shared_keywords_sample.length > 0 && (
+                              <div>
+                                <div className="text-sm text-muted-foreground mb-1">
+                                  共享关键词示例 (显示前10个):
+                                </div>
+                                <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                                  {suggestion.shared_keywords_sample.join(', ')}
+                                  {suggestion.total_shared_keywords > 10 && (
+                                    <span> ... 等{suggestion.total_shared_keywords}个</span>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="flex justify-end gap-2 pt-4 border-t">
+                    <Button
+                      variant="outline"
+                      onClick={() => setIsAutoCreateDialogOpen(false)}
+                    >
+                      取消
+                    </Button>
+                    <Button
+                      onClick={handleAutoCreateClusters}
+                      disabled={selectedSuggestions.length === 0}
+                      className="gap-1"
+                    >
+                      <CheckCircle2 className="h-4 w-4" />
+                      确认创建 ({selectedSuggestions.length})
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
         {/* 推送确认弹窗 */}
         <Dialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
           <DialogContent className="max-w-2xl">

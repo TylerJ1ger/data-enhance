@@ -423,6 +423,21 @@ export function useKeystoreApi() {
     }
   }, [fetchSummary, fetchClustersData, fetchVisualizationData, triggerRerender]);
 
+  // 获取族建议
+  const getClusterSuggestions = useCallback(async () => {
+    setIsProcessing(true);
+    try {
+      const result = await keystoreApi.getClusterSuggestions();
+      return result;
+    } catch (error) {
+      console.error('获取族建议错误:', error);
+      toast.error('获取族建议失败，请重试');
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
+
   // 获取导出URL
   const getExportUrl = useCallback(() => {
     return keystoreApi.exportKeystoreData();
@@ -576,6 +591,7 @@ export function useKeystoreApi() {
     createCluster,
     updateCluster,
     deleteCluster,
+    getClusterSuggestions,
     getExportUrl,
     resetData,
     

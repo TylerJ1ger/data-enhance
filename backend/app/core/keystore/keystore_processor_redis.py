@@ -804,6 +804,167 @@ class KeystoreProcessorRedis:
             logger.error(f"重置数据时出错: {str(e)}")
             raise DataProcessingException(str(e))
     
+    def analyze_group_overlaps_for_clusters(self) -> Dict[str, Any]:
+        """
+        分析组间重复关键词并生成族建议
+        
+        逻辑：
+        1. 找出所有组之间共享的关键词
+        2. 基于共享关键词的传递性建议族
+        3. 如果A组和B组有共同关键词，B组和C组有共同关键词，则建议将A、B、C放入同一族
+        
+        Returns:
+            Dict包含族建议列表，每个建议包含应该组合的组列表和共享的关键词数量
+        """
+        try:
+            logger.info("开始分析组间重复关键词...")
+            
+            # 获取所有组及其关键词
+            groups_set = self.repository.get_all_groups()
+            groups = list(groups_set)  # 转换为列表以支持索引操作
+            if len(groups) < 2:
+                return {
+                    "success": True,
+                    "cluster_suggestions": [],
+                    "message": "至少需要2个组才能进行重叠分析"
+                }
+            
+            # 构建组-关键词映射
+            group_keywords = {}
+            for group_name in groups:
+                keyword_uids = self.repository.get_group_keywords(group_name)
+                keywords = set()
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
+                    if keyword_data and 'Keywords' in keyword_data:
+                        keywords.add(keyword_data['Keywords'].lower().strip())
+                group_keywords[group_name] = keywords
+                logger.debug(f"组 {group_name} 有 {len(keywords)} 个关键词")
+            
+            # 分析组间重叠
+            overlaps = {}
+            for i, group1 in enumerate(groups):
+                for group2 in groups[i+1:]:
+                    common_keywords = group_keywords[group1] & group_keywords[group2]
+                    if common_keywords:
+                        key = tuple(sorted([group1, group2]))
+                        overlaps[key] = {
+                            'groups': [group1, group2],
+                            'common_keywords': list(common_keywords),
+                            'common_count': len(common_keywords)
+                        }
+                        logger.debug(f"组 {group1} 和 {group2} 有 {len(common_keywords)} 个共同关键词")
+            
+            if not overlaps:
+                return {
+                    "success": True,
+                    "cluster_suggestions": [],
+                    "message": "未找到组间共享的关键词"
+                }
+            
+            # 基于传递性构建族建议
+            cluster_suggestions = []
+            processed_groups = set()
+            
+            # 使用并查集算法找到连通组件
+            def find_connected_groups(start_group, connections):
+                """使用广度优先搜索找到所有连接的组"""
+                connected = set()
+                queue = [start_group]
+                visited = set()
+                
+                while queue:
+                    current_group = queue.pop(0)
+                    if current_group in visited:
+                        continue
+                    
+                    visited.add(current_group)
+                    connected.add(current_group)
+                    
+                    # 查找与当前组连接的其他组
+                    for overlap_key, overlap_data in connections.items():
+                        groups_in_overlap = overlap_data['groups']
+                        if current_group in groups_in_overlap:
+                            # 找到另一个组
+                            other_group = groups_in_overlap[1] if groups_in_overlap[0] == current_group else groups_in_overlap[0]
+                            if other_group not in visited:
+                                queue.append(other_group)
+                
+                return connected
+            
+            for group in groups:
+                if group not in processed_groups:
+                    connected_groups = find_connected_groups(group, overlaps)
+                    
+                    if len(connected_groups) > 1:
+                        # 计算这个族建议的统计信息
+                        total_shared_keywords = set()
+                        overlap_details = []
+                        
+                        # 收集所有相关的重叠信息
+                        for overlap_key, overlap_data in overlaps.items():
+                            if all(g in connected_groups for g in overlap_data['groups']):
+                                total_shared_keywords.update(overlap_data['common_keywords'])
+                                overlap_details.append({
+                                    'groups': overlap_data['groups'],
+                                    'common_keywords': overlap_data['common_keywords'],
+                                    'common_count': overlap_data['common_count']
+                                })
+                        
+                        # 计算组的总关键词数
+                        total_keywords = 0
+                        group_stats = []
+                        for g in connected_groups:
+                            group_keyword_count = len(group_keywords[g])
+                            total_keywords += group_keyword_count
+                            group_stats.append({
+                                'group_name': g,
+                                'keyword_count': group_keyword_count
+                            })
+                        
+                        suggestion = {
+                            'suggested_cluster_name': f"cluster_{len(cluster_suggestions) + 1}",  # 默认名称，用户可修改
+                            'groups': sorted(list(connected_groups)),
+                            'group_count': len(connected_groups),
+                            'total_shared_keywords': len(total_shared_keywords),
+                            'shared_keywords_sample': list(total_shared_keywords)[:10],  # 只显示前10个作为示例
+                            'total_keywords': total_keywords,
+                            'overlap_details': overlap_details,
+                            'group_stats': group_stats,
+                            'confidence': min(100, (len(total_shared_keywords) / len(connected_groups)) * 10)  # 简单的置信度计算
+                        }
+                        
+                        cluster_suggestions.append(suggestion)
+                        processed_groups.update(connected_groups)
+            
+            # 按共享关键词数量排序建议
+            cluster_suggestions.sort(key=lambda x: x['total_shared_keywords'], reverse=True)
+            
+            logger.info(f"生成了 {len(cluster_suggestions)} 个族建议")
+            
+            return {
+                "success": True,
+                "cluster_suggestions": cluster_suggestions,
+                "total_suggestions": len(cluster_suggestions),
+                "analysis_summary": {
+                    "total_groups": len(groups),
+                    "groups_with_overlaps": len(processed_groups),
+                    "total_overlapping_pairs": len(overlaps)
+                }
+            }
+            
+        except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error(f"分析组间重叠时出错: {str(e)}")
+            logger.error(f"错误堆栈:\n{error_traceback}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_traceback": error_traceback,
+                "cluster_suggestions": []
+            }
+    
     def health_check(self) -> Dict[str, Any]:
         """健康检查"""
         try:
