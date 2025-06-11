@@ -513,7 +513,11 @@ async def get_keystore_duplicate_keywords():
 @router.post("/keystore/keywords/move", tags=["Keystore"])
 async def move_keystore_keyword(request: KeywordMoveRequest):
     """将关键词从一个组移动到另一个组"""
-    result = keystore_processor.move_keyword_to_group(
+    # 在异步上下文中执行，避免阻塞其他请求
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        keystore_processor.move_keyword_to_group,
         request.keyword,
         request.source_group,
         request.target_group
@@ -523,7 +527,11 @@ async def move_keystore_keyword(request: KeywordMoveRequest):
 @router.post("/keystore/keywords/remove", tags=["Keystore"])
 async def remove_keystore_keyword(request: KeywordRemoveRequest):
     """从组中删除关键词"""
-    result = keystore_processor.remove_keyword_from_group(
+    # 在异步上下文中执行，避免阻塞其他请求
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        keystore_processor.remove_keyword_from_group,
         request.keyword,
         request.group
     )

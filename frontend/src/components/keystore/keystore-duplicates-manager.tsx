@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, Move, Trash2, Eye } from "lucide-react";
+import { AlertTriangle, Move, Trash2, Eye, Upload, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useKeystoreApi } from "@/hooks/use-keystore-api";
@@ -34,6 +34,15 @@ interface GroupData {
   keyword_count: number;
 }
 
+interface PendingAction {
+  id: string;
+  type: 'move' | 'remove';
+  keyword: string;
+  sourceGroup: string;
+  targetGroup?: string;
+  timestamp: number;
+}
+
 interface KeystoreDuplicatesManagerProps {
   duplicatesData: DuplicatesData | null;
   groupsData: Record<string, GroupData>;
@@ -53,6 +62,11 @@ export function KeystoreDuplicatesManager({
   const [isActionDialogOpen, setIsActionDialogOpen] = useState(false);
   const [actionType, setActionType] = useState<'move' | 'remove'>('move');
   
+  // 新增：缓存操作相关状态
+  const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+  const [isPushing, setIsPushing] = useState(false);
+  
   const { moveKeyword, removeKeyword, isProcessing } = useKeystoreApi();
 
   // 简化的调试日志
@@ -66,23 +80,56 @@ export function KeystoreDuplicatesManager({
     });
   }, [duplicatesData, isLoading]);
 
+  // 新增：将操作添加到缓存
+  const addPendingAction = (action: Omit<PendingAction, 'id' | 'timestamp'>) => {
+    const newAction: PendingAction = {
+      ...action,
+      id: `${action.type}-${action.keyword}-${action.sourceGroup}-${Date.now()}`,
+      timestamp: Date.now()
+    };
+    
+    // 检查是否已存在相同的操作
+    const existingIndex = pendingActions.findIndex(
+      existing => existing.keyword === action.keyword && 
+                 existing.sourceGroup === action.sourceGroup && 
+                 existing.type === action.type
+    );
+    
+    if (existingIndex >= 0) {
+      // 更新现有操作
+      const updatedActions = [...pendingActions];
+      updatedActions[existingIndex] = newAction;
+      setPendingActions(updatedActions);
+    } else {
+      // 添加新操作
+      setPendingActions(prev => [...prev, newAction]);
+    }
+  };
+  
+  // 新增：检查操作是否已缓存
+  const isActionPending = (keyword: string, sourceGroup: string, type: 'move' | 'remove'): boolean => {
+    return pendingActions.some(
+      action => action.keyword === keyword && 
+               action.sourceGroup === sourceGroup && 
+               action.type === type
+    );
+  };
+  
   const handleMoveKeyword = async () => {
     if (!selectedKeyword || !selectedSourceGroup || !selectedTargetGroup) {
       return;
     }
 
-    try {
-      await moveKeyword({
-        keyword: selectedKeyword,
-        source_group: selectedSourceGroup,
-        target_group: selectedTargetGroup
-      });
-      
-      setIsActionDialogOpen(false);
-      resetSelection();
-    } catch (error) {
-      console.error('移动关键词失败:', error);
-    }
+    // 添加到缓存而不是立即执行
+    addPendingAction({
+      type: 'move',
+      keyword: selectedKeyword,
+      sourceGroup: selectedSourceGroup,
+      targetGroup: selectedTargetGroup
+    });
+    
+    setIsActionDialogOpen(false);
+    resetSelection();
   };
 
   const handleRemoveKeyword = async () => {
@@ -90,37 +137,87 @@ export function KeystoreDuplicatesManager({
       return;
     }
 
+    // 添加到缓存而不是立即执行
+    addPendingAction({
+      type: 'remove',
+      keyword: selectedKeyword,
+      sourceGroup: selectedSourceGroup
+    });
+    
+    setIsActionDialogOpen(false);
+    resetSelection();
+  };
+  
+  // 新增：并发执行所有缓存操作
+  const executePendingActions = async () => {
+    if (pendingActions.length === 0) return;
+    
+    setIsPushing(true);
+    const failedActionsList: PendingAction[] = [];
+    
     try {
-      console.log(`开始删除关键词 "${selectedKeyword}" 从组 "${selectedSourceGroup}"`);
+      console.log(`开始并发执行 ${pendingActions.length} 个操作...`);
       
-      const result = await removeKeyword({
-        keyword: selectedKeyword,
-        group: selectedSourceGroup
+      // 将所有操作转换为 Promise 数组，实现并发执行
+      const actionPromises = pendingActions.map(async (action) => {
+        try {
+          if (action.type === 'move') {
+            await moveKeyword({
+              keyword: action.keyword,
+              source_group: action.sourceGroup,
+              target_group: action.targetGroup!
+            });
+          } else if (action.type === 'remove') {
+            await removeKeyword({
+              keyword: action.keyword,
+              group: action.sourceGroup
+            });
+          }
+          return { success: true, action };
+        } catch (error) {
+          console.error(`执行操作失败:`, action, error);
+          return { success: false, action, error };
+        }
       });
       
-      console.log('删除关键词API结果:', result);
+      // 等待所有操作完成
+      const results = await Promise.allSettled(actionPromises);
       
-      setIsActionDialogOpen(false);
-      resetSelection();
+      // 处理结果
+      let successCount = 0;
+      results.forEach((result) => {
+        if (result.status === 'fulfilled' && result.value.success) {
+          successCount++;
+        } else {
+          // 如果 Promise 被拒绝或操作失败，添加到失败列表
+          if (result.status === 'fulfilled' && !result.value.success) {
+            failedActionsList.push(result.value.action);
+          } else if (result.status === 'rejected') {
+            console.error('Promise 执行失败:', result.reason);
+            // 如果无法确定具体的 action，我们需要从原始列表中推断
+          }
+        }
+      });
       
-      console.log(`关键词 "${selectedKeyword}" 已从组 "${selectedSourceGroup}" 删除完成`);
+      // 清除成功的操作，保留失败的操作
+      setPendingActions(failedActionsList);
       
-      // 等待一段时间确保状态已更新，然后强制触发父组件刷新
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      console.log(`并发执行完成: 成功 ${successCount} 个，失败 ${failedActionsList.length} 个`);
       
-      // 强制重新获取数据
-      if (result.success) {
-        console.log('删除成功，强制触发父组件重新渲染');
-        
-        // 通过触发一个自定义事件来强制父组件刷新
+      if (successCount > 0) {
+        // 触发数据刷新
         window.dispatchEvent(new CustomEvent('keystore-data-changed', {
-          detail: { action: 'keyword-deleted', keyword: selectedKeyword, group: selectedSourceGroup }
+          detail: { action: 'batch-operations-completed', count: successCount }
         }));
       }
       
-    } catch (error) {
-      console.error('删除关键词失败:', error);
-      // 错误处理已在 useKeystoreApi 中处理，这里不需要额外操作
+      if (failedActionsList.length > 0) {
+        console.warn(`${failedActionsList.length} 个操作执行失败`);
+      }
+      
+    } finally {
+      setIsPushing(false);
+      setIsConfirmDialogOpen(false);
     }
   };
 
@@ -210,20 +307,45 @@ export function KeystoreDuplicatesManager({
       <CardHeader>
         <div className="flex justify-between items-center">
           <CardTitle>重复关键词管理</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => {
-              console.log('手动刷新重复关键词数据');
-              window.dispatchEvent(new CustomEvent('keystore-data-changed', {
-                detail: { action: 'manual-refresh', source: 'duplicates-manager' }
-              }));
-            }}
-            className="gap-1"
-          >
-            <Eye className="h-4 w-4" />
-            刷新
-          </Button>
+          <div className="flex gap-2">
+            {pendingActions.length > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPendingActions([])}
+                  className="gap-1 text-red-600 hover:text-red-700"
+                >
+                  <X className="h-4 w-4" />
+                  取消操作 ({pendingActions.length})
+                </Button>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => setIsConfirmDialogOpen(true)}
+                  disabled={isPushing}
+                  className="gap-1 bg-blue-600 hover:bg-blue-700"
+                >
+                  <Upload className="h-4 w-4" />
+                  推送 ({pendingActions.length})
+                </Button>
+              </>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                console.log('手动刷新重复关键词数据');
+                window.dispatchEvent(new CustomEvent('keystore-data-changed', {
+                  detail: { action: 'manual-refresh', source: 'duplicates-manager' }
+                }));
+              }}
+              className="gap-1"
+            >
+              <Eye className="h-4 w-4" />
+              刷新
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent>
@@ -232,6 +354,14 @@ export function KeystoreDuplicatesManager({
           <AlertDescription>
             发现 <strong>{duplicatesData.total_duplicates}</strong> 个重复关键词。
             您可以将它们移动到其他组或从当前组中删除。
+            {pendingActions.length > 0 && (
+              <>
+                <br />
+                <span className="text-blue-600 font-medium">
+                  当前有 {pendingActions.length} 个操作待推送。
+                </span>
+              </>
+            )}
           </AlertDescription>
         </Alert>
 
@@ -283,7 +413,12 @@ export function KeystoreDuplicatesManager({
                             size="sm"
                             onClick={() => openActionDialog(duplicate.keyword, group.group, 'move')}
                             title={`从 ${group.group} 移动关键词`}
-                            className="h-8 w-8 p-0 hover:bg-blue-100 hover:text-blue-600"
+                            disabled={isActionPending(duplicate.keyword, group.group, 'move')}
+                            className={`h-8 w-8 p-0 ${
+                              isActionPending(duplicate.keyword, group.group, 'move')
+                                ? 'bg-green-100 text-green-600 cursor-not-allowed'
+                                : 'hover:bg-blue-100 hover:text-blue-600'
+                            }`}
                           >
                             <Move className="h-4 w-4" />
                           </Button>
@@ -292,7 +427,12 @@ export function KeystoreDuplicatesManager({
                             size="sm"
                             onClick={() => openActionDialog(duplicate.keyword, group.group, 'remove')}
                             title={`从 ${group.group} 删除关键词`}
-                            className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                            disabled={isActionPending(duplicate.keyword, group.group, 'remove')}
+                            className={`h-8 w-8 p-0 ${
+                              isActionPending(duplicate.keyword, group.group, 'remove')
+                                ? 'bg-green-100 text-green-600 cursor-not-allowed'
+                                : 'hover:bg-red-100 hover:text-red-600'
+                            }`}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -360,6 +500,73 @@ export function KeystoreDuplicatesManager({
                   variant={actionType === 'remove' ? 'destructive' : 'default'}
                 >
                   {isProcessing ? '处理中...' : (actionType === 'move' ? '移动' : '删除')}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+        
+        {/* 新增：推送确认弹窗 */}
+        <Dialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>确认批量操作</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 max-h-96 overflow-y-auto">
+              <Alert>
+                <AlertTriangle className="h-4 w-4" />
+                <AlertDescription>
+                  即将执行 <strong>{pendingActions.length}</strong> 个操作，请确认后继续。
+                </AlertDescription>
+              </Alert>
+              
+              <div className="space-y-3">
+                {pendingActions.map((action) => (
+                  <div key={action.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant={action.type === 'move' ? 'default' : 'destructive'}>
+                          {action.type === 'move' ? '移动' : '删除'}
+                        </Badge>
+                        <span className="font-medium">{action.keyword}</span>
+                      </div>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        从组: <span className="font-medium">{action.sourceGroup}</span>
+                        {action.type === 'move' && action.targetGroup && (
+                          <>
+                            {' '}→ 到组: <span className="font-medium">{action.targetGroup}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setPendingActions(prev => prev.filter(a => a.id !== action.id));
+                      }}
+                      className="h-8 w-8 p-0 hover:bg-red-100 hover:text-red-600"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                <Button
+                  variant="outline"
+                  onClick={() => setIsConfirmDialogOpen(false)}
+                  disabled={isPushing}
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={executePendingActions}
+                  disabled={isPushing || pendingActions.length === 0}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {isPushing ? '正在执行...' : `确认执行 (${pendingActions.length})`}
                 </Button>
               </div>
             </div>
