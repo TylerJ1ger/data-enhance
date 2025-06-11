@@ -8,7 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertTriangle, Move, Trash2, Eye, Upload, X } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { AlertTriangle, Trash2, Eye, Upload, X, MoreVertical, Check } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useKeystoreApi } from "@/hooks/use-keystore-api";
@@ -50,6 +51,7 @@ interface KeystoreDuplicatesManagerProps {
   isLoading?: boolean;
 }
 
+
 export function KeystoreDuplicatesManager({
   duplicatesData,
   groupsData,
@@ -66,6 +68,7 @@ export function KeystoreDuplicatesManager({
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
+  
   
   const { moveKeyword, removeKeyword, isProcessing } = useKeystoreApi();
 
@@ -114,6 +117,8 @@ export function KeystoreDuplicatesManager({
                action.type === type
     );
   };
+  
+  
   
   const handleMoveKeyword = async () => {
     if (!selectedKeyword || !selectedSourceGroup || !selectedTargetGroup) {
@@ -353,7 +358,7 @@ export function KeystoreDuplicatesManager({
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
             发现 <strong>{duplicatesData.total_duplicates}</strong> 个重复关键词。
-            您可以将它们移动到其他组或从当前组中删除。
+            您可以点击操作按钮选择从特定组中删除关键词。
             {pendingActions.length > 0 && (
               <>
                 <br />
@@ -373,7 +378,7 @@ export function KeystoreDuplicatesManager({
                 <TableHead className="w-[100px] text-center">出现组数</TableHead>
                 <TableHead className="w-[120px] text-right">总QPM</TableHead>
                 <TableHead className="min-w-[300px]">所在组</TableHead>
-                <TableHead className="w-[200px] text-center">操作</TableHead>
+                <TableHead className="w-[120px] text-center">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -405,39 +410,37 @@ export function KeystoreDuplicatesManager({
                     </div>
                   </TableCell>
                   <TableCell>
-                    <div className="flex flex-wrap gap-1 justify-center">
-                      {duplicate.groups.map((group: DuplicateGroup) => (
-                        <div key={group.group} className="flex gap-1">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openActionDialog(duplicate.keyword, group.group, 'move')}
-                            title={`从 ${group.group} 移动关键词`}
-                            disabled={isActionPending(duplicate.keyword, group.group, 'move')}
-                            className={`h-8 w-8 p-0 ${
-                              isActionPending(duplicate.keyword, group.group, 'move')
-                                ? 'bg-green-100 text-green-600 cursor-not-allowed'
-                                : 'hover:bg-blue-100 hover:text-blue-600'
-                            }`}
-                          >
-                            <Move className="h-4 w-4" />
+                    <div className="flex justify-center">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreVertical className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => openActionDialog(duplicate.keyword, group.group, 'remove')}
-                            title={`从 ${group.group} 删除关键词`}
-                            disabled={isActionPending(duplicate.keyword, group.group, 'remove')}
-                            className={`h-8 w-8 p-0 ${
-                              isActionPending(duplicate.keyword, group.group, 'remove')
-                                ? 'bg-green-100 text-green-600 cursor-not-allowed'
-                                : 'hover:bg-red-100 hover:text-red-600'
-                            }`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="min-w-[180px]">
+                          {duplicate.groups.map((group: DuplicateGroup) => {
+                            const hasPendingRemove = isActionPending(duplicate.keyword, group.group, 'remove');
+                            
+                            return (
+                              <DropdownMenuItem
+                                key={group.group}
+                                onClick={() => openActionDialog(duplicate.keyword, group.group, 'remove')}
+                                disabled={hasPendingRemove}
+                                className="flex items-center justify-between gap-2 px-3 py-2"
+                              >
+                                <span className="text-sm">
+                                  {group.group} <span className="text-muted-foreground">(QPM: {group.qpm})</span>
+                                </span>
+                                <div className={`flex items-center ${
+                                  hasPendingRemove ? 'text-green-600' : 'text-red-600'
+                                }`}>
+                                  {hasPendingRemove ? <Check className="h-4 w-4" /> : <Trash2 className="h-4 w-4" />}
+                                </div>
+                              </DropdownMenuItem>
+                            );
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -572,6 +575,7 @@ export function KeystoreDuplicatesManager({
             </div>
           </DialogContent>
         </Dialog>
+        
       </CardContent>
     </Card>
   );
