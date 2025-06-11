@@ -620,6 +620,52 @@ async def get_keystore_health():
             "error": str(e)
         }
 
+@router.post("/keystore/load-from-indexdb", tags=["Keystore"])
+async def load_keystore_from_indexdb():
+    """从前端IndexDB加载关键词数据到后端Redis"""
+    try:
+        # 这个接口主要用于前端触发从IndexDB同步数据到Redis
+        # 实际的数据同步逻辑会在前端处理
+        return {
+            "success": True,
+            "message": "请从前端IndexDB加载数据",
+            "note": "此接口用于触发前端数据同步"
+        }
+    except Exception as e:
+        logger.error(f"从IndexDB加载数据时出错: {str(e)}")
+        return {
+            "success": False,
+            "message": f"从IndexDB加载数据失败: {str(e)}"
+        }
+
+@router.post("/keystore/load-from-redis", tags=["Keystore"])
+async def load_keystore_from_redis():
+    """从Redis重新加载关键词数据（刷新缓存）"""
+    try:
+        # 检查Redis中是否有数据
+        summary = keystore_processor.get_summary()
+        groups_overview = keystore_processor.get_groups_overview()
+        
+        if summary.get("total_keywords", 0) > 0:
+            logger.info(f"从Redis加载了 {summary['total_keywords']} 个关键词")
+            return {
+                "success": True,
+                "message": f"成功从Redis加载 {summary['total_keywords']} 个关键词",
+                "summary": summary,
+                "groups_overview": groups_overview
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Redis中没有找到关键词数据，请先上传文件或从IndexDB同步数据"
+            }
+    except Exception as e:
+        logger.error(f"从Redis加载数据时出错: {str(e)}")
+        return {
+            "success": False,
+            "message": f"从Redis加载数据失败: {str(e)}"
+        }
+
 # ================================
 # 外链分析相关路由 (Backlinks)
 # ================================

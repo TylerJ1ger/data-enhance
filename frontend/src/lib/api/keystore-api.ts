@@ -91,7 +91,21 @@ export const getKeystoreVisualization = async (): Promise<any> => {
  * 获取重复关键词分析
  */
 export const getKeystoreDuplicates = async (): Promise<any> => {
+  console.log('🌐 API请求: 获取重复关键词数据', {
+    url: '/duplicates',
+    timestamp: new Date().toISOString()
+  });
+  
   const response = await keystoreApi.get<KeystoreDuplicatesResponse>('/duplicates');
+  
+  console.log('🌐 API响应: 重复关键词数据', {
+    status: response.status,
+    totalDuplicates: response.data.duplicates?.total_duplicates || 0,
+    detailsCount: response.data.duplicates?.details?.length || 0,
+    timestamp: new Date().toISOString(),
+    fullData: response.data.duplicates
+  });
+  
   return response.data.duplicates;
 };
 
@@ -107,7 +121,22 @@ export const moveKeyword = async (request: KeywordMoveRequest): Promise<Keystore
  * 从组中删除关键词
  */
 export const removeKeyword = async (request: KeywordRemoveRequest): Promise<KeystoreApiResponse> => {
+  console.log('🌐 API请求: 删除关键词', {
+    url: '/keywords/remove',
+    request,
+    timestamp: new Date().toISOString()
+  });
+  
   const response = await keystoreApi.post<KeystoreApiResponse>('/keywords/remove', request);
+  
+  console.log('🌐 API响应: 删除关键词', {
+    status: response.status,
+    success: response.data.success,
+    message: response.data.message,
+    timestamp: new Date().toISOString(),
+    fullResponse: response.data
+  });
+  
   return response.data;
 };
 
@@ -163,6 +192,22 @@ export const resetKeystoreData = async (): Promise<KeystoreApiResponse> => {
  */
 export const checkKeystoreApiHealth = async (): Promise<{ status: string; module: string; version: string }> => {
   const response = await keystoreApi.get<{ status: string; module: string; version: string }>('/health');
+  return response.data;
+};
+
+/**
+ * 从IndexDB加载关键词数据
+ */
+export const loadFromIndexDB = async (): Promise<KeystoreApiResponse> => {
+  const response = await keystoreApi.post<KeystoreApiResponse>('/load-from-indexdb');
+  return response.data;
+};
+
+/**
+ * 从Redis加载关键词数据
+ */
+export const loadFromRedis = async (): Promise<KeystoreApiResponse> => {
+  const response = await keystoreApi.post<KeystoreApiResponse>('/load-from-redis');
   return response.data;
 };
 

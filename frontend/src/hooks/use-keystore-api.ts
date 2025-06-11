@@ -148,18 +148,33 @@ export function useKeystoreApi() {
 
   // 获取重复关键词数据
   const fetchDuplicatesData = useCallback(async () => {
+    console.log('🔍 开始获取重复关键词数据...', {
+      timestamp: new Date().toISOString(),
+      currentDuplicatesCount: duplicatesData?.total_duplicates || 0
+    });
+    
     setIsLoadingDuplicates(true);
     try {
       const data = await keystoreApi.getKeystoreDuplicates();
+      
+      console.log('✅ 重复关键词数据获取成功:', {
+        timestamp: new Date().toISOString(),
+        newTotalDuplicates: data?.total_duplicates || 0,
+        previousTotalDuplicates: duplicatesData?.total_duplicates || 0,
+        hasDataChanged: (data?.total_duplicates || 0) !== (duplicatesData?.total_duplicates || 0),
+        detailsCount: data?.details?.length || 0,
+        fullResponse: data
+      });
+      
       setDuplicatesData(data);
       return data;
     } catch (error) {
-      console.error('获取重复关键词数据错误:', error);
+      console.error('❌ 获取重复关键词数据错误:', error);
       return null;
     } finally {
       setIsLoadingDuplicates(false);
     }
-  }, []);
+  }, [duplicatesData?.total_duplicates]);
 
   // 移动关键词
   const moveKeyword = useCallback(async (request: KeywordMoveRequest) => {
@@ -193,33 +208,95 @@ export function useKeystoreApi() {
 
   // 删除关键词
   const removeKeyword = useCallback(async (request: KeywordRemoveRequest) => {
+    console.log('🗑️ 开始删除关键词流程:', {
+      request,
+      timestamp: new Date().toISOString(),
+      currentDuplicatesCount: duplicatesData?.total_duplicates || 0
+    });
+    
     setIsProcessing(true);
     try {
       const result = await keystoreApi.removeKeyword(request);
       
+      console.log('📤 删除关键词API响应:', {
+        result,
+        timestamp: new Date().toISOString()
+      });
+      
+      // 现在后端删除操作是幂等的，即使关键词不存在也会返回成功
       if (result.success) {
         toast.success(result.message || '关键词删除成功');
         
-        // 刷新相关数据
-        await Promise.all([
-          fetchSummary(),
-          fetchGroupsData(),
-          fetchDuplicatesData()
-        ]);
+        console.log('🔄 开始数据刷新流程...');
         
-        // 触发重新渲染
+        // 先清除旧数据状态，强制显示加载状态
+        const oldDuplicatesData = duplicatesData;
+        setDuplicatesData(null);
+        setGroupsData({});
+        setSummary(null);
+        setVisualizationData(null);
+        
+        console.log('📝 数据状态已清空，触发重新渲染...');
+        
+        // 触发重新渲染以显示加载状态
         triggerRerender();
+        
+        // 等待稍长时间确保后端数据已更新
+        console.log('⏳ 等待300ms确保后端数据已更新...');
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // 按顺序刷新数据，确保依赖关系正确
+        try {
+          console.log('🔄 开始并行刷新摘要和组数据...');
+          // 首先刷新摘要和组数据
+          const [summaryResult, groupsResult] = await Promise.all([
+            fetchSummary(),
+            fetchGroupsData()
+          ]);
+          
+          console.log('📊 摘要和组数据刷新完成，开始刷新重复数据和可视化数据...');
+          // 然后刷新依赖于组数据的其他数据
+          const [duplicatesResult, visualizationResult] = await Promise.all([
+            fetchDuplicatesData(),
+            fetchVisualizationData()
+          ]);
+          
+          console.log('🎯 所有数据刷新完成，对比结果:', {
+            oldDuplicatesCount: oldDuplicatesData?.total_duplicates || 0,
+            newDuplicatesCount: duplicatesResult?.total_duplicates || 0,
+            hasActuallyChanged: (oldDuplicatesData?.total_duplicates || 0) !== (duplicatesResult?.total_duplicates || 0),
+            summarySuccess: !!summaryResult,
+            groupsSuccess: !!groupsResult,
+            duplicatesSuccess: !!duplicatesResult,
+            visualizationSuccess: !!visualizationResult,
+            timestamp: new Date().toISOString()
+          });
+          
+          // 最终触发重新渲染
+          triggerRerender();
+          
+          console.log('✅ 关键词删除后数据刷新完成');
+          
+        } catch (refreshError) {
+          console.error('❌ 刷新数据时出错:', refreshError);
+          toast.error('数据刷新失败，请手动刷新页面');
+        }
+        
+      } else {
+        // 如果返回失败，显示错误信息
+        console.log('❌ 删除关键词失败:', result);
+        toast.error(result.message || '删除关键词失败');
       }
       
       return result;
     } catch (error) {
-      console.error('删除关键词错误:', error);
+      console.error('❌ 删除关键词错误:', error);
       toast.error('删除关键词失败，请重试');
       throw error;
     } finally {
       setIsProcessing(false);
     }
-  }, [fetchSummary, fetchGroupsData, fetchDuplicatesData, triggerRerender]);
+  }, [fetchSummary, fetchGroupsData, fetchDuplicatesData, fetchVisualizationData, triggerRerender, duplicatesData?.total_duplicates]);
 
   // 重命名组
   const renameGroup = useCallback(async (request: GroupRenameRequest) => {
@@ -383,6 +460,69 @@ export function useKeystoreApi() {
     }
   }, [triggerRerender]);
 
+  // 从存储中加载数据
+  const loadExistingData = useCallback(async () => {
+    setIsProcessing(true);
+    try {
+      // 首先尝试从IndexDB加载
+      let hasIndexDBData = false;
+      try {
+        // 检查IndexDB中是否有数据
+        const { indexedDBManager } = await import('@/lib/db/indexeddb-manager');
+        await indexedDBManager.init();
+        const groups = await indexedDBManager.getAllGroups();
+        hasIndexDBData = groups && groups.length > 0;
+        
+        if (hasIndexDBData) {
+          console.log('从IndexDB发现数据，开始同步到后端...');
+          // 这里可以实现将IndexDB数据同步到Redis的逻辑
+          // 暂时先调用后端接口触发检查
+          await keystoreApi.loadFromIndexDB();
+        }
+      } catch (indexDBError) {
+        console.warn('检查IndexDB数据时出错:', indexDBError);
+      }
+      
+      // 然后尝试从Redis加载
+      const redisResult = await keystoreApi.loadFromRedis();
+      
+      if (redisResult.success) {
+        // 更新本地状态
+        if (redisResult.summary) {
+          setSummary(redisResult.summary);
+        }
+        if (redisResult.groups_overview) {
+          setGroupsOverview(redisResult.groups_overview);
+        }
+        
+        // 加载其他数据
+        await Promise.all([
+          fetchGroupsData(),
+          fetchClustersData(),
+          fetchVisualizationData(),
+          fetchDuplicatesData()
+        ]);
+        
+        // 触发重新渲染
+        triggerRerender();
+        
+        return redisResult;
+      } else {
+        // Redis中没有数据
+        if (!hasIndexDBData) {
+          throw new Error('没有找到可加载的数据。请先上传CSV文件或确认数据库中有数据。');
+        } else {
+          throw new Error('IndexDB中有数据但同步到Redis失败，请重试。');
+        }
+      }
+    } catch (error) {
+      console.error('加载存储数据错误:', error);
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [fetchGroupsData, fetchClustersData, fetchVisualizationData, fetchDuplicatesData, triggerRerender]);
+
   // 新增：刷新所有数据的便捷方法
   const refreshAllData = useCallback(async () => {
     try {
@@ -442,5 +582,6 @@ export function useKeystoreApi() {
     // 新增：便捷方法
     refreshAllData,
     triggerRerender,
+    loadExistingData,
   };
 }

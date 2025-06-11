@@ -10,7 +10,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-import { FileUpload } from "@/components/file-upload";
 import { KeystoreStats } from "@/components/keystore/keystore-stats";
 import { KeystoreUploader } from "@/components/keystore/keystore-uploader";
 import { KeystoreVisualization } from "@/components/keystore/keystore-visualization";
@@ -51,10 +50,31 @@ export default function KeystorePage() {
     fetchDuplicatesData,
     getExportUrl,
     resetData,
+    loadExistingData,
   } = useKeystoreApi();
 
   // 检查是否有数据
   const hasData = summary !== null && Object.keys(groupsData).length > 0;
+
+  // 刷新所有数据
+  const handleRefreshAll = useCallback(async () => {
+    try {
+      console.log('开始刷新所有数据...');
+      toast.info('正在刷新数据...');
+      await Promise.all([
+        fetchSummary(),
+        fetchGroupsData(),
+        fetchClustersData(),
+        fetchVisualizationData(),
+        fetchDuplicatesData(),
+      ]);
+      console.log('所有数据刷新完成');
+      toast.success('数据刷新完成');
+    } catch (error) {
+      console.error('Refresh error:', error);
+      toast.error('刷新数据失败，请重试');
+    }
+  }, [fetchSummary, fetchGroupsData, fetchClustersData, fetchVisualizationData, fetchDuplicatesData]);
 
   // 初始化检查：如果有数据但显示上传界面，自动隐藏上传界面
   useEffect(() => {
@@ -67,10 +87,31 @@ export default function KeystorePage() {
   // 监听 triggerId 变化，确保界面实时更新
   useEffect(() => {
     if (triggerId > 0) {
-      console.log('数据已更新，triggerId:', triggerId);
+      console.log('数据已更新，triggerId:', triggerId, {
+        hasData,
+        summaryExists: !!summary,
+        groupsCount: Object.keys(groupsData).length,
+        duplicatesTotal: duplicatesData?.total_duplicates || 0,
+        timestamp: new Date().toISOString()
+      });
       // 可以在这里添加额外的UI反馈逻辑
     }
-  }, [triggerId]);
+  }, [triggerId, hasData, summary, groupsData, duplicatesData]);
+
+  // 监听自定义数据变化事件
+  useEffect(() => {
+    const handleDataChanged = (event: CustomEvent) => {
+      console.log('接收到数据变化事件:', event.detail);
+      // 强制刷新所有数据
+      handleRefreshAll();
+    };
+
+    window.addEventListener('keystore-data-changed', handleDataChanged as EventListener);
+
+    return () => {
+      window.removeEventListener('keystore-data-changed', handleDataChanged as EventListener);
+    };
+  }, [handleRefreshAll]);
 
   // 处理文件上传
   const handleFilesSelected = async (files: File[]) => {
@@ -124,26 +165,6 @@ export default function KeystorePage() {
       toast.error('导出失败，请重试');
     }
   }, [hasData, getExportUrl]);
-
-  // 刷新所有数据
-  const handleRefreshAll = async () => {
-    if (!hasData) return;
-
-    try {
-      toast.info('正在刷新数据...');
-      await Promise.all([
-        fetchSummary(),
-        fetchGroupsData(),
-        fetchClustersData(),
-        fetchVisualizationData(),
-        fetchDuplicatesData(),
-      ]);
-      toast.success('数据刷新完成');
-    } catch (error) {
-      console.error('Refresh error:', error);
-      toast.error('刷新数据失败，请重试');
-    }
-  };
 
   // 获取加载状态
   const isAnyLoading = isUploading || isLoadingSummary || isLoadingGroups || 
@@ -241,6 +262,7 @@ export default function KeystorePage() {
         <div className="space-y-4">
           <KeystoreUploader
             onFilesSelected={handleFilesSelected}
+            onLoadExistingData={loadExistingData}
             isUploading={isUploading}
           />
           
@@ -321,6 +343,7 @@ export default function KeystorePage() {
                   </CardHeader>
                   <CardContent>
                     <KeystoreDuplicatesManager
+                      key={`duplicates-preview-${triggerId}`}
                       duplicatesData={duplicatesData}
                       groupsData={groupsData}
                       previewMode={true}
@@ -397,7 +420,7 @@ export default function KeystorePage() {
 
             <TabsContent value="duplicates">
               <KeystoreDuplicatesManager
-                key={`duplicates-${triggerId}`}
+                key={`duplicates-full-${triggerId}`}
                 duplicatesData={duplicatesData}
                 groupsData={groupsData}
                 previewMode={false}
