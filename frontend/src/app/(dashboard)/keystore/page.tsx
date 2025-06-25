@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from 'react';
-import { Upload, Download, RefreshCw, Database, Info } from 'lucide-react';
+import { Upload, Download, RefreshCw, Database, Info, RotateCcw } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -54,6 +54,7 @@ export default function KeystorePage() {
     loadExistingData,
     restoreFromIndexDB,
     clearIndexDBData,
+    manualSyncToBackend,
   } = useKeystoreApi();
 
   // 检查是否有数据
@@ -169,6 +170,34 @@ export default function KeystorePage() {
     }
   }, [hasData, getExportUrl]);
 
+  // 处理手动同步
+  const handleManualSync = async () => {
+    if (!hasData) {
+      toast.error('没有数据可以同步');
+      return;
+    }
+
+    try {
+      await manualSyncToBackend();
+    } catch (error) {
+      console.error('Manual sync error:', error);
+      // 错误消息已经在 manualSyncToBackend 中处理了
+    }
+  };
+
+  // 为 KeystoreUploader 创建包装函数
+  const handleLoadExistingDataWrapper = async (): Promise<void> => {
+    await loadExistingData();
+  };
+
+  const handleRestoreFromIndexDBWrapper = async (): Promise<void> => {
+    await restoreFromIndexDB();
+  };
+
+  const handleClearIndexDBDataWrapper = async (): Promise<void> => {
+    await clearIndexDBData();
+  };
+
   // 获取加载状态
   const isAnyLoading = isUploading || isLoadingSummary || isLoadingGroups || 
                       isLoadingClusters || isLoadingVisualization || isLoadingDuplicates;
@@ -238,15 +267,27 @@ export default function KeystorePage() {
             </Button>
           </div>
 
-          <Button
-            variant="destructive"
-            onClick={handleReset}
-            disabled={isUploading || isProcessing}
-            className="gap-2"
-          >
-            <RefreshCw className="h-4 w-4" />
-            重置所有数据
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={handleManualSync}
+              disabled={isUploading || isProcessing || !hasData}
+              className="gap-2"
+            >
+              <RotateCcw className="h-4 w-4" />
+              手动同步数据
+            </Button>
+
+            <Button
+              variant="destructive"
+              onClick={handleReset}
+              disabled={isUploading || isProcessing}
+              className="gap-2"
+            >
+              <RefreshCw className="h-4 w-4" />
+              重置所有数据
+            </Button>
+          </div>
         </div>
       )}
 
@@ -267,9 +308,9 @@ export default function KeystorePage() {
             // 首次上传：使用传统的覆盖模式上传器
             <KeystoreUploader
               onFilesSelected={handleFilesSelected}
-              onLoadExistingData={loadExistingData}
-              onRestoreFromIndexDB={restoreFromIndexDB}
-              onClearIndexDBData={clearIndexDBData}
+              onLoadExistingData={handleLoadExistingDataWrapper}
+              onRestoreFromIndexDB={handleRestoreFromIndexDBWrapper}
+              onClearIndexDBData={handleClearIndexDBDataWrapper}
               isUploading={isUploading}
             />
           ) : (
@@ -277,9 +318,9 @@ export default function KeystorePage() {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <KeystoreUploader
                 onFilesSelected={handleFilesSelected}
-                onLoadExistingData={loadExistingData}
-                onRestoreFromIndexDB={restoreFromIndexDB}
-                onClearIndexDBData={clearIndexDBData}
+                onLoadExistingData={handleLoadExistingDataWrapper}
+                onRestoreFromIndexDB={handleRestoreFromIndexDBWrapper}
+                onClearIndexDBData={handleClearIndexDBDataWrapper}
                 isUploading={isUploading}
               />
               <KeystoreIncrementalUploader

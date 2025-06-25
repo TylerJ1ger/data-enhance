@@ -686,6 +686,55 @@ export function useKeystoreApi() {
     }
   }, []);
 
+  // 手动同步数据到后端
+  const manualSyncToBackend = useCallback(async () => {
+    setIsProcessing(true);
+    try {
+      console.log('开始手动同步数据到后端...');
+      
+      // 检查前端是否有数据
+      if (!summary || Object.keys(groupsData).length === 0) {
+        throw new Error('前端没有数据可以同步，请先上传或加载数据');
+      }
+      
+      // 检查IndexedDB中是否有数据
+      console.log('检查IndexedDB中的数据...');
+      const { indexedDBManager } = await import('@/lib/db/indexeddb-manager');
+      await indexedDBManager.init();
+      
+      const groups = await indexedDBManager.getAllGroups();
+      if (groups.length === 0) {
+        // 如果IndexedDB中没有数据，提示用户先保存到本地
+        throw new Error('本地IndexedDB中没有数据，无法同步。请先确保数据已保存到本地存储。');
+      }
+      
+      console.log('IndexedDB中发现', groups.length, '个组，开始同步...');
+      
+      // 使用现有的恢复逻辑进行同步
+      await restoreFromIndexDB();
+      
+      toast.success('数据已成功同步到后端服务器');
+    } catch (error) {
+      console.error('手动同步数据失败:', error);
+      
+      let errorMessage = '同步数据到后端失败';
+      if (error instanceof Error) {
+        if (error.message.includes('前端没有数据')) {
+          errorMessage = '前端没有数据可以同步，请先上传文件';
+        } else if (error.message.includes('本地IndexedDB中没有数据')) {
+          errorMessage = '本地存储中没有数据，请先上传文件或从后端加载数据';
+        } else if (error.message.includes('本地数据为空')) {
+          errorMessage = '本地数据为空，无法同步到后端';
+        }
+      }
+      
+      toast.error(errorMessage);
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [summary, groupsData, restoreFromIndexDB]);
+
   // 新增：刷新所有数据的便捷方法
   const refreshAllData = useCallback(async () => {
     try {
@@ -750,5 +799,6 @@ export function useKeystoreApi() {
     previewUploadDiff,
     restoreFromIndexDB,
     clearIndexDBData,
+    manualSyncToBackend,
   };
 }
