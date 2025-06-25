@@ -7,21 +7,36 @@ import { Button } from "@/components/ui/button";
 import { FileUpload } from "@/components/file-upload";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
-import { Info, Database, Upload, Cloud } from "lucide-react";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Info, Database, Upload, Cloud, AlertTriangle } from "lucide-react";
 import { toast } from 'react-toastify';
 
 interface KeystoreUploaderProps {
   onFilesSelected: (files: File[]) => void;
   onLoadExistingData?: () => Promise<void>;
+  onRestoreFromIndexDB?: () => Promise<void>;
+  onClearIndexDBData?: () => Promise<void>;
   isUploading: boolean;
 }
 
 export function KeystoreUploader({
   onFilesSelected,
   onLoadExistingData,
+  onRestoreFromIndexDB,
+  onClearIndexDBData,
   isUploading
 }: KeystoreUploaderProps) {
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [showDataConflictDialog, setShowDataConflictDialog] = useState(false);
 
   const handleLoadExistingData = async () => {
     if (!onLoadExistingData) return;
@@ -31,8 +46,40 @@ export function KeystoreUploader({
       await onLoadExistingData();
       toast.success('已加载存储的关键词数据');
     } catch (error) {
-      console.error('加载数据失败:', error);
-      toast.error('加载存储数据失败，请重试');
+      if (error instanceof Error && error.message === 'DATA_CONFLICT') {
+        setShowDataConflictDialog(true);
+      } else {
+        console.error('加载数据失败:', error);
+        toast.error('加载存储数据失败，请重试');
+      }
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  const handleRestoreData = async () => {
+    if (!onRestoreFromIndexDB) return;
+    
+    setShowDataConflictDialog(false);
+    setIsLoadingData(true);
+    try {
+      await onRestoreFromIndexDB();
+    } catch (error) {
+      console.error('恢复数据失败:', error);
+    } finally {
+      setIsLoadingData(false);
+    }
+  };
+
+  const handleClearData = async () => {
+    if (!onClearIndexDBData) return;
+    
+    setShowDataConflictDialog(false);
+    setIsLoadingData(true);
+    try {
+      await onClearIndexDBData();
+    } catch (error) {
+      console.error('清空数据失败:', error);
     } finally {
       setIsLoadingData(false);
     }
@@ -41,11 +88,14 @@ export function KeystoreUploader({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>上传关键词库文件</CardTitle>
+        <CardTitle className="flex items-center gap-2">
+          <Upload className="h-5 w-5" />
+          传统上传文件
+        </CardTitle>
         <CardDescription>
-          上传CSV文件以构建关键词库。支持批量上传，系统会自动合并和去重处理。
+          使用覆盖模式上传CSV文件，会清空现有数据并重新构建关键词库。
           <span className="block text-xs text-muted-foreground mt-1">
-            正在使用API v1 - 新的关键词库管理接口
+            ⚠️ 此模式会覆盖所有现有数据
           </span>
         </CardDescription>
       </CardHeader>
@@ -111,6 +161,40 @@ export function KeystoreUploader({
           }}
         />
       </CardContent>
+
+      {/* 数据冲突对话框 */}
+      <AlertDialog open={showDataConflictDialog} onOpenChange={setShowDataConflictDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              数据冲突检测
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              检测到本地 IndexedDB 中有数据，但服务器数据库已被重置。
+            </AlertDialogDescription>
+            <div className="text-sm text-muted-foreground">
+              请选择以下操作之一：
+            </div>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel 
+              onClick={handleClearData}
+              disabled={isLoadingData}
+              className="w-full sm:w-auto"
+            >
+              清空本地数据
+            </AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleRestoreData}
+              disabled={isLoadingData}
+              className="w-full sm:w-auto"
+            >
+              {isLoadingData ? '恢复中...' : '恢复服务器数据'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 }

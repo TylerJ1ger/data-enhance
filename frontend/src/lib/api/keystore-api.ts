@@ -30,16 +30,36 @@ const keystoreApi = axios.create({
 });
 
 /**
- * 上传关键词库文件
+ * 上传关键词库文件（支持增量模式）
  */
-export const uploadKeystoreFiles = async (files: File[]): Promise<KeystoreUploadResponse> => {
+export const uploadKeystoreFiles = async (files: File[], mode: 'replace' | 'append' = 'replace'): Promise<KeystoreUploadResponse> => {
+  const formData = new FormData();
+  
+  files.forEach((file) => {
+    formData.append('files', file);
+  });
+  formData.append('mode', mode);
+  
+  const response = await keystoreApi.post<KeystoreUploadResponse>('/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  
+  return response.data;
+};
+
+/**
+ * 预览上传文件的差异分析
+ */
+export const previewUploadDiff = async (files: File[]): Promise<any> => {
   const formData = new FormData();
   
   files.forEach((file) => {
     formData.append('files', file);
   });
   
-  const response = await keystoreApi.post<KeystoreUploadResponse>('/upload', formData, {
+  const response = await keystoreApi.post<any>('/preview-upload', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },

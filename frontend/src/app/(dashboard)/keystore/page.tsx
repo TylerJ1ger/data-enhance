@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 
 import { KeystoreStats } from "@/components/keystore/keystore-stats";
 import { KeystoreUploader } from "@/components/keystore/keystore-uploader";
+import { KeystoreIncrementalUploader } from "@/components/keystore/keystore-incremental-uploader";
 import { KeystoreVisualization } from "@/components/keystore/keystore-visualization";
 import { KeystoreGroupsManager } from "@/components/keystore/keystore-groups-manager";
 import { KeystoreClustersManager } from "@/components/keystore/keystore-clusters-manager";
@@ -51,6 +52,8 @@ export default function KeystorePage() {
     getExportUrl,
     resetData,
     loadExistingData,
+    restoreFromIndexDB,
+    clearIndexDBData,
   } = useKeystoreApi();
 
   // 检查是否有数据
@@ -259,12 +262,34 @@ export default function KeystorePage() {
 
       {/* File Upload Section */}
       {(showUpload || !hasData) && (
-        <div className="space-y-4">
-          <KeystoreUploader
-            onFilesSelected={handleFilesSelected}
-            onLoadExistingData={loadExistingData}
-            isUploading={isUploading}
-          />
+        <div className="space-y-6">
+          {!hasData ? (
+            // 首次上传：使用传统的覆盖模式上传器
+            <KeystoreUploader
+              onFilesSelected={handleFilesSelected}
+              onLoadExistingData={loadExistingData}
+              onRestoreFromIndexDB={restoreFromIndexDB}
+              onClearIndexDBData={clearIndexDBData}
+              isUploading={isUploading}
+            />
+          ) : (
+            // 已有数据：显示两种上传选项
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <KeystoreUploader
+                onFilesSelected={handleFilesSelected}
+                onLoadExistingData={loadExistingData}
+                onRestoreFromIndexDB={restoreFromIndexDB}
+                onClearIndexDBData={clearIndexDBData}
+                isUploading={isUploading}
+              />
+              <KeystoreIncrementalUploader
+                onUploadComplete={() => {
+                  handleRefreshAll();
+                  setShowUpload(false);
+                }}
+              />
+            </div>
+          )}
           
           {hasData && (
             <div className="flex justify-end">

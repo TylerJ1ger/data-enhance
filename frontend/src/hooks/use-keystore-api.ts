@@ -54,15 +54,16 @@ export function useKeystoreApi() {
   }, []);
 
   // 上传文件
-  const uploadFiles = useCallback(async (files: File[]) => {
+  const uploadFiles = useCallback(async (files: File[], mode: 'replace' | 'append' = 'replace') => {
     setIsUploading(true);
     try {
-      const data = await keystoreApi.uploadKeystoreFiles(files);
+      const data = await keystoreApi.uploadKeystoreFiles(files, mode);
       setFileStats(data.file_stats);
       setSummary(data.summary);
       setGroupsOverview(data.groups_overview);
       
-      toast.success(`成功处理 ${files.length} 个关键词库文件`);
+      const modeText = mode === 'replace' ? '覆盖' : '增量';
+      toast.success(`成功${modeText}处理 ${files.length} 个关键词库文件`);
       
       // 自动加载相关数据
       await Promise.all([
@@ -84,6 +85,21 @@ export function useKeystoreApi() {
       setIsUploading(false);
     }
   }, [triggerRerender]);
+
+  // 预览上传差异
+  const previewUploadDiff = useCallback(async (files: File[]) => {
+    setIsProcessing(true);
+    try {
+      const data = await keystoreApi.previewUploadDiff(files);
+      return data;
+    } catch (error) {
+      console.error('预览上传差异错误:', error);
+      toast.error('预览上传差异失败，请重试。');
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
 
   // 获取摘要数据
   const fetchSummary = useCallback(async () => {
@@ -479,30 +495,11 @@ export function useKeystoreApi() {
   const loadExistingData = useCallback(async () => {
     setIsProcessing(true);
     try {
-      // 首先尝试从IndexDB加载
-      let hasIndexDBData = false;
-      try {
-        // 检查IndexDB中是否有数据
-        const { indexedDBManager } = await import('@/lib/db/indexeddb-manager');
-        await indexedDBManager.init();
-        const groups = await indexedDBManager.getAllGroups();
-        hasIndexDBData = groups && groups.length > 0;
-        
-        if (hasIndexDBData) {
-          console.log('从IndexDB发现数据，开始同步到后端...');
-          // 这里可以实现将IndexDB数据同步到Redis的逻辑
-          // 暂时先调用后端接口触发检查
-          await keystoreApi.loadFromIndexDB();
-        }
-      } catch (indexDBError) {
-        console.warn('检查IndexDB数据时出错:', indexDBError);
-      }
-      
-      // 然后尝试从Redis加载
+      // 首先尝试从Redis加载
       const redisResult = await keystoreApi.loadFromRedis();
       
       if (redisResult.success) {
-        // 更新本地状态
+        // Redis中有数据，直接加载
         if (redisResult.summary) {
           setSummary(redisResult.summary);
         }
@@ -523,20 +520,171 @@ export function useKeystoreApi() {
         
         return redisResult;
       } else {
-        // Redis中没有数据
+        // Redis中没有数据，检查IndexDB中是否有数据
+        let hasIndexDBData = false;
+        try {
+          const { indexedDBManager } = await import('@/lib/db/indexeddb-manager');
+          await indexedDBManager.init();
+          const groups = await indexedDBManager.getAllGroups();
+          hasIndexDBData = groups && groups.length > 0;
+        } catch (indexDBError) {
+          console.warn('检查IndexDB数据时出错:', indexDBError);
+        }
+        
         if (!hasIndexDBData) {
           throw new Error('没有找到可加载的数据。请先上传CSV文件或确认数据库中有数据。');
         } else {
-          throw new Error('IndexDB中有数据但同步到Redis失败，请重试。');
+          // IndexDB中有数据但Redis中没有，需要弹窗询问用户
+          throw new Error('DATA_CONFLICT');
         }
       }
     } catch (error) {
+      // 对于数据冲突，不记录为错误，因为这是预期的行为
+      if (error instanceof Error && error.message === 'DATA_CONFLICT') {
+        throw error;
+      }
       console.error('加载存储数据错误:', error);
       throw error;
     } finally {
       setIsProcessing(false);
     }
   }, [fetchGroupsData, fetchClustersData, fetchVisualizationData, fetchDuplicatesData, triggerRerender]);
+
+  // 从IndexDB恢复数据到Redis
+  const restoreFromIndexDB = useCallback(async () => {
+    setIsProcessing(true);
+    try {
+      console.log('开始从IndexDB恢复数据到Redis...');
+      
+      // 第一步：从前端IndexedDB读取数据
+      console.log('从IndexedDB读取本地数据...');
+      const { indexedDBManager } = await import('@/lib/db/indexeddb-manager');
+      await indexedDBManager.init();
+      
+      const [groups, files] = await Promise.all([
+        indexedDBManager.getAllGroups(),
+        indexedDBManager.getAllFiles()
+      ]);
+      
+      console.log('IndexedDB数据读取完成:', {
+        groupsCount: groups.length,
+        filesCount: files.length
+      });
+      
+      if (groups.length === 0) {
+        throw new Error('IndexedDB中没有找到有效的数据，无法恢复');
+      }
+      
+      // 第二步：将数据转换为上传格式并上传
+      console.log('将IndexedDB数据转换为上传格式...');
+      
+      // 构造CSV格式的数据
+      const csvData: any[] = [];
+      
+      // 获取所有关键词数据
+      const keywordsList: any[] = [];
+      for (const group of groups) {
+        const groupKeywords = await indexedDBManager.getKeywordsByGroup(group.name);
+        keywordsList.push(...groupKeywords);
+      }
+      console.log('获取到关键词数据:', keywordsList.length, '条');
+      
+      // 将关键词数据转换为CSV格式
+      keywordsList.forEach(keyword => {
+        csvData.push({
+          Keywords: keyword.Keywords,
+          group_name_map: keyword.group_name_map,
+          QPM: keyword.QPM,
+          DIFF: keyword.DIFF,
+          cluster_name: keyword.cluster_name || '',
+          source_file: keyword.source_file || '',
+        });
+      });
+      
+      if (csvData.length === 0) {
+        throw new Error('没有找到可恢复的关键词数据');
+      }
+      
+      // 将数据转换为CSV格式并创建文件
+      const csvHeader = 'Keywords,group_name_map,QPM,DIFF,cluster_name,source_file\n';
+      const csvContent = csvData.map(row => 
+        `"${row.Keywords}","${row.group_name_map}",${row.QPM},${row.DIFF},"${row.cluster_name}","${row.source_file}"`
+      ).join('\n');
+      
+      const csvBlob = new Blob([csvHeader + csvContent], { type: 'text/csv' });
+      const csvFile = new File([csvBlob], 'restored_data.csv', { type: 'text/csv' });
+      
+      console.log('准备上传恢复的数据，共', csvData.length, '条记录');
+      
+      // 第三步：使用现有的上传接口上传数据
+      const uploadResult = await uploadFiles([csvFile], 'replace');
+      console.log('数据上传完成:', uploadResult);
+      
+      // 第四步：验证上传结果
+      if (uploadResult.summary) {
+        console.log('数据恢复成功，开始更新前端状态...');
+        
+        // 更新本地状态
+        setSummary(uploadResult.summary);
+        setGroupsOverview(uploadResult.groups_overview);
+        setFileStats(uploadResult.file_stats);
+        
+        // 加载其他数据
+        await Promise.all([
+          fetchGroupsData(),
+          fetchClustersData(),
+          fetchVisualizationData(),
+          fetchDuplicatesData()
+        ]);
+        
+        // 触发重新渲染
+        triggerRerender();
+        
+        toast.success(`已成功从本地数据恢复 ${csvData.length} 条关键词记录`);
+        return uploadResult;
+      } else {
+        throw new Error('数据上传成功但响应格式异常');
+      }
+      
+    } catch (error) {
+      console.error('恢复IndexDB数据失败:', error);
+      
+      // 更友好的错误提示
+      let errorMessage = '从本地数据恢复服务器数据库失败';
+      if (error instanceof Error) {
+        if (error.message.includes('IndexedDB中没有找到')) {
+          errorMessage = '本地数据为空，无法恢复服务器数据';
+        } else if (error.message.includes('没有找到可恢复的关键词数据')) {
+          errorMessage = '本地数据格式异常，无法恢复服务器数据';
+        } else if (error.message.includes('上传')) {
+          errorMessage = '数据上传失败，请检查网络连接';
+        }
+      }
+      
+      toast.error(errorMessage);
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [uploadFiles, fetchGroupsData, fetchClustersData, fetchVisualizationData, fetchDuplicatesData, triggerRerender]);
+
+  // 清空IndexDB数据
+  const clearIndexDBData = useCallback(async () => {
+    setIsProcessing(true);
+    try {
+      console.log('开始清空IndexDB数据...');
+      const { indexedDBManager } = await import('@/lib/db/indexeddb-manager');
+      await indexedDBManager.init();
+      await indexedDBManager.clearAllData();
+      toast.success('已清空本地数据');
+    } catch (error) {
+      console.error('清空IndexDB数据失败:', error);
+      toast.error('清空本地数据失败，请重试。');
+      throw error;
+    } finally {
+      setIsProcessing(false);
+    }
+  }, []);
 
   // 新增：刷新所有数据的便捷方法
   const refreshAllData = useCallback(async () => {
@@ -599,5 +747,8 @@ export function useKeystoreApi() {
     refreshAllData,
     triggerRerender,
     loadExistingData,
+    previewUploadDiff,
+    restoreFromIndexDB,
+    clearIndexDBData,
   };
 }

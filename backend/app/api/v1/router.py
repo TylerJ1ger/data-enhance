@@ -387,7 +387,10 @@ async def get_keywords_filter_ranges():
 # ================================
 
 @router.post("/keystore/upload", tags=["Keystore"])
-async def upload_keystore_files(files: List[UploadFile] = File(...)):
+async def upload_keystore_files(
+    files: List[UploadFile] = File(...),
+    mode: str = Form("replace")  # "replace" 或 "append" 
+):
     """
     上传关键词库CSV文件
     
@@ -397,12 +400,31 @@ async def upload_keystore_files(files: List[UploadFile] = File(...)):
     - QPM: 搜索量 (必需)
     - DIFF: 难度 (必需)
     - 其他列如Group, Force Group, Task Name等为可选
+    
+    参数:
+    - mode: "replace" (默认，覆盖现有数据) 或 "append" (增量添加)
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="未提供文件")
+    
+    if mode not in ["replace", "append"]:
+        raise HTTPException(status_code=400, detail="mode参数必须是'replace'或'append'")
+    
+    await check_file_size(files)
+    result = await keystore_processor.process_files(files, mode=mode)
+    return result
+
+@router.post("/keystore/preview-upload", tags=["Keystore"])
+async def preview_keystore_upload(files: List[UploadFile] = File(...)):
+    """
+    预览上传文件的差异，显示新增的族、组、关键词
+    用于增量上传前的确认
     """
     if not files:
         raise HTTPException(status_code=400, detail="未提供文件")
     
     await check_file_size(files)
-    result = await keystore_processor.process_files(files)
+    result = await keystore_processor.preview_upload_diff(files)
     return result
 
 @router.get("/keystore/summary", tags=["Keystore"])

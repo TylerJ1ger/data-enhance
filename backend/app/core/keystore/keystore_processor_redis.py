@@ -89,7 +89,7 @@ class KeystoreProcessorRedis:
         else:
             return obj
     
-    async def process_files(self, files: List[UploadFile]) -> Dict[str, Any]:
+    async def process_files(self, files: List[UploadFile], mode: str = "replace") -> Dict[str, Any]:
         """处理上传的CSV文件并存储到Redis"""
         dataframes = []
         file_stats = []
@@ -136,9 +136,10 @@ class KeystoreProcessorRedis:
                     parsing_error=str(e)
                 )
         
-        # 清空现有数据
-        if dataframes:
+        # 根据模式决定是否清空现有数据，然后存储新数据
+        if dataframes and mode == "replace":
             self.repository.clear_all_data()
+            logger.info("替换模式：已清空现有数据")
             
             # 逐个文件处理并存储到Redis，保持文件来源信息
             total_keywords_created = 0
@@ -159,7 +160,32 @@ class KeystoreProcessorRedis:
                 total_keywords_created += len(keyword_uids)
                 logger.info(f"从文件 {file_stat['filename']} 存储了 {len(keyword_uids)} 个关键词到Redis")
             
-            logger.info(f"总共成功存储 {total_keywords_created} 个关键词到Redis")
+            logger.info(f"替换模式：总共成功存储 {total_keywords_created} 个关键词到Redis")
+            self._file_stats = file_stats
+            
+        elif dataframes and mode == "append":
+            logger.info("增量模式：保留现有数据，准备添加新数据")
+            
+            # 逐个文件处理并存储到Redis，保持文件来源信息
+            total_keywords_created = 0
+            
+            for i, (df, file_stat) in enumerate(zip(dataframes, file_stats)):
+                # 清理单个文件的数据
+                df_cleaned = self._clean_merged_data(df)
+                
+                # 转换为字典格式
+                keywords_data = df_cleaned.to_dict('records')
+                
+                # 使用具体的文件名存储关键词
+                keyword_uids = self.repository.bulk_create_keywords_with_uids(
+                    keywords_data, 
+                    file_stat["filename"]
+                )
+                
+                total_keywords_created += len(keyword_uids)
+                logger.info(f"从文件 {file_stat['filename']} 存储了 {len(keyword_uids)} 个关键词到Redis")
+            
+            logger.info(f"增量模式：总共成功存储 {total_keywords_created} 个关键词到Redis")
             self._file_stats = file_stats
         
         result = {
@@ -963,6 +989,178 @@ class KeystoreProcessorRedis:
                 "error": str(e),
                 "error_traceback": error_traceback,
                 "cluster_suggestions": []
+            }
+    
+    async def preview_upload_diff(self, files: List[UploadFile]) -> Dict[str, Any]:
+        """
+        预览上传文件与现有数据的差异
+        
+        分析上传的文件，返回将要新增的族、组、关键词信息
+        用于增量上传前的确认
+        
+        Args:
+            files: 要上传的文件列表
+            
+        Returns:
+            Dict包含差异分析结果
+        """
+        try:
+            logger.info("开始预览上传文件差异...")
+            
+            # 首先获取现有数据
+            existing_groups = set(self.repository.get_all_groups())
+            existing_clusters = set(self.repository.get_all_clusters())
+            existing_keywords = set()
+            
+            # 收集现有关键词
+            for group_name in existing_groups:
+                keyword_uids = self.repository.get_group_keywords(group_name)
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
+                    if keyword_data and 'Keywords' in keyword_data:
+                        existing_keywords.add(keyword_data['Keywords'].lower().strip())
+            
+            # 处理上传文件
+            new_dataframes = []
+            for file in files:
+                try:
+                    # 创建临时文件
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+                        content = await file.read()
+                        temp_file.write(content)
+                        temp_file.flush()
+                        
+                        # 读取文件
+                        df = read_file(temp_file.name)
+                        
+                        # 验证必需列
+                        required_columns = ['Keywords', 'group_name_map', 'QPM', 'DIFF']
+                        missing_columns = [col for col in required_columns if col not in df.columns]
+                        
+                        if missing_columns:
+                            raise MissingRequiredColumnsException(
+                                missing_columns=missing_columns,
+                                available_columns=list(df.columns)
+                            )
+                        
+                        # 数据清理和标准化
+                        df = self._clean_dataframe(df)
+                        new_dataframes.append(df)
+                        
+                        # 清理临时文件
+                        os.unlink(temp_file.name)
+                        
+                except Exception as e:
+                    logger.error(f"处理文件 {file.filename} 时出错: {str(e)}")
+                    raise FileProcessingException(
+                        filename=file.filename,
+                        parsing_error=str(e)
+                    )
+            
+            if not new_dataframes:
+                return {
+                    "success": False,
+                    "error": "没有成功处理的文件"
+                }
+            
+            # 合并所有新数据
+            combined_df = pd.concat(new_dataframes, ignore_index=True)
+            combined_df = self._clean_merged_data(combined_df)
+            
+            # 分析新数据
+            new_groups = set(combined_df['group_name_map'].unique())
+            new_keywords_with_groups = set()
+            for _, row in combined_df.iterrows():
+                keyword = str(row['Keywords']).lower().strip()
+                group = str(row['group_name_map']).strip()
+                new_keywords_with_groups.add((keyword, group))
+            
+            # 分析差异
+            diff_result = {
+                "new_groups": [],
+                "new_keywords_in_existing_groups": [],
+                "new_keywords_in_new_groups": [],
+                "duplicate_keywords": [],
+                "existing_groups_with_new_keywords": [],
+                "summary": {}
+            }
+            
+            # 分析新组
+            truly_new_groups = new_groups - existing_groups
+            diff_result["new_groups"] = [
+                {
+                    "group_name": group,
+                    "keyword_count": len(combined_df[combined_df['group_name_map'] == group]),
+                    "sample_keywords": combined_df[combined_df['group_name_map'] == group]['Keywords'].head(5).tolist()
+                }
+                for group in truly_new_groups
+            ]
+            
+            # 分析新关键词
+            for keyword, group in new_keywords_with_groups:
+                if keyword in existing_keywords:
+                    # 重复的关键词
+                    diff_result["duplicate_keywords"].append({
+                        "keyword": keyword,
+                        "group": group,
+                        "action": "skip_or_update"
+                    })
+                else:
+                    # 新关键词
+                    if group in existing_groups:
+                        # 现有组中的新关键词
+                        diff_result["new_keywords_in_existing_groups"].append({
+                            "keyword": keyword,
+                            "group": group
+                        })
+                        
+                        # 记录有新关键词的现有组
+                        if group not in [g["group_name"] for g in diff_result["existing_groups_with_new_keywords"]]:
+                            existing_group_new_keywords = [
+                                item["keyword"] for item in diff_result["new_keywords_in_existing_groups"] 
+                                if item["group"] == group
+                            ]
+                            diff_result["existing_groups_with_new_keywords"].append({
+                                "group_name": group,
+                                "new_keyword_count": len(existing_group_new_keywords),
+                                "sample_new_keywords": existing_group_new_keywords[:5]
+                            })
+                    else:
+                        # 新组中的新关键词
+                        diff_result["new_keywords_in_new_groups"].append({
+                            "keyword": keyword,
+                            "group": group
+                        })
+            
+            # 计算摘要
+            diff_result["summary"] = {
+                "total_new_groups": len(truly_new_groups),
+                "total_new_keywords": len(new_keywords_with_groups) - len(diff_result["duplicate_keywords"]),
+                "total_duplicate_keywords": len(diff_result["duplicate_keywords"]),
+                "total_files_processed": len(new_dataframes),
+                "existing_groups_affected": len(diff_result["existing_groups_with_new_keywords"]),
+                "new_keywords_in_existing_groups": len(diff_result["new_keywords_in_existing_groups"]),
+                "new_keywords_in_new_groups": len(diff_result["new_keywords_in_new_groups"])
+            }
+            
+            logger.info(f"上传差异分析完成: 新增 {diff_result['summary']['total_new_groups']} 个组, {diff_result['summary']['total_new_keywords']} 个关键词")
+            
+            return {
+                "success": True,
+                "diff_analysis": diff_result,
+                "upload_mode_recommended": "append",
+                "can_proceed": True
+            }
+            
+        except Exception as e:
+            logger.error(f"预览上传差异时出错: {str(e)}")
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error(f"错误堆栈:\n{error_traceback}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_traceback": error_traceback
             }
     
     def health_check(self) -> Dict[str, Any]:
