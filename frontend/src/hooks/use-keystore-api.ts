@@ -76,6 +76,22 @@ export function useKeystoreApi() {
       // 触发重新渲染
       triggerRerender();
       
+      // 上传成功后，将数据同步到 IndexedDB
+      try {
+        console.log('上传成功，开始将数据同步到 IndexedDB...');
+        const { dataSyncService } = await import('@/lib/sync/data-sync-service');
+        const syncResult = await dataSyncService.pullFromBackend();
+        console.log('数据同步到 IndexedDB 结果:', syncResult);
+        if (syncResult.success) {
+          console.log(`成功同步 ${syncResult.synced_items} 条数据到 IndexedDB`);
+        } else {
+          console.warn('同步到 IndexedDB 失败:', syncResult.message);
+        }
+      } catch (syncError) {
+        console.error('同步到 IndexedDB 时出错:', syncError);
+        // 不抛出错误，因为上传本身是成功的
+      }
+      
       return data;
     } catch (error) {
       console.error('上传关键词库文件错误:', error);
@@ -500,20 +516,49 @@ export function useKeystoreApi() {
       
       if (redisResult.success) {
         // Redis中有数据，直接加载
-        if (redisResult.summary) {
-          setSummary(redisResult.summary);
+        // 注意：loadFromRedis 返回的是 KeystoreApiResponse，需要检查 data 字段
+        const responseData = redisResult.data as any;
+        
+        if (responseData?.summary) {
+          setSummary(responseData.summary);
         }
-        if (redisResult.groups_overview) {
-          setGroupsOverview(redisResult.groups_overview);
+        if (responseData?.groups_overview) {
+          setGroupsOverview(responseData.groups_overview);
         }
         
         // 加载其他数据
-        await Promise.all([
+        console.log('开始加载其他数据...');
+        
+        // 如果 responseData 中没有 summary，我们需要单独获取
+        const fetchTasks = [
           fetchGroupsData(),
           fetchClustersData(),
           fetchVisualizationData(),
           fetchDuplicatesData()
-        ]);
+        ];
+        
+        // 如果没有从 loadFromRedis 获取到 summary，添加 fetchSummary
+        if (!responseData?.summary) {
+          fetchTasks.unshift(fetchSummary());
+        }
+        
+        const results = await Promise.all(fetchTasks);
+        
+        // 如果我们调用了 fetchSummary，需要从结果中提取
+        let summaryResult, groupsResult, clustersResult, visualizationResult, duplicatesResult;
+        
+        if (!responseData?.summary) {
+          [summaryResult, groupsResult, clustersResult, visualizationResult, duplicatesResult] = results;
+        } else {
+          [groupsResult, clustersResult, visualizationResult, duplicatesResult] = results;
+        }
+        
+        console.log('数据加载完成，结果:', {
+          groupsCount: groupsResult ? Object.keys(groupsResult).length : 0,
+          clustersCount: clustersResult ? Object.keys(clustersResult).length : 0,
+          hasVisualization: !!visualizationResult,
+          duplicatesCount: duplicatesResult?.total_duplicates || 0
+        });
         
         // 触发重新渲染
         triggerRerender();
@@ -581,16 +626,36 @@ export function useKeystoreApi() {
       // 构造CSV格式的数据
       const csvData: any[] = [];
       
-      // 获取所有关键词数据
+      // 获取所有关键词数据 - 通过遍历所有组来获取
+      console.log('通过遍历所有组获取关键词数据...');
       const keywordsList: any[] = [];
+      
       for (const group of groups) {
         const groupKeywords = await indexedDBManager.getKeywordsByGroup(group.name);
+        console.log(`组 "${group.name}" 中有 ${groupKeywords.length} 个关键词`);
         keywordsList.push(...groupKeywords);
       }
+      
+      console.log('从 keywords 表获取到', keywordsList.length, '条记录');
+      
+      const keywordStats = new Map<string, number>(); // 统计每个关键词出现的次数
+      
+      keywordsList.forEach(keyword => {
+        const count = keywordStats.get(keyword.Keywords) || 0;
+        keywordStats.set(keyword.Keywords, count + 1);
+      });
+      
       console.log('获取到关键词数据:', keywordsList.length, '条');
       
+      // 统计重复关键词
+      const duplicateKeywords = Array.from(keywordStats.entries()).filter(([_, count]) => count > 1);
+      console.log('发现重复关键词:', duplicateKeywords.length, '个');
+      duplicateKeywords.forEach(([keyword, count]) => {
+        console.log(`关键词 "${keyword}" 出现 ${count} 次`);
+      });
+      
       // 将关键词数据转换为CSV格式
-      keywordsList.forEach(keyword => {
+      keywordsList.forEach((keyword, index) => {
         csvData.push({
           Keywords: keyword.Keywords,
           group_name_map: keyword.group_name_map,
@@ -599,6 +664,11 @@ export function useKeystoreApi() {
           cluster_name: keyword.cluster_name || '',
           source_file: keyword.source_file || '',
         });
+        
+        // 为前几个和重复的关键词添加详细日志
+        if (index < 5 || keywordStats.get(keyword.Keywords)! > 1) {
+          console.log(`关键词 ${index + 1}: "${keyword.Keywords}" -> 组: "${keyword.group_name_map}"`);
+        }
       });
       
       if (csvData.length === 0) {
@@ -611,12 +681,33 @@ export function useKeystoreApi() {
         `"${row.Keywords}","${row.group_name_map}",${row.QPM},${row.DIFF},"${row.cluster_name}","${row.source_file}"`
       ).join('\n');
       
+      console.log('CSV 内容预览 (前5行):', csvContent.split('\n').slice(0, 5).join('\n'));
+      
+      // 验证 CSV 中的重复关键词
+      const csvLines = csvContent.split('\n');
+      const csvKeywordCounts = new Map<string, number>();
+      csvLines.forEach(line => {
+        if (line.trim()) {
+          const keyword = line.split(',')[0].replace(/"/g, ''); // 提取关键词
+          const count = csvKeywordCounts.get(keyword) || 0;
+          csvKeywordCounts.set(keyword, count + 1);
+        }
+      });
+      
+      const csvDuplicates = Array.from(csvKeywordCounts.entries()).filter(([_, count]) => count > 1);
+      console.log('CSV 中的重复关键词:', csvDuplicates.length, '个');
+      csvDuplicates.slice(0, 5).forEach(([keyword, count]) => {
+        console.log(`CSV 中关键词 "${keyword}" 出现 ${count} 次`);
+      });
+      
       const csvBlob = new Blob([csvHeader + csvContent], { type: 'text/csv' });
       const csvFile = new File([csvBlob], 'restored_data.csv', { type: 'text/csv' });
       
       console.log('准备上传恢复的数据，共', csvData.length, '条记录');
       
       // 第三步：使用现有的上传接口上传数据
+      // 注意：使用 'replace' 模式可能会影响重复关键词的处理
+      // 但这是恢复操作，应该完全替换现有数据
       const uploadResult = await uploadFiles([csvFile], 'replace');
       console.log('数据上传完成:', uploadResult);
       
@@ -639,6 +730,14 @@ export function useKeystoreApi() {
         
         // 触发重新渲染
         triggerRerender();
+        
+        // 验证恢复后的重复关键词情况
+        const duplicatesAfterRestore = await fetchDuplicatesData();
+        console.log('恢复后的重复关键词情况:', {
+          totalDuplicates: duplicatesAfterRestore?.total_duplicates || 0,
+          originalDuplicates: duplicateKeywords.length,
+          restoredRecords: csvData.length
+        });
         
         toast.success(`已成功从本地数据恢复 ${csvData.length} 条关键词记录`);
         return uploadResult;
@@ -702,15 +801,53 @@ export function useKeystoreApi() {
       const { indexedDBManager } = await import('@/lib/db/indexeddb-manager');
       await indexedDBManager.init();
       
-      const groups = await indexedDBManager.getAllGroups();
+      const [groups, files] = await Promise.all([
+        indexedDBManager.getAllGroups(),
+        indexedDBManager.getAllFiles()
+      ]);
+      
+      console.log('IndexedDB状态检查:', {
+        groupsCount: groups.length,
+        filesCount: files.length
+      });
+      
+      // 显示一些组的详细信息
+      if (groups.length > 0) {
+        console.log('前5个组:', groups.slice(0, 5).map(g => ({ name: g.name, keywordCount: g.keyword_count })));
+      }
+      
       if (groups.length === 0) {
-        // 如果IndexedDB中没有数据，提示用户先保存到本地
-        throw new Error('本地IndexedDB中没有数据，无法同步。请先确保数据已保存到本地存储。');
+        // 如果IndexedDB中没有数据，尝试从后端拉取数据
+        console.log('IndexedDB 中没有数据，尝试从后端拉取...');
+        try {
+          const { dataSyncService } = await import('@/lib/sync/data-sync-service');
+          const syncResult = await dataSyncService.pullFromBackend();
+          console.log('从后端拉取数据结果:', syncResult);
+          
+          if (syncResult.success && syncResult.synced_items > 0) {
+            console.log(`成功从后端拉取 ${syncResult.synced_items} 条数据到 IndexedDB`);
+            // 重新检查数据
+            const updatedGroups = await indexedDBManager.getAllGroups();
+            if (updatedGroups.length > 0) {
+              console.log('数据拉取成功，继续同步流程');
+              // 更新 groups 变量以继续执行
+              groups.splice(0, groups.length, ...updatedGroups);
+            } else {
+              throw new Error('从后端拉取数据后 IndexedDB 仍然为空');
+            }
+          } else {
+            throw new Error('从后端拉取数据失败或没有数据可拉取');
+          }
+        } catch (pullError) {
+          console.error('从后端拉取数据失败:', pullError);
+          throw new Error('本地IndexedDB中没有数据，且无法从后端拉取数据。请先上传文件或从后端加载数据。');
+        }
       }
       
       console.log('IndexedDB中发现', groups.length, '个组，开始同步...');
       
-      // 使用现有的恢复逻辑进行同步
+      // 使用现有的恢复逻辑进行同步，但使用 append 模式以保留重复关键词
+      console.log('调用 restoreFromIndexDB 进行同步...');
       await restoreFromIndexDB();
       
       toast.success('数据已成功同步到后端服务器');
