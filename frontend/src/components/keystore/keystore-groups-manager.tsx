@@ -545,7 +545,7 @@ export const KeystoreGroupsManager = memo(function KeystoreGroupsManager({
               <Alert>
                 <AlertTriangle className="h-4 w-4" />
                 <AlertDescription>
-                  即将执行 <strong>{pendingActions.length}</strong> 个操作，请确认后继续。
+                  即将执行 {pendingActions.length} 个操作，请确认后继续。
                 </AlertDescription>
               </Alert>
               
