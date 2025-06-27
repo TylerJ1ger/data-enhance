@@ -1,7 +1,7 @@
 // src/components/keystore/keystore-clusters-manager.tsx
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,14 +10,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Plus, Edit, Trash2, Layers, AlertCircle, CheckCircle2, Loader2, RefreshCw, Upload, X, MoreVertical, Check, AlertTriangle, Wand2 } from "lucide-react";
+import { Plus, Edit, Trash2, Layers, AlertCircle, CheckCircle2, Loader2, RefreshCw, Upload, X, MoreVertical, Check, AlertTriangle, Wand2, Search } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useKeystoreApi } from "@/hooks/use-keystore-api";
 
+interface GroupInfo {
+  keyword_count: number;
+  total_qpm: number;
+  avg_qpm: number;
+  avg_diff: number;
+  max_qpm: number;
+  data: any[];
+}
+
 interface KeystoreClustersManagerProps {
   clustersData: Record<string, string[]>;
-  groupsData: Record<string, unknown>;
+  groupsData: Record<string, GroupInfo>;
   isLoading?: boolean;
 }
 
@@ -52,6 +61,10 @@ export function KeystoreClustersManager({
   const [clusterSuggestions, setClusterSuggestions] = useState<any[]>([]);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const [selectedSuggestions, setSelectedSuggestions] = useState<string[]>([]);
+  
+  // 搜索和批量选择相关状态
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSelectAllChecked, setIsSelectAllChecked] = useState(false);
   
   const { createCluster, updateCluster, deleteCluster, getClusterSuggestions, isProcessing } = useKeystoreApi();
 
@@ -243,6 +256,8 @@ export function KeystoreClustersManager({
     setSelectedGroups([]);
     setSelectedCluster(null);
     setValidationError('');
+    setSearchTerm('');
+    setIsSelectAllChecked(false);
   };
 
   const openEditDialog = (clusterName: string, groupNames: string[]) => {
@@ -330,6 +345,40 @@ export function KeystoreClustersManager({
     }
   };
 
+  // 过滤后的组列表（基于搜索条件）
+  const filteredGroups = useMemo(() => {
+    const groups = getAvailableGroups();
+    if (!searchTerm.trim()) {
+      return groups;
+    }
+    return groups.filter(groupName => 
+      groupName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [searchTerm, localClusters, selectedCluster, groupsData]);
+
+  // 处理全选/取消全选
+  const handleSelectAllToggle = useCallback((checked: boolean) => {
+    setIsSelectAllChecked(checked);
+    if (checked) {
+      // 选择当前筛选条件下的所有组
+      const uniqueGroups = Array.from(new Set([...selectedGroups, ...filteredGroups]));
+      setSelectedGroups(uniqueGroups);
+    } else {
+      // 取消选择当前筛选条件下的所有组
+      setSelectedGroups(prev => prev.filter(group => !filteredGroups.includes(group)));
+    }
+  }, [filteredGroups, selectedGroups]);
+
+  // 更新全选复选框状态
+  useEffect(() => {
+    if (filteredGroups.length === 0) {
+      setIsSelectAllChecked(false);
+    } else {
+      const allFilteredSelected = filteredGroups.every(group => selectedGroups.includes(group));
+      setIsSelectAllChecked(allFilteredSelected);
+    }
+  }, [filteredGroups, selectedGroups]);
+
   const handleGroupToggle = (groupName: string, checked: boolean) => {
     if (checked) {
       setSelectedGroups(prev => [...prev, groupName]);
@@ -410,11 +459,12 @@ export function KeystoreClustersManager({
               <RefreshCw className="h-4 w-4" />
               刷新
             </Button>
-            <Button onClick={openCreateDialog} disabled={availableGroups.length === 0}>
+            <Button size="sm" onClick={openCreateDialog} disabled={availableGroups.length === 0}>
               <Plus className="h-4 w-4 mr-2" />
               创建族
             </Button>
             <Button 
+              size="sm"
               variant="outline" 
               onClick={openAutoCreateDialog}
               disabled={Object.keys(groupsData).length < 2}
@@ -431,10 +481,7 @@ export function KeystoreClustersManager({
           <Alert className="mb-4">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              当前有 <strong>{pendingActions.length}</strong> 个操作待推送。
-              <span className="text-blue-600 font-medium ml-1">
-                点击推送按钮执行批量操作。
-              </span>
+              当前有 {pendingActions.length} 个操作待推送。点击推送按钮执行批量操作。
             </AlertDescription>
           </Alert>
         )}
@@ -462,15 +509,50 @@ export function KeystoreClustersManager({
                 
                 <div>
                   <Label>选择组 * ({selectedGroups.length}/{availableGroups.length})</Label>
+                  
+                  {/* 搜索框 */}
+                  <div className="mt-2 relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                    <Input
+                      placeholder="搜索关键词组..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                  
+                  {/* 批量选择控制 */}
+                  {filteredGroups.length > 0 && (
+                    <div className="mt-2 flex items-center space-x-2 p-2 bg-muted/30 rounded">
+                      <Checkbox
+                        id="select-all-filtered"
+                        checked={isSelectAllChecked}
+                        onCheckedChange={handleSelectAllToggle}
+                      />
+                      <Label htmlFor="select-all-filtered" className="text-sm cursor-pointer">
+                        {isSelectAllChecked ? '取消选择' : '选择'}当前筛选的所有组 ({filteredGroups.length} 个)
+                      </Label>
+                    </div>
+                  )}
+                  
                   <div className="mt-2 space-y-2 max-h-60 overflow-y-auto border rounded-md p-3">
-                    {availableGroups.length === 0 ? (
+                    {filteredGroups.length === 0 ? (
                       <div className="text-center py-4 text-muted-foreground">
                         <AlertCircle className="h-8 w-8 mx-auto mb-2" />
-                        <p>暂无可分配的组</p>
-                        <p className="text-xs">所有组都已分配到其他族中</p>
+                        {searchTerm ? (
+                          <>
+                            <p>未找到匹配的组</p>
+                            <p className="text-xs">尝试调整搜索关键词</p>
+                          </>
+                        ) : (
+                          <>
+                            <p>暂无可分配的组</p>
+                            <p className="text-xs">所有组都已分配到其他族中</p>
+                          </>
+                        )}
                       </div>
                     ) : (
-                      availableGroups.map(groupName => (
+                      filteredGroups.map(groupName => (
                         <div key={groupName} className="flex items-center space-x-2">
                           <Checkbox
                             id={`group-${groupName}`}
@@ -481,7 +563,7 @@ export function KeystoreClustersManager({
                             <div className="flex justify-between items-center">
                               <span>{groupName}</span>
                               <span className="text-muted-foreground text-xs">
-                                {groupsData[groupName]?.keyword_count || 0} 关键词
+                                {(groupsData[groupName] as GroupInfo)?.keyword_count || 0} 关键词
                               </span>
                             </div>
                           </Label>
@@ -489,6 +571,18 @@ export function KeystoreClustersManager({
                       ))
                     )}
                   </div>
+                  
+                  {/* 显示搜索结果统计 */}
+                  {searchTerm && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      找到 {filteredGroups.length} 个匹配的组
+                      {selectedGroups.length > 0 && (
+                        <span className="ml-2 text-primary">
+                          已选择 {selectedGroups.length} 个组
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {validationError && (
@@ -544,16 +638,16 @@ export function KeystoreClustersManager({
           <div className="space-y-4">
             {Object.entries(localClusters).map(([clusterName, groupNames]) => {
               const totalKeywords = groupNames.reduce((sum, groupName) => {
-                return sum + (groupsData[groupName]?.keyword_count || 0);
+                return sum + ((groupsData[groupName] as GroupInfo)?.keyword_count || 0);
               }, 0);
               
               const totalQPM = groupNames.reduce((sum, groupName) => {
-                return sum + (groupsData[groupName]?.total_qpm || 0);
+                return sum + ((groupsData[groupName] as GroupInfo)?.total_qpm || 0);
               }, 0);
               
               const avgDiff = groupNames.length > 0 
                 ? groupNames.reduce((sum, groupName) => {
-                    return sum + (groupsData[groupName]?.avg_diff || 0);
+                    return sum + ((groupsData[groupName] as GroupInfo)?.avg_diff || 0);
                   }, 0) / groupNames.length
                 : 0;
               
@@ -630,25 +724,80 @@ export function KeystoreClustersManager({
                             
                             <div>
                               <Label>选择组 * ({selectedGroups.length}/{getAvailableGroups().length})</Label>
-                              <div className="mt-2 space-y-2 max-h-60 overflow-y-auto border rounded-md p-3">
-                                {getAvailableGroups().map(groupName => (
-                                  <div key={groupName} className="flex items-center space-x-2">
-                                    <Checkbox
-                                      id={`edit-group-${groupName}`}
-                                      checked={selectedGroups.includes(groupName)}
-                                      onCheckedChange={(checked) => handleGroupToggle(groupName, !!checked)}
-                                    />
-                                    <Label htmlFor={`edit-group-${groupName}`} className="flex-1 cursor-pointer">
-                                      <div className="flex justify-between items-center">
-                                        <span>{groupName}</span>
-                                        <span className="text-muted-foreground text-xs">
-                                          {groupsData[groupName]?.keyword_count || 0} 关键词
-                                        </span>
-                                      </div>
-                                    </Label>
-                                  </div>
-                                ))}
+                              
+                              {/* 搜索框 */}
+                              <div className="mt-2 relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
+                                <Input
+                                  placeholder="搜索关键词组..."
+                                  value={searchTerm}
+                                  onChange={(e) => setSearchTerm(e.target.value)}
+                                  className="pl-10"
+                                />
                               </div>
+                              
+                              {/* 批量选择控制 */}
+                              {filteredGroups.length > 0 && (
+                                <div className="mt-2 flex items-center space-x-2 p-2 bg-muted/30 rounded">
+                                  <Checkbox
+                                    id="edit-select-all-filtered"
+                                    checked={isSelectAllChecked}
+                                    onCheckedChange={handleSelectAllToggle}
+                                  />
+                                  <Label htmlFor="edit-select-all-filtered" className="text-sm cursor-pointer">
+                                    {isSelectAllChecked ? '取消选择' : '选择'}当前筛选的所有组 ({filteredGroups.length} 个)
+                                  </Label>
+                                </div>
+                              )}
+                              
+                              <div className="mt-2 space-y-2 max-h-60 overflow-y-auto border rounded-md p-3">
+                                {filteredGroups.length === 0 ? (
+                                  <div className="text-center py-4 text-muted-foreground">
+                                    <AlertCircle className="h-8 w-8 mx-auto mb-2" />
+                                    {searchTerm ? (
+                                      <>
+                                        <p>未找到匹配的组</p>
+                                        <p className="text-xs">尝试调整搜索关键词</p>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <p>暂无可分配的组</p>
+                                        <p className="text-xs">所有组都已分配到其他族中</p>
+                                      </>
+                                    )}
+                                  </div>
+                                ) : (
+                                  filteredGroups.map(groupName => (
+                                    <div key={groupName} className="flex items-center space-x-2">
+                                      <Checkbox
+                                        id={`edit-group-${groupName}`}
+                                        checked={selectedGroups.includes(groupName)}
+                                        onCheckedChange={(checked) => handleGroupToggle(groupName, !!checked)}
+                                      />
+                                      <Label htmlFor={`edit-group-${groupName}`} className="flex-1 cursor-pointer">
+                                        <div className="flex justify-between items-center">
+                                          <span>{groupName}</span>
+                                          <span className="text-muted-foreground text-xs">
+                                            {(groupsData[groupName] as GroupInfo)?.keyword_count || 0} 关键词
+                                          </span>
+                                        </div>
+                                      </Label>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                              
+                              {/* 显示搜索结果统计 */}
+                              {searchTerm && (
+                                <div className="mt-2 text-xs text-muted-foreground">
+                                  找到 {filteredGroups.length} 个匹配的组
+                                  {selectedGroups.length > 0 && (
+                                    <span className="ml-2 text-primary">
+                                      已选择 {selectedGroups.length} 个组
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
 
                             {validationError && (
@@ -697,7 +846,7 @@ export function KeystoreClustersManager({
                       <Badge key={groupName} variant="secondary" className="text-xs">
                         {groupName}
                         <span className="ml-1 text-muted-foreground">
-                          ({groupsData[groupName]?.keyword_count || 0})
+                          ({(groupsData[groupName] as GroupInfo)?.keyword_count || 0})
                         </span>
                       </Badge>
                     ))}
@@ -720,7 +869,7 @@ export function KeystoreClustersManager({
                 <Badge key={groupName} variant="outline" className="text-xs">
                   {groupName}
                   <span className="ml-1 text-muted-foreground">
-                    ({groupsData[groupName]?.keyword_count || 0})
+                    ({(groupsData[groupName] as GroupInfo)?.keyword_count || 0})
                   </span>
                 </Badge>
               ))}

@@ -18,8 +18,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useKeystoreApi } from "@/hooks/use-keystore-api";
 import { toast } from 'react-toastify';
 
+interface GroupInfo {
+  keyword_count: number;
+  total_qpm: number;
+  avg_qpm: number;
+  avg_diff: number;
+  max_qpm: number;
+  data: any[];
+}
+
 interface KeystoreGroupsManagerProps {
-  groupsData: Record<string, unknown>;
+  groupsData: Record<string, GroupInfo>;
   clustersData: Record<string, string[]>;
   isLoading?: boolean;
 }
@@ -294,7 +303,7 @@ export const KeystoreGroupsManager = memo(function KeystoreGroupsManager({
 
   // 缓存排序后的组数据
   const groupEntries = useMemo(() => {
-    return Object.entries(groupsData).sort((a, b) => b[1].total_qpm - a[1].total_qpm);
+    return Object.entries(groupsData).sort((a, b) => (b[1] as GroupInfo).total_qpm - (a[1] as GroupInfo).total_qpm);
   }, [groupsData]);
 
   // 分页数据
@@ -363,10 +372,7 @@ export const KeystoreGroupsManager = memo(function KeystoreGroupsManager({
           <Alert className="mb-4">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              当前有 <strong>{pendingActions.length}</strong> 个操作待推送。
-              <span className="text-blue-600 font-medium ml-1">
-                点击推送按钮执行批量操作。
-              </span>
+              当前有 {pendingActions.length} 个操作待推送。点击推送按钮执行批量操作。
             </AlertDescription>
           </Alert>
         )}
@@ -392,6 +398,7 @@ export const KeystoreGroupsManager = memo(function KeystoreGroupsManager({
           </TableHeader>
           <TableBody>
             {paginatedGroups.map(([groupName, groupInfo]) => {
+              const typedGroupInfo = groupInfo as GroupInfo;
               const clusterName = getClusterForGroup(groupName);
               const hasPendingRename = isActionPending(groupName, 'rename');
               const isSelected = selectedGroups.includes(groupName);
@@ -413,9 +420,9 @@ export const KeystoreGroupsManager = memo(function KeystoreGroupsManager({
                       <span className="text-muted-foreground text-sm">未分配</span>
                     )}
                   </TableCell>
-                  <TableCell>{groupInfo.keyword_count}</TableCell>
-                  <TableCell>{groupInfo.total_qpm.toLocaleString()}</TableCell>
-                  <TableCell>{groupInfo.avg_diff.toFixed(1)}</TableCell>
+                  <TableCell>{typedGroupInfo.keyword_count}</TableCell>
+                  <TableCell>{typedGroupInfo.total_qpm.toLocaleString()}</TableCell>
+                  <TableCell>{typedGroupInfo.avg_diff.toFixed(1)}</TableCell>
                   <TableCell>
                     <div className="flex justify-center">
                       <DropdownMenu 
@@ -607,19 +614,19 @@ export const KeystoreGroupsManager = memo(function KeystoreGroupsManager({
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <div className="bg-muted p-3 rounded">
                       <div className="text-sm text-muted-foreground">关键词数量</div>
-                      <div className="text-lg font-bold">{groupsData[selectedGroup].keyword_count}</div>
+                      <div className="text-lg font-bold">{(groupsData[selectedGroup] as GroupInfo).keyword_count}</div>
                     </div>
                     <div className="bg-muted p-3 rounded">
                       <div className="text-sm text-muted-foreground">总QPM</div>
-                      <div className="text-lg font-bold">{groupsData[selectedGroup].total_qpm.toLocaleString()}</div>
+                      <div className="text-lg font-bold">{(groupsData[selectedGroup] as GroupInfo).total_qpm.toLocaleString()}</div>
                     </div>
                     <div className="bg-muted p-3 rounded">
                       <div className="text-sm text-muted-foreground">平均难度</div>
-                      <div className="text-lg font-bold">{groupsData[selectedGroup].avg_diff.toFixed(1)}</div>
+                      <div className="text-lg font-bold">{(groupsData[selectedGroup] as GroupInfo).avg_diff.toFixed(1)}</div>
                     </div>
                     <div className="bg-muted p-3 rounded">
                       <div className="text-sm text-muted-foreground">最高QPM</div>
-                      <div className="text-lg font-bold">{groupsData[selectedGroup].max_qpm.toLocaleString()}</div>
+                      <div className="text-lg font-bold">{(groupsData[selectedGroup] as GroupInfo).max_qpm.toLocaleString()}</div>
                     </div>
                   </div>
                   
@@ -635,13 +642,13 @@ export const KeystoreGroupsManager = memo(function KeystoreGroupsManager({
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {groupsData[selectedGroup].data.map((keyword: unknown, index: number) => {const kw = keyword as Record<string, unknown>; return (
+                          {(groupsData[selectedGroup] as GroupInfo).data.map((keyword: unknown, index: number) => {const kw = keyword as Record<string, unknown>; return (
                             <TableRow key={index}>
                               <TableCell className="max-w-xs">
                                 <KeywordCell keyword={String(kw.Keywords || kw.keyword || '')} />
                               </TableCell>
-                              <TableCell>{kw.QPM || kw.qpm}</TableCell>
-                              <TableCell>{kw.DIFF || kw.diff}</TableCell>
+                              <TableCell>{String(kw.QPM || kw.qpm || '')}</TableCell>
+                              <TableCell>{String(kw.DIFF || kw.diff || '')}</TableCell>
                             </TableRow>
                           );})}
                         </TableBody>

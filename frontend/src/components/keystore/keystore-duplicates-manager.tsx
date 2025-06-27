@@ -362,9 +362,7 @@ export function KeystoreDuplicatesManager({
             {pendingActions.length > 0 && (
               <>
                 <br />
-                <span className="text-blue-600 font-medium">
-                  当前有 {pendingActions.length} 个操作待推送。
-                </span>
+                <span className="text-blue-600 font-medium">当前有 {pendingActions.length} 个操作待推送。</span>
               </>
             )}
           </AlertDescription>
