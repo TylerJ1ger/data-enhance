@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Edit, Eye, Users, MoreVertical, RefreshCw, Upload, X, Check, AlertTriangle } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useKeystoreApi } from "@/hooks/use-keystore-api";
@@ -29,6 +30,37 @@ interface PendingAction {
   groupName: string;
   newName: string;
   timestamp: number;
+}
+
+// 辅助函数：截断关键词文本
+function truncateKeyword(keyword: string, maxLength: number = 40): string {
+  if (keyword.length <= maxLength) {
+    return keyword;
+  }
+  return keyword.substring(0, maxLength) + '...';
+}
+
+// 关键词显示组件，带tooltip
+function KeywordCell({ keyword }: { keyword: string }) {
+  const isLong = keyword.length > 40;
+  const displayText = truncateKeyword(keyword);
+  
+  if (!isLong) {
+    return <span className="break-words">{keyword}</span>;
+  }
+  
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="break-words cursor-help hover:text-primary transition-colors">
+          {displayText}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-xs">
+        <p className="break-words">{keyword}</p>
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 export function KeystoreGroupsManager({
@@ -496,7 +528,9 @@ export function KeystoreGroupsManager({
                         <TableBody>
                           {groupsData[selectedGroup].data.map((keyword: unknown, index: number) => {const kw = keyword as Record<string, unknown>; return (
                             <TableRow key={index}>
-                              <TableCell>{kw.Keywords || kw.keyword}</TableCell>
+                              <TableCell className="max-w-xs">
+                                <KeywordCell keyword={String(kw.Keywords || kw.keyword || '')} />
+                              </TableCell>
                               <TableCell>{kw.QPM || kw.qpm}</TableCell>
                               <TableCell>{kw.DIFF || kw.diff}</TableCell>
                             </TableRow>

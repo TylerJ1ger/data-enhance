@@ -15,6 +15,12 @@ from collections import defaultdict
 from datetime import datetime
 
 from app.shared.utils.data_utils import read_file, get_dataframe_stats
+from app.shared.utils.column_name_utils import (
+    find_column_name, 
+    find_multiple_column_names,
+    validate_dataframe_columns,
+    KEYWORD_COLUMN_MAPPINGS
+)
 from app.shared.exceptions.custom_exceptions import (
     FileProcessingException, 
     DataProcessingException,
@@ -26,11 +32,60 @@ logger = logging.getLogger(__name__)
 
 
 class KeystoreProcessorRedis:
+    # 关键词库特有的列名映射（扩展通用映射）
+    KEYSTORE_SPECIFIC_MAPPINGS = {
+        'group_name_map': ['group_name_map', 'Group', 'Group Name', '组名', 'Force Group', 'Task Name'],
+        'intent': ['Intent', '意图'],
+        'trend': ['Trend', '趋势'],
+        'competitive_density': ['Competitive Density', '竞争密度'],
+        'serp_features': ['SERP Features', 'SERP特征'],
+        'results_count': ['Number of Results', '结果数量']
+    }
+    
     def __init__(self):
         """初始化Redis关键词库处理器"""
         self.redis_manager = get_redis_manager()
         self.repository = KeystoreRepository(self.redis_manager)
         self._file_stats = []
+    
+    def _standardize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """标准化列名为关键词库所需格式，使用通用列名映射工具"""
+        df = df.copy()
+        
+        # 合并通用映射和关键词库特有映射
+        combined_mappings = {**KEYWORD_COLUMN_MAPPINGS, **self.KEYSTORE_SPECIFIC_MAPPINGS}
+        
+        # 查找并映射列名
+        column_mappings = find_multiple_column_names(df, list(combined_mappings.keys()), combined_mappings)
+        
+        # 创建重命名映射，将找到的列名映射为关键词库所需的标准名称
+        rename_mapping = {}
+        for concept, actual_column in column_mappings.items():
+            if actual_column is not None:
+                if concept == 'keyword':
+                    rename_mapping[actual_column] = 'Keywords'
+                elif concept == 'search_volume':
+                    rename_mapping[actual_column] = 'QPM'
+                elif concept == 'keyword_difficulty':
+                    rename_mapping[actual_column] = 'DIFF'
+                elif concept == 'group_name_map':
+                    rename_mapping[actual_column] = 'group_name_map'
+                # 保留其他映射的列名（如intent, trend等）
+                else:
+                    # 对于其他列，保持原名或使用标准化名称
+                    continue
+        
+        # 重命名列
+        if rename_mapping:
+            df.rename(columns=rename_mapping, inplace=True)
+            logger.info(f"列名映射完成: {rename_mapping}")
+        
+        # 如果没有group_name_map列，创建一个默认值
+        if 'group_name_map' not in df.columns:
+            df['group_name_map'] = 'default_group'
+            logger.info("未找到组名列，创建默认组名 'default_group'")
+        
+        return df
     
     @staticmethod
     def generate_keyword_uid(keyword: str, group: str, cluster: str = "") -> str:
@@ -105,11 +160,38 @@ class KeystoreProcessorRedis:
                     # 读取文件
                     df = read_file(temp_file.name)
                     
+                    # 标准化列名
+                    df = self._standardize_columns(df)
+                    
                     # 验证必需列
                     required_columns = ['Keywords', 'group_name_map', 'QPM', 'DIFF']
                     missing_columns = [col for col in required_columns if col not in df.columns]
                     
                     if missing_columns:
+                        # 使用通用工具提供更友好的错误信息
+                        from app.shared.utils.column_name_utils import get_all_possible_names
+                        
+                        available_mappings = []
+                        combined_mappings = {**KEYWORD_COLUMN_MAPPINGS, **self.KEYSTORE_SPECIFIC_MAPPINGS}
+                        
+                        for missing_col in missing_columns:
+                            if missing_col == 'Keywords':
+                                possible_names = get_all_possible_names('keyword', combined_mappings)
+                                available_mappings.append(f"关键词列可以是: {', '.join(possible_names)}")
+                            elif missing_col == 'QPM':
+                                possible_names = get_all_possible_names('search_volume', combined_mappings)
+                                available_mappings.append(f"搜索量列可以是: {', '.join(possible_names)}")
+                            elif missing_col == 'DIFF':
+                                possible_names = get_all_possible_names('keyword_difficulty', combined_mappings)
+                                available_mappings.append(f"难度列可以是: {', '.join(possible_names)}")
+                            elif missing_col == 'group_name_map':
+                                possible_names = get_all_possible_names('group_name_map', combined_mappings)
+                                available_mappings.append(f"组名列可以是: {', '.join(possible_names)} (如果没有将自动创建默认组)")
+                        
+                        error_message = f"数据缺少必需的列: {', '.join(missing_columns)}。可用列: {', '.join(df.columns)}"
+                        if available_mappings:
+                            error_message += f"\n建议: {'; '.join(available_mappings)}"
+                        
                         raise MissingRequiredColumnsException(
                             missing_columns=missing_columns,
                             available_columns=list(df.columns)
@@ -239,6 +321,50 @@ class KeystoreProcessorRedis:
         if not preserve_duplicates:
             df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
         
+        # 只保留必要的字段
+        df = self._filter_required_columns(df)
+        
+        return df
+    
+    def _filter_required_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """只保留必要的字段"""
+        # 定义必需保留的字段（在CSV处理阶段存在的）
+        required_columns = [
+            'Keywords',           # 关键词
+            'QPM',               # 搜索量
+            'DIFF',              # 难度
+            'group_name_map'     # 组名
+            # 注意：uid, created_at, source_file 会在存储到Redis时自动添加
+        ]
+        
+        # 定义可选的有价值字段，如果存在则保留
+        optional_columns = [
+            'CPC (USD)',         # 点击成本
+            'CPC',               # 点击成本（另一种格式）
+            'cpc'                # 点击成本（标准化后）
+        ]
+        
+        # 查找实际存在的列
+        existing_columns = []
+        
+        # 添加必需列
+        for col in required_columns:
+            if col in df.columns:
+                existing_columns.append(col)
+        
+        # 添加可选列（优先级：CPC (USD) > CPC > cpc）
+        cpc_added = False
+        for col in optional_columns:
+            if col in df.columns and not cpc_added:
+                existing_columns.append(col)
+                cpc_added = True
+                break
+        
+        # 过滤数据框，只保留选定的列
+        if existing_columns:
+            df = df[existing_columns].copy()
+            logger.info(f"过滤字段完成，保留列: {existing_columns}")
+        
         return df
     
     def _clean_merged_data(self, df: pd.DataFrame, preserve_duplicates: bool = False) -> pd.DataFrame:
@@ -251,6 +377,9 @@ class KeystoreProcessorRedis:
         df = df.dropna(subset=['Keywords', 'group_name_map'])
         if not preserve_duplicates:
             df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
+        
+        # 只保留必要的字段
+        df = self._filter_required_columns(df)
         
         return df.reset_index(drop=True)
     
