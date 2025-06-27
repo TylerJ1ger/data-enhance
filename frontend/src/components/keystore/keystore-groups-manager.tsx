@@ -1,7 +1,7 @@
 // src/components/keystore/keystore-groups-manager.tsx
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useCallback, memo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -63,7 +63,7 @@ function KeywordCell({ keyword }: { keyword: string }) {
   );
 }
 
-export function KeystoreGroupsManager({
+export const KeystoreGroupsManager = memo(function KeystoreGroupsManager({
   groupsData,
   clustersData,
   isLoading = false
@@ -79,6 +79,10 @@ export function KeystoreGroupsManager({
   const [isPushing, setIsPushing] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [openDropdownGroup, setOpenDropdownGroup] = useState<string | null>(null);
+  
+  // 分页控制
+  const [currentPage, setCurrentPage] = useState(0);
+  const itemsPerPage = 50; // 每页显示50个组，减少DOM节点数量
   
   const { renameGroup, isProcessing } = useKeystoreApi();
   
@@ -134,7 +138,7 @@ export function KeystoreGroupsManager({
     );
   };
 
-  const handleRenameGroup = async () => {
+  const handleRenameGroup = useCallback(async () => {
     if (!selectedGroup || !renameGroupName.trim()) {
       toast.error('请输入有效的组名');
       return;
@@ -150,7 +154,7 @@ export function KeystoreGroupsManager({
     setIsRenameDialogOpen(false);
     setSelectedGroup(null);
     setRenameGroupName('');
-  };
+  }, [selectedGroup, renameGroupName, addPendingAction]);
 
   // 新增：并发执行所有缓存操作
   const executePendingActions = async () => {
@@ -215,34 +219,45 @@ export function KeystoreGroupsManager({
     }
   };
 
-  const getClusterForGroup = (groupName: string): string | null => {
+  // 缓存集群映射以提高性能
+  const clusterMap = useMemo(() => {
+    const map = new Map<string, string>();
     for (const [clusterName, groupNames] of Object.entries(clustersData)) {
-      if (groupNames.includes(groupName)) {
-        return clusterName;
-      }
+      groupNames.forEach(groupName => map.set(groupName, clusterName));
     }
-    return null;
-  };
+    return map;
+  }, [clustersData]);
+
+  const getClusterForGroup = useCallback((groupName: string): string | null => {
+    return clusterMap.get(groupName) || null;
+  }, [clusterMap]);
   
   // 新增：批量选择相关函数
-  const handleSelectAll = (checked: boolean) => {
+  const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
       setSelectedGroups(Object.keys(groupsData));
     } else {
       setSelectedGroups([]);
     }
-  };
+  }, [groupsData]);
   
-  const handleGroupSelect = (groupName: string, checked: boolean) => {
+  const handleGroupSelect = useCallback((groupName: string, checked: boolean) => {
     if (checked) {
       setSelectedGroups(prev => [...prev, groupName]);
     } else {
       setSelectedGroups(prev => prev.filter(g => g !== groupName));
     }
-  };
+  }, []);
   
-  const isAllSelected = selectedGroups.length > 0 && selectedGroups.length === Object.keys(groupsData).length;
-  const isPartiallySelected = selectedGroups.length > 0 && selectedGroups.length < Object.keys(groupsData).length;
+  // 缓存选择状态计算
+  const selectionState = useMemo(() => {
+    const totalGroups = Object.keys(groupsData).length;
+    const selectedCount = selectedGroups.length;
+    return {
+      isAllSelected: selectedCount > 0 && selectedCount === totalGroups,
+      isPartiallySelected: selectedCount > 0 && selectedCount < totalGroups
+    };
+  }, [selectedGroups.length, groupsData]);
 
   if (isLoading) {
     return (
@@ -277,13 +292,31 @@ export function KeystoreGroupsManager({
     );
   }
 
-  const groupEntries = Object.entries(groupsData).sort((a, b) => b[1].total_qpm - a[1].total_qpm);
+  // 缓存排序后的组数据
+  const groupEntries = useMemo(() => {
+    return Object.entries(groupsData).sort((a, b) => b[1].total_qpm - a[1].total_qpm);
+  }, [groupsData]);
+
+  // 分页数据
+  const paginatedGroups = useMemo(() => {
+    const startIndex = currentPage * itemsPerPage;
+    return groupEntries.slice(startIndex, startIndex + itemsPerPage);
+  }, [groupEntries, currentPage, itemsPerPage]);
+
+  const totalPages = Math.ceil(groupEntries.length / itemsPerPage);
 
   return (
     <Card>
       <CardHeader>
         <div className="flex justify-between items-center">
-          <CardTitle>关键词组管理</CardTitle>
+          <div>
+            <CardTitle>关键词组管理</CardTitle>
+            {groupEntries.length > itemsPerPage && (
+              <p className="text-sm text-muted-foreground mt-1">
+                显示 {currentPage * itemsPerPage + 1}-{Math.min((currentPage + 1) * itemsPerPage, groupEntries.length)} / 共 {groupEntries.length} 个组
+              </p>
+            )}
+          </div>
           <div className="flex gap-2">
             {pendingActions.length > 0 && (
               <>
@@ -343,10 +376,10 @@ export function KeystoreGroupsManager({
             <TableRow>
               <TableHead className="w-[50px]">
                 <Checkbox
-                  checked={isAllSelected}
+                  checked={selectionState.isAllSelected}
                   onCheckedChange={handleSelectAll}
                   aria-label="选择所有组"
-                  className={isPartiallySelected ? 'data-[state=checked]:bg-primary data-[state=checked]:border-primary opacity-50' : ''}
+                  className={selectionState.isPartiallySelected ? 'data-[state=checked]:bg-primary data-[state=checked]:border-primary opacity-50' : ''}
                 />
               </TableHead>
               <TableHead>组名</TableHead>
@@ -358,7 +391,7 @@ export function KeystoreGroupsManager({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {groupEntries.map(([groupName, groupInfo]) => {
+            {paginatedGroups.map(([groupName, groupInfo]) => {
               const clusterName = getClusterForGroup(groupName);
               const hasPendingRename = isActionPending(groupName, 'rename');
               const isSelected = selectedGroups.includes(groupName);
@@ -430,6 +463,49 @@ export function KeystoreGroupsManager({
             })}
           </TableBody>
         </Table>
+        
+        {/* 分页控制 */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-muted-foreground">
+              第 {currentPage + 1} 页，共 {totalPages} 页
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(0)}
+                disabled={currentPage === 0}
+              >
+                首页
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(0, prev - 1))}
+                disabled={currentPage === 0}
+              >
+                上一页
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages - 1, prev + 1))}
+                disabled={currentPage === totalPages - 1}
+              >
+                下一页
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(totalPages - 1)}
+                disabled={currentPage === totalPages - 1}
+              >
+                末页
+              </Button>
+            </div>
+          </div>
+        )}
         
         {/* 批量操作区域 */}
         {selectedGroups.length > 0 && (
@@ -618,4 +694,4 @@ export function KeystoreGroupsManager({
       </CardContent>
     </Card>
   );
-}
+});

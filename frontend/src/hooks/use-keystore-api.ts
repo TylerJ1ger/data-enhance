@@ -35,7 +35,39 @@ export function useKeystoreApi() {
   // 新增：触发重新渲染的状态
   const [triggerId, setTriggerId] = useState(0);
 
-  // 检查API健康状态
+  // 请求缓存和去重机制
+  const [requestCache, setRequestCache] = useState(new Map());
+  const [pendingRequests, setPendingRequests] = useState(new Set());
+
+  // 优化的API调用函数，带缓存和去重
+  const fetchWithCache = useCallback(async (key: string, fetchFn: () => Promise<any>, cacheTime: number = 30000) => {
+    // 防止重复请求
+    if (pendingRequests.has(key)) {
+      return requestCache.get(key)?.data;
+    }
+    
+    // 检查缓存
+    const cached = requestCache.get(key);
+    if (cached && Date.now() - cached.timestamp < cacheTime) {
+      return cached.data;
+    }
+    
+    setPendingRequests(prev => new Set([...prev, key]));
+    
+    try {
+      const data = await fetchFn();
+      setRequestCache(prev => new Map([...prev, [key, { data, timestamp: Date.now() }]]));
+      return data;
+    } finally {
+      setPendingRequests(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(key);
+        return newSet;
+      });
+    }
+  }, [requestCache, pendingRequests]);
+
+  // 检查API健康状态 - 只在组件挂载时检查一次
   useEffect(() => {
     const checkApiHealth = async () => {
       try {
@@ -137,7 +169,9 @@ export function useKeystoreApi() {
   const fetchGroupsData = useCallback(async () => {
     setIsLoadingGroups(true);
     try {
-      const data = await keystoreApi.getKeystoreGroups();
+      const data = await fetchWithCache('groups', async () => {
+        return await keystoreApi.getKeystoreGroups();
+      });
       setGroupsData(data);
       return data;
     } catch (error) {
@@ -146,13 +180,15 @@ export function useKeystoreApi() {
     } finally {
       setIsLoadingGroups(false);
     }
-  }, []);
+  }, [fetchWithCache]);
 
   // 获取族数据
   const fetchClustersData = useCallback(async () => {
     setIsLoadingClusters(true);
     try {
-      const data = await keystoreApi.getKeystoreClusters();
+      const data = await fetchWithCache('clusters', async () => {
+        return await keystoreApi.getKeystoreClusters();
+      });
       setClustersData(data);
       return data;
     } catch (error) {
@@ -161,7 +197,7 @@ export function useKeystoreApi() {
     } finally {
       setIsLoadingClusters(false);
     }
-  }, []);
+  }, [fetchWithCache]);
 
   // 获取可视化数据
   const fetchVisualizationData = useCallback(async () => {
@@ -872,9 +908,18 @@ export function useKeystoreApi() {
     }
   }, [summary, groupsData, restoreFromIndexDB]);
 
+  // 清除请求缓存
+  const clearRequestCache = useCallback(() => {
+    setRequestCache(new Map());
+    setPendingRequests(new Set());
+  }, []);
+
   // 新增：刷新所有数据的便捷方法
   const refreshAllData = useCallback(async () => {
     try {
+      // 清除缓存以强制重新获取
+      clearRequestCache();
+      
       await Promise.all([
         fetchSummary(),
         fetchGroupsData(),
@@ -888,7 +933,7 @@ export function useKeystoreApi() {
       console.error('刷新所有数据错误:', error);
       toast.error('刷新数据失败');
     }
-  }, [fetchSummary, fetchGroupsData, fetchClustersData, fetchVisualizationData, fetchDuplicatesData, triggerRerender]);
+  }, [fetchSummary, fetchGroupsData, fetchClustersData, fetchVisualizationData, fetchDuplicatesData, triggerRerender, clearRequestCache]);
 
   return {
     // 状态
