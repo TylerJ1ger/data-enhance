@@ -78,8 +78,30 @@ export function KeystoreGroupsManager({
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
   const [isPushing, setIsPushing] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
+  const [openDropdownGroup, setOpenDropdownGroup] = useState<string | null>(null);
   
   const { renameGroup, isProcessing } = useKeystoreApi();
+  
+  // 添加清理状态的函数
+  const resetDetailState = () => {
+    setSelectedGroup(null);
+    setIsDetailDialogOpen(false);
+    setOpenDropdownGroup(null); // 关闭所有dropdown
+  };
+  
+  // 确保键盘事件正确处理
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isDetailDialogOpen) {
+        resetDetailState();
+      }
+    };
+    
+    if (isDetailDialogOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      return () => document.removeEventListener('keydown', handleKeyDown);
+    }
+  }, [isDetailDialogOpen]);
 
   // 新增：将操作添加到缓存
   const addPendingAction = (action: Omit<PendingAction, 'id' | 'timestamp'>) => {
@@ -363,7 +385,10 @@ export function KeystoreGroupsManager({
                   <TableCell>{groupInfo.avg_diff.toFixed(1)}</TableCell>
                   <TableCell>
                     <div className="flex justify-center">
-                      <DropdownMenu>
+                      <DropdownMenu 
+                        open={openDropdownGroup === groupName} 
+                        onOpenChange={(open) => setOpenDropdownGroup(open ? groupName : null)}
+                      >
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                             <MoreVertical className="h-4 w-4" />
@@ -372,6 +397,7 @@ export function KeystoreGroupsManager({
                         <DropdownMenuContent align="end" className="min-w-[150px]">
                           <DropdownMenuItem
                             onClick={() => {
+                              setOpenDropdownGroup(null); // 先关闭dropdown
                               setSelectedGroup(groupName);
                               setIsDetailDialogOpen(true);
                             }}
@@ -382,6 +408,7 @@ export function KeystoreGroupsManager({
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => {
+                              setOpenDropdownGroup(null); // 先关闭dropdown
                               setSelectedGroup(groupName);
                               setRenameGroupName(groupName);
                               setIsRenameDialogOpen(true);
@@ -487,7 +514,13 @@ export function KeystoreGroupsManager({
         </Dialog>
         
         {/* 组详情弹窗保持不变，但移除trigger */}
-        <Dialog open={isDetailDialogOpen} onOpenChange={setIsDetailDialogOpen}>
+        <Dialog open={isDetailDialogOpen} onOpenChange={(open) => {
+          if (!open) {
+            resetDetailState(); // 关闭弹窗时清除所有相关状态
+          } else {
+            setIsDetailDialogOpen(open);
+          }
+        }}>
           <DialogContent className="max-w-4xl">
             <DialogHeader>
               <DialogTitle>组详情: {selectedGroup}</DialogTitle>
