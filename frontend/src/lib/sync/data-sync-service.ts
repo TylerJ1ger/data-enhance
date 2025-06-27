@@ -30,7 +30,7 @@ class DataSyncService {
   };
 
   private syncInterval: NodeJS.Timeout | null = null;
-  private readonly AUTO_SYNC_INTERVAL = 30000; // 30秒自动同步
+  private readonly AUTO_SYNC_INTERVAL = 120000; // 120秒自动同步
   private readonly MAX_RETRY_COUNT = 3;
 
   constructor() {
