@@ -54,10 +54,10 @@ export function useKeystoreApi() {
   }, []);
 
   // 上传文件
-  const uploadFiles = useCallback(async (files: File[], mode: 'replace' | 'append' = 'replace') => {
+  const uploadFiles = useCallback(async (files: File[], mode: 'replace' | 'append' = 'replace', preserveDuplicates: boolean = false) => {
     setIsUploading(true);
     try {
-      const data = await keystoreApi.uploadKeystoreFiles(files, mode);
+      const data = await keystoreApi.uploadKeystoreFiles(files, mode, preserveDuplicates);
       setFileStats(data.file_stats);
       setSummary(data.summary);
       setGroupsOverview(data.groups_overview);
@@ -596,7 +596,7 @@ export function useKeystoreApi() {
   }, [fetchGroupsData, fetchClustersData, fetchVisualizationData, fetchDuplicatesData, triggerRerender]);
 
   // 从IndexDB恢复数据到Redis
-  const restoreFromIndexDB = useCallback(async () => {
+  const restoreFromIndexDB = useCallback(async (preserveDuplicates: boolean = false) => {
     setIsProcessing(true);
     try {
       console.log('开始从IndexDB恢复数据到Redis...');
@@ -708,7 +708,7 @@ export function useKeystoreApi() {
       // 第三步：使用现有的上传接口上传数据
       // 注意：使用 'replace' 模式可能会影响重复关键词的处理
       // 但这是恢复操作，应该完全替换现有数据
-      const uploadResult = await uploadFiles([csvFile], 'replace');
+      const uploadResult = await uploadFiles([csvFile], 'replace', preserveDuplicates);
       console.log('数据上传完成:', uploadResult);
       
       // 第四步：验证上传结果
@@ -786,7 +786,7 @@ export function useKeystoreApi() {
   }, []);
 
   // 手动同步数据到后端
-  const manualSyncToBackend = useCallback(async () => {
+  const manualSyncToBackend = useCallback(async (preserveDuplicates: boolean = false) => {
     setIsProcessing(true);
     try {
       console.log('开始手动同步数据到后端...');
@@ -848,7 +848,7 @@ export function useKeystoreApi() {
       
       // 使用现有的恢复逻辑进行同步，但使用 append 模式以保留重复关键词
       console.log('调用 restoreFromIndexDB 进行同步...');
-      await restoreFromIndexDB();
+      await restoreFromIndexDB(preserveDuplicates);
       
       toast.success('数据已成功同步到后端服务器');
     } catch (error) {

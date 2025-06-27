@@ -32,13 +32,14 @@ const keystoreApi = axios.create({
 /**
  * 上传关键词库文件（支持增量模式）
  */
-export const uploadKeystoreFiles = async (files: File[], mode: 'replace' | 'append' = 'replace'): Promise<KeystoreUploadResponse> => {
+export const uploadKeystoreFiles = async (files: File[], mode: 'replace' | 'append' = 'replace', preserveDuplicates: boolean = false): Promise<KeystoreUploadResponse> => {
   const formData = new FormData();
   
   files.forEach((file) => {
     formData.append('files', file);
   });
   formData.append('mode', mode);
+  formData.append('preserve_duplicates', preserveDuplicates.toString());
   
   const response = await keystoreApi.post<KeystoreUploadResponse>('/upload', formData, {
     headers: {

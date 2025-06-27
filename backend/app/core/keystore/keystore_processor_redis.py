@@ -89,7 +89,7 @@ class KeystoreProcessorRedis:
         else:
             return obj
     
-    async def process_files(self, files: List[UploadFile], mode: str = "replace") -> Dict[str, Any]:
+    async def process_files(self, files: List[UploadFile], mode: str = "replace", preserve_duplicates: bool = False) -> Dict[str, Any]:
         """处理上传的CSV文件并存储到Redis"""
         dataframes = []
         file_stats = []
@@ -116,7 +116,7 @@ class KeystoreProcessorRedis:
                         )
                     
                     # 数据清理和标准化
-                    df = self._clean_dataframe(df)
+                    df = self._clean_dataframe(df, preserve_duplicates)
                     
                     dataframes.append(df)
                     file_stats.append({
@@ -146,7 +146,7 @@ class KeystoreProcessorRedis:
             
             for i, (df, file_stat) in enumerate(zip(dataframes, file_stats)):
                 # 清理单个文件的数据
-                df_cleaned = self._clean_merged_data(df)
+                df_cleaned = self._clean_merged_data(df, preserve_duplicates)
                 
                 # 转换为字典格式
                 keywords_data = df_cleaned.to_dict('records')
@@ -171,7 +171,7 @@ class KeystoreProcessorRedis:
             
             for i, (df, file_stat) in enumerate(zip(dataframes, file_stats)):
                 # 清理单个文件的数据
-                df_cleaned = self._clean_merged_data(df)
+                df_cleaned = self._clean_merged_data(df, preserve_duplicates)
                 
                 # 转换为字典格式
                 keywords_data = df_cleaned.to_dict('records')
@@ -197,7 +197,7 @@ class KeystoreProcessorRedis:
         
         return self._convert_to_python_types(result)
     
-    def _clean_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _clean_dataframe(self, df: pd.DataFrame, preserve_duplicates: bool = False) -> pd.DataFrame:
         """清理和标准化单个数据框"""
         import math
         
@@ -236,11 +236,12 @@ class KeystoreProcessorRedis:
             df['Date and time'] = df['Date and time'].fillna('')
         
         # 移除重复的关键词（保留QPM最高的）
-        df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
+        if not preserve_duplicates:
+            df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
         
         return df
     
-    def _clean_merged_data(self, df: pd.DataFrame) -> pd.DataFrame:
+    def _clean_merged_data(self, df: pd.DataFrame, preserve_duplicates: bool = False) -> pd.DataFrame:
         """清理合并后的数据"""
         df = self._remove_unnamed_columns(df)
         df = self._remove_duplicate_columns(df)
@@ -248,7 +249,8 @@ class KeystoreProcessorRedis:
         
         # 最终数据清理
         df = df.dropna(subset=['Keywords', 'group_name_map'])
-        df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
+        if not preserve_duplicates:
+            df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
         
         return df.reset_index(drop=True)
     

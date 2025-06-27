@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Checkbox } from "@/components/ui/checkbox";
 
 import { KeystoreStats } from "@/components/keystore/keystore-stats";
 import { KeystoreUploader } from "@/components/keystore/keystore-uploader";
@@ -26,6 +27,7 @@ export default function KeystorePage() {
   const [showUpload, setShowUpload] = useState(true);
   const [activeTab, setActiveTab] = useState("overview");
   const [isInitialized, setIsInitialized] = useState(false);
+  const [preserveDuplicates, setPreserveDuplicates] = useState(false);
   
   const {
     isUploading,
@@ -179,7 +181,7 @@ export default function KeystorePage() {
     }
 
     try {
-      await manualSyncToBackend();
+      await manualSyncToBackend(preserveDuplicates);
     } catch (error) {
       console.error('Manual sync error:', error);
       // 错误消息已经在 manualSyncToBackend 中处理了
@@ -269,15 +271,31 @@ export default function KeystorePage() {
           </div>
 
           <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleManualSync}
-              disabled={isUploading || isProcessing || !hasData}
-              className="gap-2"
-            >
-              <RotateCcw className="h-4 w-4" />
-              手动同步数据
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button
+                variant="outline"
+                onClick={handleManualSync}
+                disabled={isUploading || isProcessing || !hasData}
+                className="gap-2"
+              >
+                <RotateCcw className="h-4 w-4" />
+                手动同步数据
+              </Button>
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="preserve-duplicates"
+                  checked={preserveDuplicates}
+                  onCheckedChange={setPreserveDuplicates}
+                  disabled={isUploading || isProcessing}
+                />
+                <label
+                  htmlFor="preserve-duplicates"
+                  className="text-sm text-muted-foreground cursor-pointer"
+                >
+                  保留重复项
+                </label>
+              </div>
+            </div>
 
             <Button
               variant="destructive"

@@ -389,7 +389,8 @@ async def get_keywords_filter_ranges():
 @router.post("/keystore/upload", tags=["Keystore"])
 async def upload_keystore_files(
     files: List[UploadFile] = File(...),
-    mode: str = Form("replace")  # "replace" 或 "append" 
+    mode: str = Form("replace"),  # "replace" 或 "append" 
+    preserve_duplicates: bool = Form(False)  # 是否保留重复项
 ):
     """
     上传关键词库CSV文件
@@ -403,6 +404,7 @@ async def upload_keystore_files(
     
     参数:
     - mode: "replace" (默认，覆盖现有数据) 或 "append" (增量添加)
+    - preserve_duplicates: 是否保留重复项 (默认False，会自动去重)
     """
     if not files:
         raise HTTPException(status_code=400, detail="未提供文件")
@@ -411,7 +413,7 @@ async def upload_keystore_files(
         raise HTTPException(status_code=400, detail="mode参数必须是'replace'或'append'")
     
     await check_file_size(files)
-    result = await keystore_processor.process_files(files, mode=mode)
+    result = await keystore_processor.process_files(files, mode=mode, preserve_duplicates=preserve_duplicates)
     return result
 
 @router.post("/keystore/preview-upload", tags=["Keystore"])
