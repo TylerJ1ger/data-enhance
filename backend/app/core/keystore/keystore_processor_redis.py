@@ -937,6 +937,56 @@ class KeystoreProcessorRedis:
             logger.error(f"导出关键词库数据时出错: {str(e)}")
             return b"Export error occurred"
     
+    def export_groups_data(self) -> bytes:
+        """导出关键词组汇总数据"""
+        try:
+            # 获取所有组的汇总数据
+            groups_data = []
+            groups = self.repository.get_all_groups()
+            
+            for group_name in groups:
+                group_info = self.repository.get_group_info(group_name)
+                if group_info:
+                    # 获取族信息
+                    cluster_name = self._get_cluster_for_group(group_name)
+                    
+                    # 创建组汇总记录
+                    group_record = {
+                        'group_name_map': group_name,
+                        'cluster_name': cluster_name,
+                        'Sum QPM': group_info.get('total_qpm', 0),
+                        'Avg DIFF': group_info.get('avg_diff', 0),
+                        'Avg CPC (USD)': group_info.get('avg_cpc', 0),  # 需要添加CPC计算
+                        'keyword_count': group_info.get('keyword_count', 0),
+                        'avg_qpm': group_info.get('avg_qpm', 0),
+                        'max_qpm': group_info.get('max_qpm', 0),
+                        'min_qpm': group_info.get('min_qpm', 0)
+                    }
+                    groups_data.append(group_record)
+            
+            if not groups_data:
+                return b"No groups data to export"
+            
+            # 转换为DataFrame并导出
+            df = pd.DataFrame(groups_data)
+            
+            # 重新排列列的顺序 - 按照用户要求的列顺序
+            column_order = ['group_name_map', 'cluster_name', 'Sum QPM', 'Avg DIFF', 'Avg CPC (USD)']
+            other_columns = [col for col in df.columns if col not in column_order]
+            final_column_order = column_order + other_columns
+            final_column_order = [col for col in final_column_order if col in df.columns]
+            
+            df = df[final_column_order]
+            
+            logger.info(f"导出关键词组数据: {len(df)} 行, {len(df.columns)} 列")
+            logger.info(f"导出列: {list(df.columns)}")
+            
+            return df.to_csv(index=False).encode('utf-8')
+            
+        except Exception as e:
+            logger.error(f"导出关键词组数据时出错: {str(e)}")
+            return b"Export groups error occurred"
+    
     def _get_cluster_for_group(self, group_name: str) -> str:
         """获取组所属的族"""
         clusters_data = self.get_clusters_data()

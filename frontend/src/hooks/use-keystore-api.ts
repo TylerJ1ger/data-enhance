@@ -511,6 +511,11 @@ export function useKeystoreApi() {
     return keystoreApi.exportKeystoreData();
   }, []);
 
+  // 获取导出组URL
+  const getExportGroupsUrl = useCallback(() => {
+    return keystoreApi.exportKeystoreGroups();
+  }, []);
+
   // 重置数据
   const resetData = useCallback(async () => {
     setIsProcessing(true);
@@ -972,6 +977,7 @@ export function useKeystoreApi() {
     deleteCluster,
     getClusterSuggestions,
     getExportUrl,
+    getExportGroupsUrl,
     resetData,
     
     // 新增：便捷方法

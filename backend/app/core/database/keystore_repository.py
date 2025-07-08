@@ -275,6 +275,7 @@ class KeystoreRepository:
                     'total_qpm': 0.0,
                     'avg_qpm': 0.0,
                     'avg_diff': 0.0,
+                    'avg_cpc': 0.0,
                     'max_qpm': 0.0,
                     'min_qpm': 0.0,
                     'keywords': []
@@ -284,7 +285,9 @@ class KeystoreRepository:
             keywords_data = []
             total_qpm = 0.0
             total_diff = 0.0
+            total_cpc = 0.0
             qpm_values = []
+            cpc_values = []
             
             for uid in keyword_ids:
                 keyword_data = self.get_keyword_by_uid(uid)
@@ -292,22 +295,28 @@ class KeystoreRepository:
                     keywords_data.append(keyword_data['Keywords'])
                     qpm = float(keyword_data.get('QPM', 0))
                     diff = float(keyword_data.get('DIFF', 0))
+                    cpc = float(keyword_data.get('CPC (USD)', keyword_data.get('CPC', 0)))
                     
                     # 处理无效的浮点数
                     if math.isnan(qpm) or math.isinf(qpm):
                         qpm = 0.0
                     if math.isnan(diff) or math.isinf(diff):
                         diff = 0.0
+                    if math.isnan(cpc) or math.isinf(cpc):
+                        cpc = 0.0
                     
                     total_qpm += qpm
                     total_diff += diff
+                    total_cpc += cpc
                     qpm_values.append(qpm)
+                    cpc_values.append(cpc)
             
             count = len(keywords_data)
             
             # 确保所有计算结果都是有效的浮点数
             avg_qpm = total_qpm / count if count > 0 else 0.0
             avg_diff = total_diff / count if count > 0 else 0.0
+            avg_cpc = total_cpc / count if count > 0 else 0.0
             max_qpm = max(qpm_values) if qpm_values else 0.0
             min_qpm = min(qpm_values) if qpm_values else 0.0
             
@@ -316,6 +325,8 @@ class KeystoreRepository:
                 avg_qpm = 0.0
             if math.isnan(avg_diff) or math.isinf(avg_diff):
                 avg_diff = 0.0
+            if math.isnan(avg_cpc) or math.isinf(avg_cpc):
+                avg_cpc = 0.0
             if math.isnan(max_qpm) or math.isinf(max_qpm):
                 max_qpm = 0.0
             if math.isnan(min_qpm) or math.isinf(min_qpm):
@@ -329,6 +340,7 @@ class KeystoreRepository:
                 'total_qpm': total_qpm,
                 'avg_qpm': avg_qpm,
                 'avg_diff': avg_diff,
+                'avg_cpc': avg_cpc,
                 'max_qpm': max_qpm,
                 'min_qpm': min_qpm
             }

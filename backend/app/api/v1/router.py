@@ -647,6 +647,33 @@ async def export_keystore_data():
             detail=f"导出关键词库数据失败: {str(e)}"
         )
 
+@router.get("/keystore/export-groups", tags=["Keystore"])
+async def export_keystore_groups():
+    """导出关键词组汇总数据为CSV文件，包含组级别统计信息"""
+    try:
+        csv_data = keystore_processor.export_groups_data()
+        
+        if csv_data == b"No groups data to export":
+            raise HTTPException(status_code=404, detail="没有可导出的关键词组数据")
+        
+        # 生成带时间戳的文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"keystore_groups_summary_{timestamp}.csv"
+        
+        logger.info(f"成功导出关键词组数据，文件名: {filename}")
+        
+        return StreamingResponse(
+            io.BytesIO(csv_data),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"导出关键词组数据时发生错误: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"导出关键词组数据失败: {str(e)}"
+        )
+
 @router.post("/keystore/reset", tags=["Keystore"])
 async def reset_keystore_data():
     """重置关键词库数据"""

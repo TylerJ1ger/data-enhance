@@ -209,6 +209,13 @@ export const exportKeystoreData = (): string => {
 };
 
 /**
+ * 导出关键词组数据
+ */
+export const exportKeystoreGroups = (): string => {
+  return `${KEYSTORE_API_BASE_URL}/export-groups`;
+};
+
+/**
  * 重置关键词库数据
  */
 export const resetKeystoreData = async (): Promise<KeystoreApiResponse> => {

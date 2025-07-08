@@ -15,6 +15,7 @@ import { KeystoreStats } from "@/components/keystore/keystore-stats";
 import { KeystoreUploader } from "@/components/keystore/keystore-uploader";
 import { KeystoreIncrementalUploader } from "@/components/keystore/keystore-incremental-uploader";
 import { KeystoreVisualization } from "@/components/keystore/keystore-visualization";
+import { KeystoreWordsManager } from "@/components/keystore/keystore-words-manager";
 import { KeystoreGroupsManager } from "@/components/keystore/keystore-groups-manager";
 import { KeystoreClustersManager } from "@/components/keystore/keystore-clusters-manager";
 import { KeystoreDuplicatesManager } from "@/components/keystore/keystore-duplicates-manager";
@@ -52,6 +53,7 @@ export default function KeystorePage() {
     fetchVisualizationData,
     fetchDuplicatesData,
     getExportUrl,
+    getExportGroupsUrl,
     resetData,
     loadExistingData,
     restoreFromIndexDB,
@@ -173,6 +175,23 @@ export default function KeystorePage() {
     }
   }, [hasData, getExportUrl]);
 
+  // 处理导出关键词组
+  const handleExportGroups = useCallback(() => {
+    if (!hasData) {
+      toast.error('没有可导出的数据');
+      return;
+    }
+
+    try {
+      const exportGroupsUrl = getExportGroupsUrl();
+      window.open(exportGroupsUrl, '_blank');
+      toast.success('开始下载关键词组数据');
+    } catch (error) {
+      console.error('Export groups error:', error);
+      toast.error('导出关键词组失败，请重试');
+    }
+  }, [hasData, getExportGroupsUrl]);
+
   // 处理手动同步
   const handleManualSync = async () => {
     if (!hasData) {
@@ -267,6 +286,16 @@ export default function KeystorePage() {
             >
               <Download className="h-4 w-4" />
               导出关键词库
+            </Button>
+
+            <Button
+              variant="outline"
+              onClick={handleExportGroups}
+              disabled={isUploading || isProcessing || !hasData}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              导出关键词组
             </Button>
           </div>
 
@@ -390,9 +419,10 @@ export default function KeystorePage() {
 
           {/* 主要功能标签页 */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="overview">概览</TabsTrigger>
               <TabsTrigger value="visualization">可视化</TabsTrigger>
+              <TabsTrigger value="words">词管理</TabsTrigger>
               <TabsTrigger value="groups">组管理</TabsTrigger>
               <TabsTrigger value="clusters">族管理</TabsTrigger>
               <TabsTrigger value="duplicates">重复分析</TabsTrigger>
@@ -482,6 +512,15 @@ export default function KeystorePage() {
                 isLoading={isLoadingVisualization}
                 height={600}
                 showToolbar={true}
+              />
+            </TabsContent>
+
+            <TabsContent value="words">
+              <KeystoreWordsManager
+                key={`words-${triggerId}`}
+                groupsData={groupsData}
+                clustersData={clustersData}
+                isLoading={isLoadingGroups}
               />
             </TabsContent>
 
