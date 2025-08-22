@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Query
 from typing import List, Optional, Dict, Any, Tuple
 from fastapi.responses import StreamingResponse
 import io
@@ -28,6 +28,27 @@ class FilterRanges(BaseModel):
 class KeywordFilterRequest(BaseModel):
     """关键词筛选请求模型"""
     keyword: str
+
+
+class KeywordItem(BaseModel):
+    """关键词项目模型"""
+    keyword: str
+    brand: str
+    position: Optional[int] = None
+    search_volume: Optional[int] = None
+    keyword_difficulty: Optional[float] = None
+    cpc: Optional[float] = None
+    url: Optional[str] = None
+    traffic: Optional[int] = None
+
+
+class KeywordListResponse(BaseModel):
+    """关键词列表响应模型"""
+    keywords: List[KeywordItem]
+    total_count: int
+    page: int
+    limit: int
+    total_pages: int
 
 
 async def check_file_size(files: List[UploadFile]):
@@ -158,6 +179,22 @@ async def get_filter_ranges():
         raise HTTPException(
             status_code=500,
             detail=f"获取筛选范围时发生错误: {str(e)}"
+        )
+
+
+@router.get("/list", response_model=KeywordListResponse)
+async def get_keywords_list(
+    page: int = Query(1, ge=1, description="页码，从1开始"),
+    limit: int = Query(20, ge=1, le=100, description="每页条数，最大100")
+):
+    """获取关键词列表，支持分页"""
+    try:
+        result = keywords_processor.get_keywords_list(page=page, limit=limit)
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取关键词列表时发生错误: {str(e)}"
         )
 
 

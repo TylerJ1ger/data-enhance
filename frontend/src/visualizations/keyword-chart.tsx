@@ -137,7 +137,7 @@ export function KeywordChart({
     return (
       <Card className="flex items-center justify-center h-64 bg-muted/30">
         <p className="text-muted-foreground">
-          暂无关键词数据。请上传文件以查看关键词统计信息。
+          请设置并应用筛选，以查看关键词统计信息。
         </p>
       </Card>
     );

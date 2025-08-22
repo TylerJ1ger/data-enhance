@@ -11,7 +11,9 @@ import { FilterPanel } from "@/components/keyword/filter-panel";
 import { BrandOverlap } from "@/components/keyword/brand-overlap";
 import { KeywordChart } from "@/visualizations/keyword-chart";
 import { KeywordFilter } from "@/components/keyword/keyword-filter";
+import { KeywordList } from "@/components/keyword/keyword-list";
 import { useKeywordsApi } from "@/hooks/use-keywords-api"; // 更新：使用新的hook
+import { FilterRanges } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 
@@ -25,12 +27,14 @@ export default function KeywordPage() {
     isLoadingOverlap,
     isLoadingRanges,
     isLoadingKeywordFilter,
+    isLoadingKeywordList,
     fileStats,
     mergedStats,
     filteredStats,
     keywordCounts,
     brandOverlapData,
     keywordFilterResults,
+    keywordListData,
     filterRanges,
     uploadFiles,
     applyFilters,
@@ -51,7 +55,7 @@ export default function KeywordPage() {
     }
   };
 
-  const handleApplyFilter = async (filters: any) => {
+  const handleApplyFilter = async (filters: FilterRanges) => {
     try {
       await applyFilters(filters);
     } catch (error) {
@@ -200,6 +204,12 @@ export default function KeywordPage() {
               results={keywordFilterResults}
               isLoading={isLoadingKeywordFilter}
               disabled={isUploading || !hasData}
+            />
+
+            <KeywordList
+              keywords={keywordListData.keywords}
+              isLoading={isLoadingKeywordList}
+              totalCount={keywordListData.total_count}
             />
 
             <BrandOverlap

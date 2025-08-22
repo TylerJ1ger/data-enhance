@@ -314,6 +314,123 @@ class KeywordsProcessor:
         
         return {"results": results}
     
+    def get_keywords_list(self, page: int = 1, limit: int = 20) -> Dict[str, Any]:
+        """获取关键词列表，支持分页"""
+        if self.filtered_data.empty:
+            return {
+                "keywords": [],
+                "total_count": 0,
+                "page": page,
+                "limit": limit,
+                "total_pages": 0
+            }
+        
+        # 获取列名映射
+        keyword_column = self._column_mappings.get('keyword')
+        brand_column = self._column_mappings.get('brand')
+        position_column = self._column_mappings.get('position')
+        url_column = self._column_mappings.get('url')
+        
+        # 查找其他可能的列
+        search_volume_column = find_column_name(self.filtered_data, 'search_volume')
+        keyword_difficulty_column = find_column_name(self.filtered_data, 'keyword_difficulty')
+        cpc_column = find_column_name(self.filtered_data, 'cpc')
+        traffic_column = find_column_name(self.filtered_data, 'traffic')
+        
+        # 检查必要列是否存在
+        if not keyword_column or keyword_column not in self.filtered_data.columns:
+            return {
+                "keywords": [],
+                "total_count": 0,
+                "page": page,
+                "limit": limit,
+                "total_pages": 0
+            }
+        
+        # 计算总行数和分页信息
+        total_count = len(self.filtered_data)
+        total_pages = (total_count + limit - 1) // limit  # 向上取整
+        
+        # 计算分页参数
+        offset = (page - 1) * limit
+        
+        # 获取分页数据
+        paginated_data = self.filtered_data.iloc[offset:offset + limit]
+        
+        # 构建结果列表
+        keywords = []
+        for _, row in paginated_data.iterrows():
+            # 基本信息
+            keyword = row[keyword_column] if pd.notna(row[keyword_column]) else ""
+            brand = row[brand_column] if brand_column and brand_column in self.filtered_data.columns and pd.notna(row[brand_column]) else "未知品牌"
+            
+            # 构建关键词项目
+            item = {
+                "keyword": keyword,
+                "brand": brand if brand != "" else "未知品牌"
+            }
+            
+            # 添加位置信息
+            if position_column and position_column in self.filtered_data.columns and pd.notna(row[position_column]):
+                try:
+                    item["position"] = int(float(row[position_column]))
+                except (ValueError, TypeError):
+                    item["position"] = None
+            else:
+                item["position"] = None
+            
+            # 添加搜索量信息
+            if search_volume_column and search_volume_column in self.filtered_data.columns and pd.notna(row[search_volume_column]):
+                try:
+                    item["search_volume"] = int(float(row[search_volume_column]))
+                except (ValueError, TypeError):
+                    item["search_volume"] = None
+            else:
+                item["search_volume"] = None
+            
+            # 添加关键词难度信息
+            if keyword_difficulty_column and keyword_difficulty_column in self.filtered_data.columns and pd.notna(row[keyword_difficulty_column]):
+                try:
+                    item["keyword_difficulty"] = float(row[keyword_difficulty_column])
+                except (ValueError, TypeError):
+                    item["keyword_difficulty"] = None
+            else:
+                item["keyword_difficulty"] = None
+            
+            # 添加CPC信息
+            if cpc_column and cpc_column in self.filtered_data.columns and pd.notna(row[cpc_column]):
+                try:
+                    item["cpc"] = float(row[cpc_column])
+                except (ValueError, TypeError):
+                    item["cpc"] = None
+            else:
+                item["cpc"] = None
+            
+            # 添加URL信息
+            if url_column and url_column in self.filtered_data.columns and pd.notna(row[url_column]):
+                item["url"] = str(row[url_column])
+            else:
+                item["url"] = None
+            
+            # 添加流量信息
+            if traffic_column and traffic_column in self.filtered_data.columns and pd.notna(row[traffic_column]):
+                try:
+                    item["traffic"] = int(float(row[traffic_column]))
+                except (ValueError, TypeError):
+                    item["traffic"] = None
+            else:
+                item["traffic"] = None
+            
+            keywords.append(item)
+        
+        return {
+            "keywords": keywords,
+            "total_count": total_count,
+            "page": page,
+            "limit": limit,
+            "total_pages": total_pages
+        }
+    
     def get_data_summary(self) -> Dict[str, Any]:
         keyword_column = self._column_mappings.get('keyword')
         brand_column = self._column_mappings.get('brand')

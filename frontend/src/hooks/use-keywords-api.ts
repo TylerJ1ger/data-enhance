@@ -11,6 +11,7 @@ import {
   FileStats,
   DataStats,
   KeywordFilterResponse,
+  KeywordFilterItem,
 } from '@/types';
 
 export function useKeywordsApi() {
@@ -20,6 +21,7 @@ export function useKeywordsApi() {
   const [isLoadingOverlap, setIsLoadingOverlap] = useState(false);
   const [isLoadingRanges, setIsLoadingRanges] = useState(false);
   const [isLoadingKeywordFilter, setIsLoadingKeywordFilter] = useState(false);
+  const [isLoadingKeywordList, setIsLoadingKeywordList] = useState(false);
 
   // 状态管理 - 响应数据
   const [fileStats, setFileStats] = useState<FileStats[]>([]);
@@ -28,6 +30,19 @@ export function useKeywordsApi() {
   const [keywordCounts, setKeywordCounts] = useState<Record<string, number>>({});
   const [brandOverlapData, setBrandOverlapData] = useState<BrandOverlapResponse | null>(null);
   const [keywordFilterResults, setKeywordFilterResults] = useState<KeywordFilterResponse | null>(null);
+  const [keywordListData, setKeywordListData] = useState<{
+    keywords: KeywordFilterItem[];
+    total_count: number;
+    page: number;
+    limit: number;
+    total_pages: number;
+  }>({
+    keywords: [],
+    total_count: 0,
+    page: 1,
+    limit: 20,
+    total_pages: 0,
+  });
   const [filterRanges, setFilterRanges] = useState<FilterRangeValues>({
     position: [0, 100],
     search_volume: [0, 1000000],
@@ -47,56 +62,6 @@ export function useKeywordsApi() {
     };
 
     checkApiHealth();
-  }, []);
-
-  // 上传文件
-  const uploadFiles = useCallback(async (files: File[]) => {
-    setIsUploading(true);
-    try {
-      const data = await keywordsApi.uploadKeywordFiles(files);
-      setFileStats(data.file_stats);
-      setMergedStats(data.merged_stats);
-      setFilteredStats(data.merged_stats); // 初始时，过滤后数据 = 合并数据
-      
-      // 加载初始过滤范围
-      await fetchFilterRanges();
-      
-      // 加载初始品牌重叠数据
-      await fetchBrandOverlap();
-      
-      toast.success(`成功处理 ${files.length} 个关键词文件`);
-      
-      return data;
-    } catch (error) {
-      console.error('上传关键词文件错误:', error);
-      toast.error('关键词文件上传失败，请重试。');
-      throw error;
-    } finally {
-      setIsUploading(false);
-    }
-  }, []);
-
-  // 应用过滤器
-  const applyFilters = useCallback(async (filters: FilterRanges) => {
-    setIsFiltering(true);
-    try {
-      const data = await keywordsApi.applyKeywordFilters(filters);
-      setFilteredStats(data.filtered_stats);
-      setKeywordCounts(data.keyword_counts);
-      
-      // 过滤后更新品牌重叠数据
-      await fetchBrandOverlap();
-      
-      toast.success('关键词筛选条件已成功应用');
-      
-      return data;
-    } catch (error) {
-      console.error('应用关键词筛选条件错误:', error);
-      toast.error('应用关键词筛选条件失败，请重试。');
-      throw error;
-    } finally {
-      setIsFiltering(false);
-    }
   }, []);
 
   // 获取品牌重叠数据
@@ -134,7 +99,70 @@ export function useKeywordsApi() {
     }
   }, []);
 
-  // 关键词搜索 - 注意：使用新的searchByKeyword函数
+  const fetchKeywordList = useCallback(async (page: number = 1, limit: number = 20) => {
+    setIsLoadingKeywordList(true);
+    try {
+      const data = await keywordsApi.getKeywordList(page, limit);
+      setKeywordListData(data);
+      return data;
+    } catch (error) {
+      console.error('获取关键词列表错误:', error);
+      return null;
+    } finally {
+      setIsLoadingKeywordList(false);
+    }
+  }, []);
+
+  // 上传文件
+  const uploadFiles = useCallback(async (files: File[]) => {
+    setIsUploading(true);
+    try {
+      const data = await keywordsApi.uploadKeywordFiles(files);
+      setFileStats(data.file_stats);
+      setMergedStats(data.merged_stats);
+      setFilteredStats(data.merged_stats); // 初始时，过滤后数据 = 合并数据
+      
+      // 加载初始过滤范围
+      await fetchFilterRanges();
+      
+      await fetchBrandOverlap();
+      await fetchKeywordList();
+      
+      toast.success(`成功处理 ${files.length} 个关键词文件`);
+      
+      return data;
+    } catch (error) {
+      console.error('上传关键词文件错误:', error);
+      toast.error('关键词文件上传失败，请重试。');
+      throw error;
+    } finally {
+      setIsUploading(false);
+    }
+  }, [fetchFilterRanges, fetchBrandOverlap, fetchKeywordList]);
+
+  // 应用过滤器
+  const applyFilters = useCallback(async (filters: FilterRanges) => {
+    setIsFiltering(true);
+    try {
+      const data = await keywordsApi.applyKeywordFilters(filters);
+      setFilteredStats(data.filtered_stats);
+      setKeywordCounts(data.keyword_counts);
+      
+      await fetchBrandOverlap();
+      await fetchKeywordList();
+      
+      toast.success('关键词筛选条件已成功应用');
+      
+      return data;
+    } catch (error) {
+      console.error('应用关键词筛选条件错误:', error);
+      toast.error('应用关键词筛选条件失败，请重试。');
+      throw error;
+    } finally {
+      setIsFiltering(false);
+    }
+  }, [fetchBrandOverlap, fetchKeywordList]);
+
   const filterByKeyword = useCallback(async (keyword: string) => {
     setIsLoadingKeywordFilter(true);
     try {
@@ -175,6 +203,13 @@ export function useKeywordsApi() {
     setKeywordCounts({});
     setBrandOverlapData(null);
     setKeywordFilterResults(null);
+    setKeywordListData({
+      keywords: [],
+      total_count: 0,
+      page: 1,
+      limit: 20,
+      total_pages: 0,
+    });
     setFilterRanges({
       position: [0, 100],
       search_volume: [0, 1000000],
@@ -191,12 +226,14 @@ export function useKeywordsApi() {
     isLoadingOverlap,
     isLoadingRanges,
     isLoadingKeywordFilter,
+    isLoadingKeywordList,
     fileStats,
     mergedStats,
     filteredStats,
     keywordCounts,
     brandOverlapData,
     keywordFilterResults,
+    keywordListData,
     filterRanges,
     
     // 操作
@@ -205,6 +242,7 @@ export function useKeywordsApi() {
     fetchBrandOverlap,
     fetchFilterRanges,
     filterByKeyword,
+    fetchKeywordList,
     getExportUrl,
     getExportUniqueUrl,
     resetData,

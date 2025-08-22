@@ -97,6 +97,17 @@ export const searchByKeyword = async (keyword: string): Promise<KeywordFilterRes
   return response.data;
 };
 
+export const getKeywordList = async (page: number = 1, limit: number = 20): Promise<{
+  keywords: KeywordFilterResponse['results'];
+  total_count: number;
+  page: number;
+  limit: number;
+  total_pages: number;
+}> => {
+  const response = await keywordsApi.get(`/list?page=${page}&limit=${limit}`);
+  return response.data;
+};
+
 /**
  * 检查关键词API健康状态
  * @returns API健康状态信息
