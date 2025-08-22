@@ -383,20 +383,12 @@ async def get_keywords_filter_ranges():
     return keywords_processor.get_filter_ranges()
 
 @router.get("/keywords/list", tags=["Keywords"])
-async def get_keywords_list(
-    page: int = 1,
-    limit: int = 20
-):
+async def get_keywords_list():
     """
-    获取关键词列表，支持分页
+    获取所有关键词列表数据
     """
     try:
-        if page < 1:
-            page = 1
-        if limit < 1 or limit > 100:
-            limit = 20
-            
-        result = keywords_processor.get_keywords_list(page=page, limit=limit)
+        result = keywords_processor.get_keywords_list()
         return result
     except Exception as e:
         raise HTTPException(

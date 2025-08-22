@@ -99,11 +99,17 @@ export function useKeywordsApi() {
     }
   }, []);
 
-  const fetchKeywordList = useCallback(async (page: number = 1, limit: number = 20) => {
+  const fetchKeywordList = useCallback(async () => {
     setIsLoadingKeywordList(true);
     try {
-      const data = await keywordsApi.getKeywordList(page, limit);
-      setKeywordListData(data);
+      const data = await keywordsApi.getKeywordList();
+      setKeywordListData({
+        keywords: data.keywords,
+        total_count: data.total_count,
+        page: 1,
+        limit: 20,
+        total_pages: Math.ceil(data.total_count / 20)
+      });
       return data;
     } catch (error) {
       console.error('获取关键词列表错误:', error);

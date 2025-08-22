@@ -314,15 +314,12 @@ class KeywordsProcessor:
         
         return {"results": results}
     
-    def get_keywords_list(self, page: int = 1, limit: int = 20) -> Dict[str, Any]:
-        """获取关键词列表，支持分页"""
+    def get_keywords_list(self) -> Dict[str, Any]:
+        """获取所有关键词列表数据"""
         if self.filtered_data.empty:
             return {
                 "keywords": [],
-                "total_count": 0,
-                "page": page,
-                "limit": limit,
-                "total_pages": 0
+                "total_count": 0
             }
         
         # 获取列名映射
@@ -341,25 +338,18 @@ class KeywordsProcessor:
         if not keyword_column or keyword_column not in self.filtered_data.columns:
             return {
                 "keywords": [],
-                "total_count": 0,
-                "page": page,
-                "limit": limit,
-                "total_pages": 0
+                "total_count": 0
             }
         
-        # 计算总行数和分页信息
+        # 计算总行数
         total_count = len(self.filtered_data)
-        total_pages = (total_count + limit - 1) // limit  # 向上取整
         
-        # 计算分页参数
-        offset = (page - 1) * limit
-        
-        # 获取分页数据
-        paginated_data = self.filtered_data.iloc[offset:offset + limit]
+        # 使用所有数据
+        all_data = self.filtered_data
         
         # 构建结果列表
         keywords = []
-        for _, row in paginated_data.iterrows():
+        for _, row in all_data.iterrows():
             # 基本信息
             keyword = row[keyword_column] if pd.notna(row[keyword_column]) else ""
             brand = row[brand_column] if brand_column and brand_column in self.filtered_data.columns and pd.notna(row[brand_column]) else "未知品牌"
@@ -425,10 +415,7 @@ class KeywordsProcessor:
         
         return {
             "keywords": keywords,
-            "total_count": total_count,
-            "page": page,
-            "limit": limit,
-            "total_pages": total_pages
+            "total_count": total_count
         }
     
     def get_data_summary(self) -> Dict[str, Any]:

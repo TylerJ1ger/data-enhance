@@ -20,6 +20,7 @@ import {
   SelectTrigger, 
   SelectValue 
 } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -39,6 +40,7 @@ export interface KeywordItem {
   cpc?: number;
   url?: string;
   traffic?: number;
+  duplicate_count?: number;
 }
 
 interface KeywordListProps {
@@ -56,6 +58,7 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('keyword');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+  const [showUniqueOnly, setShowUniqueOnly] = useState(true);
 
   // 过滤和排序数据
   const filteredAndSortedKeywords = React.useMemo(() => {
@@ -63,7 +66,34 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
       return [];
     }
     
-    const filtered = keywords.filter(item => 
+    // 先计算重复次数
+    const keywordCounts = new Map<string, number>();
+    keywords.forEach(item => {
+      const key = item.keyword.toLowerCase();
+      keywordCounts.set(key, (keywordCounts.get(key) || 0) + 1);
+    });
+    
+    // 添加重复次数到每个项目
+    const keywordsWithCounts = keywords.map(item => ({
+      ...item,
+      duplicate_count: keywordCounts.get(item.keyword.toLowerCase()) || 1
+    }));
+    
+    // 如果只显示唯一关键词，则去重
+    let processedKeywords = keywordsWithCounts;
+    if (showUniqueOnly) {
+      const uniqueMap = new Map<string, KeywordItem & { duplicate_count: number }>();
+      keywordsWithCounts.forEach(item => {
+        const key = item.keyword.toLowerCase();
+        if (!uniqueMap.has(key)) {
+          uniqueMap.set(key, item);
+        }
+      });
+      processedKeywords = Array.from(uniqueMap.values());
+    }
+    
+    // 过滤
+    const filtered = processedKeywords.filter(item => 
       item.keyword.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (item.url && item.url.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -89,7 +119,7 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
     });
 
     return filtered;
-  }, [keywords, searchTerm, sortField, sortDirection]);
+  }, [keywords, searchTerm, sortField, sortDirection, showUniqueOnly]);
 
   // 分页数据
   const totalPages = Math.ceil(filteredAndSortedKeywords.length / pageSize);
@@ -125,16 +155,7 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
   };
 
   const renderSortIcon = (field: SortField) => {
-    if (field !== sortField) {
-      return <ArrowUpDown className="ml-2 h-4 w-4" />;
-    }
-    return (
-      <ArrowUpDown 
-        className={`ml-2 h-4 w-4 ${
-          sortDirection === 'asc' ? 'rotate-0' : 'rotate-180'
-        }`} 
-      />
-    );
+    return null;
   };
 
   if (isLoading) {
@@ -184,19 +205,37 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                 className="pl-8"
               />
             </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">每页显示:</span>
-              <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
-                <SelectTrigger className="w-20">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="10">10</SelectItem>
-                  <SelectItem value="20">20</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                  <SelectItem value="100">100</SelectItem>
-                </SelectContent>
-              </Select>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center space-x-2">
+                <Checkbox 
+                  id="show-unique"
+                  checked={showUniqueOnly}
+                  onCheckedChange={(checked) => {
+                    setShowUniqueOnly(checked as boolean);
+                    setCurrentPage(1);
+                  }}
+                />
+                <label 
+                  htmlFor="show-unique" 
+                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                >
+                  仅展示唯一关键词
+                </label>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">每页显示:</span>
+                <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="10">10</SelectItem>
+                    <SelectItem value="20">20</SelectItem>
+                    <SelectItem value="50">50</SelectItem>
+                    <SelectItem value="100">100</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
@@ -235,6 +274,15 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                 </TableHead>
                 <TableHead 
                   className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort('duplicate_count')}
+                >
+                  <div className="flex items-center">
+                    重复次数
+                    {renderSortIcon('duplicate_count')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-muted/50"
                   onClick={() => handleSort('position')}
                 >
                   <div className="flex items-center">
@@ -249,6 +297,15 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   <div className="flex items-center">
                     搜索量
                     {renderSortIcon('search_volume')}
+                  </div>
+                </TableHead>
+                <TableHead 
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => handleSort('traffic')}
+                >
+                  <div className="flex items-center">
+                    流量
+                    {renderSortIcon('traffic')}
                   </div>
                 </TableHead>
                 <TableHead 
@@ -270,15 +327,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   </div>
                 </TableHead>
                 <TableHead>URL</TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleSort('traffic')}
-                >
-                  <div className="flex items-center">
-                    流量
-                    {renderSortIcon('traffic')}
-                  </div>
-                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -287,11 +335,20 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   <TableCell className="font-medium">{item.keyword}</TableCell>
                   <TableCell>{item.brand}</TableCell>
                   <TableCell>
+                    {item.duplicate_count || 1}
+                  </TableCell>
+                  <TableCell>
                     {item.position !== undefined && item.position !== null ? item.position : '-'}
                   </TableCell>
                   <TableCell>
                     {item.search_volume !== undefined && item.search_volume !== null
                       ? item.search_volume.toLocaleString() 
+                      : '-'
+                    }
+                  </TableCell>
+                  <TableCell>
+                    {item.traffic !== undefined && item.traffic !== null
+                      ? item.traffic.toLocaleString() 
                       : '-'
                     }
                   </TableCell>
@@ -319,12 +376,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                         {item.url}
                       </a>
                     ) : '-'}
-                  </TableCell>
-                  <TableCell>
-                    {item.traffic !== undefined && item.traffic !== null
-                      ? item.traffic.toLocaleString() 
-                      : '-'
-                    }
                   </TableCell>
                 </TableRow>
               ))}
