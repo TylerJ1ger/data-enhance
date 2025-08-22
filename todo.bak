@@ -1,1 +1,7 @@
 python3 model/ref/combined-tree-formatter.py "." "model/ref/structure/file-structure.txt" "model/ref/structure/formatted-tree.txt"
+npx @anthropic-ai/claude-code
+
+目前`关键词库`功能中的`组管理`界面中。用户可以查看特定关键词组中的关键词。让我们在这个查看界面允许用户\                                                                                                       │
+│   1.按照QPM或难度进行排序。\                                                                                                                                                                                    │
+│   2.支持搜索当前关键词组中关键词\                                                                                                                                                                               │
+│   3.允许选择一个或多个关键词进行删除                                           

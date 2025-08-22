@@ -10,7 +10,8 @@ import {
   MapIcon, 
   HomeIcon, 
   BarChart3,
-  Code2, // 新增：结构化数据生成器图标
+  Code2,
+  Database, // 新增：关键词库图标
   Menu
 } from "lucide-react";
 
@@ -49,6 +50,7 @@ export function SiteHeader() {
           {/* 桌面端导航 */}
           <nav className="hidden md:flex gap-6 flex-1">
             <NavItem href="/keyword" icon={<FileTextIcon className="mr-1 h-4 w-4" />} label="关键词分析" />
+            <NavItem href="/keystore" icon={<Database className="mr-1 h-4 w-4" />} label="关键词库" />
             <NavItem href="/backlink" icon={<LinkIcon className="mr-1 h-4 w-4" />} label="外链分析" />
             <NavItem href="/orders" icon={<BarChart3 className="mr-1 h-4 w-4" />} label="订单分析" />
             <NavItem href="/sitemap" icon={<MapIcon className="mr-1 h-4 w-4" />} label="Sitemap分析" />
@@ -76,6 +78,12 @@ export function SiteHeader() {
                   <Link href="/keyword" className="flex items-center">
                     <FileTextIcon className="mr-2 h-4 w-4" />
                     <span>关键词分析</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/keystore" className="flex items-center">
+                    <Database className="mr-2 h-4 w-4" />
+                    <span>关键词库</span>
                   </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>

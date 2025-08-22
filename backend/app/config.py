@@ -98,6 +98,34 @@ LOG_FILE = os.getenv("LOG_FILE", None)  # If None, logs only to console
 ENABLE_REQUEST_LOGGING = os.getenv("ENABLE_REQUEST_LOGGING", "true").lower() == "true"
 
 # =====================================
+# Database Configuration
+# =====================================
+# Redis Configuration
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
+REDIS_DB = int(os.getenv("REDIS_DB", 0))
+REDIS_PASSWORD = os.getenv("REDIS_PASSWORD", None)
+REDIS_URL = os.getenv("REDIS_URL", f"redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}")
+
+# Redis connection pool settings
+REDIS_MAX_CONNECTIONS = int(os.getenv("REDIS_MAX_CONNECTIONS", 20))
+REDIS_RETRY_ON_TIMEOUT = os.getenv("REDIS_RETRY_ON_TIMEOUT", "true").lower() == "true"
+REDIS_HEALTH_CHECK_INTERVAL = int(os.getenv("REDIS_HEALTH_CHECK_INTERVAL", 30))
+
+# Keystore Redis Configuration
+KEYSTORE_REDIS_CONFIG = {
+    "host": REDIS_HOST,
+    "port": REDIS_PORT,
+    "db": REDIS_DB,
+    "password": REDIS_PASSWORD if REDIS_PASSWORD else None,
+    "max_connections": REDIS_MAX_CONNECTIONS,
+    "retry_on_timeout": REDIS_RETRY_ON_TIMEOUT,
+    "health_check_interval": REDIS_HEALTH_CHECK_INTERVAL,
+    "key_prefix": os.getenv("KEYSTORE_REDIS_KEY_PREFIX", "keystore:"),
+    "key_expiry": int(os.getenv("KEYSTORE_REDIS_KEY_EXPIRY", 86400))  # 24 hours default
+}
+
+# =====================================
 # Performance Configuration
 # =====================================
 # Timeout settings
@@ -182,6 +210,11 @@ app_config = {
         "max_file_size": MAX_FILE_SIZE,
         "max_files_per_request": MAX_FILES_PER_REQUEST,
         "allowed_extensions": ALLOWED_EXTENSIONS
+    },
+    
+    # Database settings
+    "database": {
+        "redis": KEYSTORE_REDIS_CONFIG
     },
     
     # Module-specific settings
@@ -329,6 +362,9 @@ __all__ = [
     # Module configs
     "KEYWORDS_CONFIG", "BACKLINKS_CONFIG", "SEO_CONFIG", "SITEMAPS_CONFIG",
     "get_module_config",
+    
+    # Database configs
+    "REDIS_HOST", "REDIS_PORT", "REDIS_DB", "REDIS_URL", "KEYSTORE_REDIS_CONFIG",
     
     # API settings
     "API_VERSION", "LEGACY_API_PREFIX", "V1_API_PREFIX", "get_api_prefix",

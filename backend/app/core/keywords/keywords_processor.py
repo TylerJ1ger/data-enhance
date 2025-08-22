@@ -25,6 +25,7 @@ from app.shared.utils.column_name_utils import (
     analyze_dataframe_columns,
     KEYWORD_COLUMN_MAPPINGS
 )
+from app.shared.utils.brand_extraction_utils import enhance_brand_identification
 
 
 class KeywordsProcessor:
@@ -53,15 +54,31 @@ class KeywordsProcessor:
                 
                 # 验证列结构
                 validation_result = validate_dataframe_columns(df)
-                if not validation_result['is_valid']:
-                    # 记录警告但不阻止处理
-                    print(f"Warning: File {file.filename} missing required columns: {validation_result['missing_concepts']}")
+                existing_brand_column = validation_result['found_columns'].get('brand')
+                
+                # 增强品牌识别：优先使用现有Brand列，然后从文件名提取，最后使用"Other"兜底
+                brand_column_used = enhance_brand_identification(
+                    df, 
+                    file.filename, 
+                    existing_brand_column
+                )
+                
+                # 重新验证列结构（现在应该有Brand列了）
+                validation_result_after = validate_dataframe_columns(df)
+                if not validation_result_after['is_valid']:
+                    # 记录警告但继续处理
+                    print(f"Warning: File {file.filename} still missing some required columns: {validation_result_after['missing_concepts']}")
                 
                 # 存储原始文件统计信息
                 file_stats.append({
                     "filename": file.filename,
                     "stats": get_dataframe_stats(df),
-                    "column_analysis": analyze_dataframe_columns(df)
+                    "column_analysis": analyze_dataframe_columns(df),
+                    "brand_extraction": {
+                        "original_brand_column": existing_brand_column,
+                        "brand_column_used": brand_column_used,
+                        "extraction_method": "existing" if existing_brand_column else "filename_or_fallback"
+                    }
                 })
                 
                 dataframes.append(df)

@@ -1,0 +1,1361 @@
+"""
+Redis-based Keystore Analysis Processor - 关键词库处理器
+使用Redis作为数据存储，解决数据持久化和状态同步问题
+"""
+
+import os
+import pandas as pd
+import tempfile
+import numpy as np
+import hashlib
+from typing import List, Dict, Any, Tuple, Optional, Set
+from fastapi import UploadFile
+import logging
+from collections import defaultdict
+from datetime import datetime
+
+from app.shared.utils.data_utils import read_file, get_dataframe_stats
+from app.shared.utils.column_name_utils import (
+    find_column_name, 
+    find_multiple_column_names,
+    validate_dataframe_columns,
+    KEYWORD_COLUMN_MAPPINGS
+)
+from app.shared.exceptions.custom_exceptions import (
+    FileProcessingException, 
+    DataProcessingException,
+    MissingRequiredColumnsException
+)
+from app.core.database import KeystoreRepository, get_redis_manager
+
+logger = logging.getLogger(__name__)
+
+
+class KeystoreProcessorRedis:
+    # 关键词库特有的列名映射（扩展通用映射）
+    KEYSTORE_SPECIFIC_MAPPINGS = {
+        'group_name_map': ['group_name_map', 'Group', 'Group Name', '组名', 'Force Group', 'Task Name'],
+        'intent': ['Intent', '意图'],
+        'trend': ['Trend', '趋势'],
+        'competitive_density': ['Competitive Density', '竞争密度'],
+        'serp_features': ['SERP Features', 'SERP特征'],
+        'results_count': ['Number of Results', '结果数量']
+    }
+    
+    def __init__(self):
+        """初始化Redis关键词库处理器"""
+        self.redis_manager = get_redis_manager()
+        self.repository = KeystoreRepository(self.redis_manager)
+        self._file_stats = []
+    
+    def _standardize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """标准化列名为关键词库所需格式，使用通用列名映射工具"""
+        df = df.copy()
+        
+        # 合并通用映射和关键词库特有映射
+        combined_mappings = {**KEYWORD_COLUMN_MAPPINGS, **self.KEYSTORE_SPECIFIC_MAPPINGS}
+        
+        # 查找并映射列名
+        column_mappings = find_multiple_column_names(df, list(combined_mappings.keys()), combined_mappings)
+        
+        # 创建重命名映射，将找到的列名映射为关键词库所需的标准名称
+        rename_mapping = {}
+        for concept, actual_column in column_mappings.items():
+            if actual_column is not None:
+                if concept == 'keyword':
+                    rename_mapping[actual_column] = 'Keywords'
+                elif concept == 'search_volume':
+                    rename_mapping[actual_column] = 'QPM'
+                elif concept == 'keyword_difficulty':
+                    rename_mapping[actual_column] = 'DIFF'
+                elif concept == 'group_name_map':
+                    rename_mapping[actual_column] = 'group_name_map'
+                # 保留其他映射的列名（如intent, trend等）
+                else:
+                    # 对于其他列，保持原名或使用标准化名称
+                    continue
+        
+        # 重命名列
+        if rename_mapping:
+            df.rename(columns=rename_mapping, inplace=True)
+            logger.info(f"列名映射完成: {rename_mapping}")
+        
+        # 如果没有group_name_map列，创建一个默认值
+        if 'group_name_map' not in df.columns:
+            df['group_name_map'] = 'default_group'
+            logger.info("未找到组名列，创建默认组名 'default_group'")
+        
+        return df
+    
+    @staticmethod
+    def generate_keyword_uid(keyword: str, group: str, cluster: str = "") -> str:
+        """
+        生成基于关键词内容的确定性UID
+        
+        Args:
+            keyword: 关键词文本
+            group: 关键词组
+            cluster: 关键词族（可选）
+            
+        Returns:
+            str: 确定性的UID，格式为 kw_<hash前8位>
+        """
+        # 标准化输入
+        keyword_norm = keyword.strip().lower()
+        group_norm = group.strip().lower()
+        cluster_norm = cluster.strip().lower() if cluster else ""
+        
+        # 创建唯一标识字符串
+        unique_string = f"{keyword_norm}|{group_norm}|{cluster_norm}"
+        
+        # 生成SHA256哈希并取前8位
+        hash_object = hashlib.sha256(unique_string.encode('utf-8'))
+        hash_hex = hash_object.hexdigest()[:8]
+        
+        return f"kw_{hash_hex}"
+    
+    def _convert_to_python_types(self, obj: Any) -> Any:
+        """将numpy和pandas类型转换为Python原生类型，并处理无效的浮点数"""
+        import math
+        
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        elif isinstance(obj, pd.Series):
+            return obj.tolist()
+        elif isinstance(obj, dict):
+            return {k: self._convert_to_python_types(v) for k, v in obj.items()}
+        elif isinstance(obj, (list, tuple)):
+            return [self._convert_to_python_types(item) for item in obj]
+        elif pd.isna(obj):
+            return None
+        elif isinstance(obj, (np.integer, np.int64, np.int32)):
+            return int(obj)
+        elif isinstance(obj, (np.floating, np.float64, np.float32)):
+            val = float(obj)
+            # 检查并处理无效的浮点数
+            if math.isnan(val) or math.isinf(val):
+                return 0.0
+            return val
+        elif isinstance(obj, float):
+            # 检查并处理无效的浮点数
+            if math.isnan(obj) or math.isinf(obj):
+                return 0.0
+            return obj
+        else:
+            return obj
+    
+    async def process_files(self, files: List[UploadFile], mode: str = "replace", preserve_duplicates: bool = False) -> Dict[str, Any]:
+        """处理上传的CSV文件并存储到Redis"""
+        dataframes = []
+        file_stats = []
+        
+        for file in files:
+            try:
+                # 创建临时文件
+                with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+                    content = await file.read()
+                    temp_file.write(content)
+                    temp_file.flush()
+                    
+                    # 读取文件
+                    df = read_file(temp_file.name)
+                    
+                    # 标准化列名
+                    df = self._standardize_columns(df)
+                    
+                    # 验证必需列
+                    required_columns = ['Keywords', 'group_name_map', 'QPM', 'DIFF']
+                    missing_columns = [col for col in required_columns if col not in df.columns]
+                    
+                    if missing_columns:
+                        # 使用通用工具提供更友好的错误信息
+                        from app.shared.utils.column_name_utils import get_all_possible_names
+                        
+                        available_mappings = []
+                        combined_mappings = {**KEYWORD_COLUMN_MAPPINGS, **self.KEYSTORE_SPECIFIC_MAPPINGS}
+                        
+                        for missing_col in missing_columns:
+                            if missing_col == 'Keywords':
+                                possible_names = get_all_possible_names('keyword', combined_mappings)
+                                available_mappings.append(f"关键词列可以是: {', '.join(possible_names)}")
+                            elif missing_col == 'QPM':
+                                possible_names = get_all_possible_names('search_volume', combined_mappings)
+                                available_mappings.append(f"搜索量列可以是: {', '.join(possible_names)}")
+                            elif missing_col == 'DIFF':
+                                possible_names = get_all_possible_names('keyword_difficulty', combined_mappings)
+                                available_mappings.append(f"难度列可以是: {', '.join(possible_names)}")
+                            elif missing_col == 'group_name_map':
+                                possible_names = get_all_possible_names('group_name_map', combined_mappings)
+                                available_mappings.append(f"组名列可以是: {', '.join(possible_names)} (如果没有将自动创建默认组)")
+                        
+                        error_message = f"数据缺少必需的列: {', '.join(missing_columns)}。可用列: {', '.join(df.columns)}"
+                        if available_mappings:
+                            error_message += f"\n建议: {'; '.join(available_mappings)}"
+                        
+                        raise MissingRequiredColumnsException(
+                            missing_columns=missing_columns,
+                            available_columns=list(df.columns)
+                        )
+                    
+                    # 数据清理和标准化
+                    df = self._clean_dataframe(df, preserve_duplicates)
+                    
+                    dataframes.append(df)
+                    file_stats.append({
+                        "filename": file.filename,
+                        "rows": int(len(df)),
+                        "keywords": int(df['Keywords'].nunique()),
+                        "groups": int(df['group_name_map'].nunique())
+                    })
+                    
+                    # 清理临时文件
+                    os.unlink(temp_file.name)
+                    
+            except Exception as e:
+                logger.error(f"处理文件 {file.filename} 时出错: {str(e)}")
+                raise FileProcessingException(
+                    filename=file.filename,
+                    parsing_error=str(e)
+                )
+        
+        # 根据模式决定是否清空现有数据，然后存储新数据
+        if dataframes and mode == "replace":
+            self.repository.clear_all_data()
+            logger.info("替换模式：已清空现有数据")
+            
+            # 逐个文件处理并存储到Redis，保持文件来源信息
+            total_keywords_created = 0
+            
+            for i, (df, file_stat) in enumerate(zip(dataframes, file_stats)):
+                # 清理单个文件的数据
+                df_cleaned = self._clean_merged_data(df, preserve_duplicates)
+                
+                # 转换为字典格式
+                keywords_data = df_cleaned.to_dict('records')
+                
+                # 使用具体的文件名存储关键词
+                keyword_uids = self.repository.bulk_create_keywords_with_uids(
+                    keywords_data, 
+                    file_stat["filename"]
+                )
+                
+                total_keywords_created += len(keyword_uids)
+                logger.info(f"从文件 {file_stat['filename']} 存储了 {len(keyword_uids)} 个关键词到Redis")
+            
+            logger.info(f"替换模式：总共成功存储 {total_keywords_created} 个关键词到Redis")
+            self._file_stats = file_stats
+            
+        elif dataframes and mode == "append":
+            logger.info("增量模式：保留现有数据，准备添加新数据")
+            
+            # 逐个文件处理并存储到Redis，保持文件来源信息
+            total_keywords_created = 0
+            
+            for i, (df, file_stat) in enumerate(zip(dataframes, file_stats)):
+                # 清理单个文件的数据
+                df_cleaned = self._clean_merged_data(df, preserve_duplicates)
+                
+                # 转换为字典格式
+                keywords_data = df_cleaned.to_dict('records')
+                
+                # 使用具体的文件名存储关键词
+                keyword_uids = self.repository.bulk_create_keywords_with_uids(
+                    keywords_data, 
+                    file_stat["filename"]
+                )
+                
+                total_keywords_created += len(keyword_uids)
+                logger.info(f"从文件 {file_stat['filename']} 存储了 {len(keyword_uids)} 个关键词到Redis")
+            
+            logger.info(f"增量模式：总共成功存储 {total_keywords_created} 个关键词到Redis")
+            self._file_stats = file_stats
+        
+        result = {
+            "success": True,
+            "file_stats": file_stats,
+            "summary": self.get_summary(),
+            "groups_overview": self.get_groups_overview()
+        }
+        
+        return self._convert_to_python_types(result)
+    
+    def _clean_dataframe(self, df: pd.DataFrame, preserve_duplicates: bool = False) -> pd.DataFrame:
+        """清理和标准化单个数据框"""
+        import math
+        
+        # 移除空行
+        df = df.dropna(subset=['Keywords', 'group_name_map'])
+        
+        # 移除Unnamed列和空列
+        df = self._remove_unnamed_columns(df)
+        df = self._remove_empty_columns(df)
+        
+        # 标准化列名和数据
+        df['Keywords'] = df['Keywords'].astype(str).str.strip().str.lower()
+        df['group_name_map'] = df['group_name_map'].astype(str).str.strip()
+        
+        # 转换数值列并处理无效值
+        df['QPM'] = pd.to_numeric(df['QPM'], errors='coerce').fillna(0)
+        df['DIFF'] = pd.to_numeric(df['DIFF'], errors='coerce').fillna(0)
+        
+        # 处理无限大和NaN值
+        df['QPM'] = df['QPM'].replace([np.inf, -np.inf], 0)
+        df['DIFF'] = df['DIFF'].replace([np.inf, -np.inf], 0)
+        
+        # 确保没有NaN值
+        df['QPM'] = df['QPM'].fillna(0)
+        df['DIFF'] = df['DIFF'].fillna(0)
+        
+        # 标准化 Force Group 字段
+        if 'Force Group' in df.columns:
+            df['Force Group'] = df['Force Group'].fillna(False)
+            df['Force Group'] = df['Force Group'].astype(str).str.upper().isin(['TRUE', '1', 'YES'])
+        
+        # 清理 Task Name 和 Date and time 字段中的 NaN
+        if 'Task Name' in df.columns:
+            df['Task Name'] = df['Task Name'].fillna('')
+        if 'Date and time' in df.columns:
+            df['Date and time'] = df['Date and time'].fillna('')
+        
+        # 移除重复的关键词（保留QPM最高的）
+        if not preserve_duplicates:
+            df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
+        
+        # 只保留必要的字段
+        df = self._filter_required_columns(df)
+        
+        return df
+    
+    def _filter_required_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """只保留必要的字段"""
+        # 定义必需保留的字段（在CSV处理阶段存在的）
+        required_columns = [
+            'Keywords',           # 关键词
+            'QPM',               # 搜索量
+            'DIFF',              # 难度
+            'group_name_map'     # 组名
+            # 注意：uid, created_at, source_file 会在存储到Redis时自动添加
+        ]
+        
+        # 定义可选的有价值字段，如果存在则保留
+        optional_columns = [
+            'CPC (USD)',         # 点击成本
+            'CPC',               # 点击成本（另一种格式）
+            'cpc'                # 点击成本（标准化后）
+        ]
+        
+        # 查找实际存在的列
+        existing_columns = []
+        
+        # 添加必需列
+        for col in required_columns:
+            if col in df.columns:
+                existing_columns.append(col)
+        
+        # 添加可选列（优先级：CPC (USD) > CPC > cpc）
+        cpc_added = False
+        for col in optional_columns:
+            if col in df.columns and not cpc_added:
+                existing_columns.append(col)
+                cpc_added = True
+                break
+        
+        # 过滤数据框，只保留选定的列
+        if existing_columns:
+            df = df[existing_columns].copy()
+            logger.info(f"过滤字段完成，保留列: {existing_columns}")
+        
+        return df
+    
+    def _clean_merged_data(self, df: pd.DataFrame, preserve_duplicates: bool = False) -> pd.DataFrame:
+        """清理合并后的数据"""
+        df = self._remove_unnamed_columns(df)
+        df = self._remove_duplicate_columns(df)
+        df = self._remove_empty_columns(df)
+        
+        # 最终数据清理
+        df = df.dropna(subset=['Keywords', 'group_name_map'])
+        if not preserve_duplicates:
+            df = df.sort_values('QPM', ascending=False).drop_duplicates(subset=['Keywords'], keep='first')
+        
+        # 只保留必要的字段
+        df = self._filter_required_columns(df)
+        
+        return df.reset_index(drop=True)
+    
+    def _remove_unnamed_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """移除Unnamed列"""
+        unnamed_columns = [col for col in df.columns if str(col).startswith('Unnamed:')]
+        if unnamed_columns:
+            logger.info(f"移除Unnamed列: {unnamed_columns}")
+            df = df.drop(columns=unnamed_columns)
+        return df
+    
+    def _remove_empty_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """移除完全为空的列"""
+        empty_columns = [col for col in df.columns if df[col].isna().all()]
+        if empty_columns:
+            logger.info(f"移除空列: {empty_columns}")
+            df = df.drop(columns=empty_columns)
+        return df
+    
+    def _remove_duplicate_columns(self, df: pd.DataFrame) -> pd.DataFrame:
+        """移除重复的列"""
+        return df.loc[:, ~df.columns.duplicated()]
+    
+    # =====================================================
+    # Redis-based Data Access Methods
+    # =====================================================
+    
+    def get_summary(self) -> Dict[str, Any]:
+        """获取关键词库摘要"""
+        import math
+        
+        try:
+            stats = self.repository.get_global_stats()
+            duplicates = self.repository.get_duplicate_keywords()
+            
+            # 计算平均难度
+            avg_diff = 0.0
+            total_keywords = stats.get("total_keywords", 0)
+            if total_keywords > 0:
+                total_diff = 0.0
+                # 获取所有组的关键词UIDs来计算平均难度
+                groups = self.repository.get_all_groups()
+                valid_count = 0
+                
+                for group_name in groups:
+                    keyword_uids = self.repository.get_group_keywords(group_name)
+                    for uid in keyword_uids:
+                        if isinstance(uid, bytes):
+                            uid = uid.decode('utf-8')
+                        keyword_data = self.repository.get_keyword_by_uid(uid)
+                        if keyword_data:
+                            diff = float(keyword_data.get('DIFF', 0))
+                            if not (math.isnan(diff) or math.isinf(diff)):
+                                total_diff += diff
+                                valid_count += 1
+                
+                if valid_count > 0:
+                    avg_diff = total_diff / valid_count
+            
+            return {
+                "total_keywords": total_keywords,
+                "unique_keywords": total_keywords,  # 在这个上下文中，所有关键词都是唯一的
+                "total_groups": stats.get("total_groups", 0),
+                "total_clusters": stats.get("total_clusters", 0),
+                "duplicate_keywords": stats.get("duplicate_keywords", 0),
+                "duplicate_keywords_count": len(duplicates),
+                "total_qpm": stats.get("total_qpm", 0.0),
+                "avg_qpm_per_keyword": stats.get("avg_qpm_per_keyword", 0.0),
+                "avg_diff": avg_diff
+            }
+        except Exception as e:
+            logger.error(f"获取摘要数据时出错: {str(e)}")
+            return {
+                "total_keywords": 0,
+                "unique_keywords": 0,
+                "total_groups": 0,
+                "total_clusters": 0,
+                "duplicate_keywords": 0,
+                "duplicate_keywords_count": 0,
+                "total_qpm": 0.0,
+                "avg_qpm_per_keyword": 0.0,
+                "avg_diff": 0.0
+            }
+    
+    def get_groups_overview(self) -> List[Dict[str, Any]]:
+        """获取组概览"""
+        try:
+            groups = self.repository.get_all_groups()
+            overview = []
+            
+            for group_name in groups:
+                group_info = self.repository.get_group_info(group_name)
+                overview.append({
+                    "group_name": group_name,
+                    "keyword_count": group_info.get("keyword_count", 0),
+                    "total_qpm": group_info.get("total_qpm", 0.0),
+                    "avg_qpm": group_info.get("avg_qpm", 0.0),
+                    "avg_diff": group_info.get("avg_diff", 0.0)
+                })
+            
+            # 按关键词数量排序
+            overview.sort(key=lambda x: x["keyword_count"], reverse=True)
+            return overview
+            
+        except Exception as e:
+            logger.error(f"获取组概览时出错: {str(e)}")
+            return []
+    
+    def get_groups_data(self) -> Dict[str, Any]:
+        """获取所有组数据（优化版本，减少数据传输）"""
+        try:
+            groups = self.repository.get_all_groups()
+            groups_data = {}
+            
+            for group_name in groups:
+                group_info = self.repository.get_group_info(group_name)
+                
+                # 只获取关键词的基本信息，避免传输大量冗余数据
+                keyword_uids = self.repository.get_group_keywords(group_name)
+                keywords_summary = []
+                
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
+                    if keyword_data:
+                        # 只保留前端需要的核心字段
+                        keywords_summary.append({
+                            "id": uid,  # 使用UID作为前端ID
+                            "keyword": keyword_data.get("Keywords"),  # 统一使用 keyword 字段名
+                            "qpm": keyword_data.get("QPM", 0),
+                            "diff": keyword_data.get("DIFF", 0),
+                            "group": keyword_data.get("group_name_map"),
+                            "force_group": keyword_data.get("Force Group", False)
+                        })
+                
+                groups_data[group_name] = {
+                    **group_info,
+                    "data": keywords_summary
+                }
+            
+            return groups_data
+            
+        except Exception as e:
+            logger.error(f"获取组数据时出错: {str(e)}")
+            return {}
+    
+    def get_group_detail(self, group_name: str) -> Dict[str, Any]:
+        """获取单个组的详细数据（包含完整关键词信息）"""
+        try:
+            group_info = self.repository.get_group_info(group_name)
+            keyword_uids = self.repository.get_group_keywords(group_name)
+            keywords_detail = []
+            
+            for uid in keyword_uids:
+                keyword_data = self.repository.get_keyword_by_uid(uid)
+                if keyword_data:
+                    # 清理和标准化关键词数据
+                    clean_keyword = {
+                        "id": uid,  # 使用UID作为前端ID
+                        "keyword": keyword_data.get("Keywords"),
+                        "qpm": keyword_data.get("QPM", 0),
+                        "diff": keyword_data.get("DIFF", 0),
+                        "group": keyword_data.get("group_name_map"),
+                        "original_group": keyword_data.get("Group"),
+                        "force_group": keyword_data.get("Force Group", False),
+                        "task_name": keyword_data.get("Task Name"),
+                        "created_at": keyword_data.get("created_at"),
+                        "source_file": keyword_data.get("source_file")
+                    }
+                    keywords_detail.append(clean_keyword)
+            
+            return {
+                **group_info,
+                "data": keywords_detail
+            }
+            
+        except Exception as e:
+            logger.error(f"获取组详细数据时出错: {str(e)}")
+            return {}
+    
+    def get_clusters_data(self) -> Dict[str, List[str]]:
+        """获取所有族数据"""
+        try:
+            clusters = self.repository.get_all_clusters()
+            clusters_data = {}
+            
+            for cluster_name in clusters:
+                cluster_groups = self.repository.get_cluster_groups(cluster_name)
+                clusters_data[cluster_name] = list(cluster_groups)
+            
+            return clusters_data
+            
+        except Exception as e:
+            logger.error(f"获取族数据时出错: {str(e)}")
+            return {}
+    
+    def get_files_data(self) -> Dict[str, Any]:
+        """获取文件统计信息"""
+        import math
+        
+        try:
+            files = self.repository.get_all_files()
+            files_data = {}
+            
+            for filename in files:
+                keyword_uids = self.repository.get_file_keywords(filename)
+                
+                # 统计该文件的关键词信息
+                total_qpm = 0.0
+                total_keywords = len(keyword_uids)
+                groups_set = set()
+                
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
+                    if keyword_data:
+                        qpm = float(keyword_data.get('QPM', 0))
+                        if not (math.isnan(qpm) or math.isinf(qpm)):
+                            total_qpm += qpm
+                        groups_set.add(keyword_data.get('group_name_map', ''))
+                
+                files_data[filename] = {
+                    "filename": filename,
+                    "keyword_count": total_keywords,
+                    "total_qpm": total_qpm,
+                    "groups_count": len(groups_set),
+                    "groups": list(groups_set)
+                }
+            
+            return files_data
+            
+        except Exception as e:
+            logger.error(f"获取文件数据时出错: {str(e)}")
+            return {}
+    
+    def get_duplicate_keywords_analysis(self) -> Dict[str, Any]:
+        """获取重复关键词分析"""
+        try:
+            return self.repository.get_duplicate_keywords_analysis()
+        except Exception as e:
+            logger.error(f"获取重复关键词分析时出错: {str(e)}")
+            return {"total_duplicates": 0, "details": []}
+    
+    def get_groups_visualization_data(self) -> Dict[str, Any]:
+        """获取关键词组可视化数据"""
+        try:
+            groups_data = self.get_groups_data()
+            clusters_data = self.get_clusters_data()
+            duplicates = self.repository.get_duplicate_keywords()
+            
+            if not groups_data:
+                return {"nodes": [], "links": [], "categories": []}
+            
+            nodes = []
+            links = []
+            categories = [
+                {"name": "关键词组", "itemStyle": {"color": "#5470c6"}},
+                {"name": "关键词族", "itemStyle": {"color": "#91cc75"}},
+                {"name": "重复关键词", "itemStyle": {"color": "#fac858"}}
+            ]
+            
+            # 添加组节点
+            for i, (group_name, group_info) in enumerate(groups_data.items()):
+                nodes.append({
+                    "id": group_name,
+                    "name": group_name,
+                    "category": 0,
+                    "value": group_info['keyword_count'],
+                    "symbolSize": min(100, max(20, group_info['keyword_count'] * 2)),
+                    "itemStyle": {"color": self._get_group_color(i)},
+                    "label": {"show": True},
+                    "tooltip": {
+                        "formatter": f"{group_name}<br/>关键词数: {group_info['keyword_count']}<br/>总QPM: {group_info['total_qpm']:,.0f}"
+                    }
+                })
+            
+            # 添加族节点和连接
+            for cluster_name, group_names in clusters_data.items():
+                cluster_node_id = f"cluster_{cluster_name}"
+                nodes.append({
+                    "id": cluster_node_id,
+                    "name": cluster_name,
+                    "category": 1,
+                    "value": len(group_names),
+                    "symbolSize": min(120, max(30, len(group_names) * 15)),
+                    "itemStyle": {"color": "#91cc75"},
+                    "label": {"show": True}
+                })
+                
+                # 连接族和组
+                for group_name in group_names:
+                    if group_name in groups_data:
+                        links.append({
+                            "source": cluster_node_id,
+                            "target": group_name,
+                            "lineStyle": {"width": 2}
+                        })
+            
+            # 添加重复关键词节点和连接
+            for keyword, groups in duplicates.items():
+                if len(groups) > 1:
+                    keyword_node_id = f"keyword_{keyword}"
+                    nodes.append({
+                        "id": keyword_node_id,
+                        "name": keyword,
+                        "category": 2,
+                        "value": len(groups),
+                        "symbolSize": min(80, max(15, len(groups) * 8)),
+                        "itemStyle": {"color": "#fac858"},
+                        "label": {"show": True, "fontSize": 8},
+                        "tooltip": {
+                            "formatter": f"重复关键词: {keyword}<br/>出现在 {len(groups)} 个组中<br/>组: {', '.join(groups)}"
+                        }
+                    })
+                    
+                    # 连接重复关键词到所有包含它的组
+                    for group_name in groups:
+                        if group_name in groups_data:
+                            links.append({
+                                "source": keyword_node_id,
+                                "target": group_name,
+                                "lineStyle": {"width": 1, "color": "#fac858", "type": "dashed"},
+                                "label": {"show": False}
+                            })
+            
+            return self._convert_to_python_types({
+                "nodes": nodes,
+                "links": links,
+                "categories": categories
+            })
+            
+        except Exception as e:
+            logger.error(f"获取可视化数据时出错: {str(e)}")
+            return {"nodes": [], "links": [], "categories": []}
+    
+    def _get_group_color(self, index: int) -> str:
+        """为组生成颜色"""
+        colors = [
+            "#5470c6", "#91cc75", "#fac858", "#ee6666", "#73c0de", 
+            "#3ba272", "#fc8452", "#9a60b4", "#ea7ccc", "#ff9f7f"
+        ]
+        return colors[index % len(colors)]
+    
+    # =====================================================
+    # Data Manipulation Methods
+    # =====================================================
+    
+    def remove_keyword_from_group(self, keyword: str, group: str) -> Dict[str, Any]:
+        """从组中删除关键词（使用UID方式，幂等操作）"""
+        try:
+            # 生成UID来查找关键词
+            uid = self.generate_keyword_uid(keyword, group, "")
+            
+            # 检查关键词是否存在
+            keyword_data = self.repository.get_keyword_by_uid(uid)
+            
+            if not keyword_data:
+                # 关键词不存在，但这不是错误（幂等操作）
+                logger.info(f"关键词 '{keyword}' 在组 '{group}' 中不存在，可能已被删除")
+                return {
+                    "success": True,
+                    "message": f"关键词 '{keyword}' 已从组 '{group}' 中删除（或已不存在）"
+                }
+            
+            # 执行删除操作
+            success = self.repository.delete_keyword_by_uid(uid)
+            
+            if success:
+                logger.info(f"成功删除关键词 '{keyword}' 从组 '{group}'")
+                return {
+                    "success": True,
+                    "message": f"关键词 '{keyword}' 已从组 '{group}' 中删除"
+                }
+            else:
+                # 删除失败，但我们已经检查过存在性，所以这可能是并发删除
+                logger.warning(f"删除关键词 '{keyword}' 时失败，可能已被并发删除")
+                return {
+                    "success": True,
+                    "message": f"关键词 '{keyword}' 已从组 '{group}' 中删除（可能已被并发删除）"
+                }
+                
+        except Exception as e:
+            logger.error(f"删除关键词时出现意外错误: {str(e)}")
+            # 不抛出异常，返回错误信息但保持操作的幂等性
+            return {
+                "success": False,
+                "message": f"删除关键词 '{keyword}' 时出现错误: {str(e)}"
+            }
+    
+    def move_keyword_to_group(self, keyword: str, source_group: str, target_group: str) -> Dict[str, Any]:
+        """将关键词从一个组移动到另一个组（使用UID方式）"""
+        try:
+            # 生成源UID和目标UID
+            source_uid = self.generate_keyword_uid(keyword, source_group, "")
+            target_uid = self.generate_keyword_uid(keyword, target_group, "")
+            
+            # 获取源关键词数据
+            keyword_data = self.repository.get_keyword_by_uid(source_uid)
+            if not keyword_data:
+                raise DataProcessingException(f"关键词 '{keyword}' 不存在于组 '{source_group}' 中")
+            
+            # 删除源关键词
+            self.repository.delete_keyword_by_uid(source_uid)
+            
+            # 更新关键词数据中的组信息
+            keyword_data['group_name_map'] = target_group
+            keyword_data['updated_at'] = datetime.now().isoformat()
+            
+            # 获取文件名（如果存在）
+            filename = keyword_data.get('source_file', '')
+            
+            # 创建新的关键词条目
+            self.repository.create_keyword_with_uid(target_uid, keyword_data, filename)
+            
+            return {
+                "success": True,
+                "message": f"关键词 '{keyword}' 已从组 '{source_group}' 移动到组 '{target_group}'"
+            }
+                
+        except Exception as e:
+            logger.error(f"移动关键词时出错: {str(e)}")
+            raise DataProcessingException(str(e))
+    
+    def rename_group(self, old_name: str, new_name: str) -> Dict[str, Any]:
+        """重命名关键词组"""
+        try:
+            success = self.repository.rename_group(old_name, new_name)
+            
+            if success:
+                return {
+                    "success": True,
+                    "message": f"组 '{old_name}' 已重命名为 '{new_name}'"
+                }
+            else:
+                raise DataProcessingException(f"组 '{old_name}' 不存在")
+                
+        except Exception as e:
+            logger.error(f"重命名组时出错: {str(e)}")
+            raise DataProcessingException(str(e))
+    
+    def create_cluster(self, cluster_name: str, group_names: List[str]) -> Dict[str, Any]:
+        """创建关键词族"""
+        try:
+            # 检查族是否已存在
+            existing_clusters = self.repository.get_all_clusters()
+            if cluster_name in existing_clusters:
+                raise DataProcessingException(f"族 '{cluster_name}' 已存在")
+            
+            # 验证组是否存在
+            existing_groups = self.repository.get_all_groups()
+            invalid_groups = [g for g in group_names if g not in existing_groups]
+            if invalid_groups:
+                raise DataProcessingException(f"以下组不存在: {', '.join(invalid_groups)}")
+            
+            success = self.repository.create_cluster(cluster_name, group_names)
+            
+            if success:
+                return {
+                    "success": True,
+                    "message": f"族 '{cluster_name}' 创建成功"
+                }
+            else:
+                raise DataProcessingException("创建族失败")
+                
+        except Exception as e:
+            logger.error(f"创建族时出错: {str(e)}")
+            raise DataProcessingException(str(e))
+    
+    def update_cluster(self, cluster_name: str, group_names: List[str]) -> Dict[str, Any]:
+        """更新关键词族"""
+        try:
+            # 检查族是否存在
+            existing_clusters = self.repository.get_all_clusters()
+            if cluster_name not in existing_clusters:
+                raise DataProcessingException(f"族 '{cluster_name}' 不存在")
+            
+            # 验证组是否存在
+            existing_groups = self.repository.get_all_groups()
+            invalid_groups = [g for g in group_names if g not in existing_groups]
+            if invalid_groups:
+                raise DataProcessingException(f"以下组不存在: {', '.join(invalid_groups)}")
+            
+            success = self.repository.update_cluster(cluster_name, group_names)
+            
+            if success:
+                return {
+                    "success": True,
+                    "message": f"族 '{cluster_name}' 更新成功"
+                }
+            else:
+                raise DataProcessingException("更新族失败")
+                
+        except Exception as e:
+            logger.error(f"更新族时出错: {str(e)}")
+            raise DataProcessingException(str(e))
+    
+    def delete_cluster(self, cluster_name: str) -> Dict[str, Any]:
+        """删除关键词族"""
+        try:
+            # 检查族是否存在
+            existing_clusters = self.repository.get_all_clusters()
+            if cluster_name not in existing_clusters:
+                raise DataProcessingException(f"族 '{cluster_name}' 不存在")
+            
+            success = self.repository.delete_cluster(cluster_name)
+            
+            if success:
+                logger.info(f"成功删除族 '{cluster_name}'")
+                return {
+                    "success": True,
+                    "message": f"族 '{cluster_name}' 删除成功"
+                }
+            else:
+                raise DataProcessingException("删除族失败")
+                
+        except Exception as e:
+            logger.error(f"删除族时出错: {str(e)}")
+            raise DataProcessingException(str(e))
+    
+    def export_keystore_data(self) -> bytes:
+        """导出关键词库数据"""
+        try:
+            # 获取所有关键词数据
+            all_keywords = []
+            groups = self.repository.get_all_groups()
+            
+            for group_name in groups:
+                keyword_uids = self.repository.get_group_keywords(group_name)
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
+                    if keyword_data:
+                        # 添加族信息
+                        cluster_name = self._get_cluster_for_group(group_name)
+                        keyword_data['cluster_name'] = cluster_name
+                        all_keywords.append(keyword_data)
+            
+            if not all_keywords:
+                return b"No data to export"
+            
+            # 转换为DataFrame并导出
+            df = pd.DataFrame(all_keywords)
+            
+            # 重新排列列的顺序
+            column_order = ['Keywords', 'group_name_map', 'cluster_name', 'QPM', 'DIFF']
+            other_columns = [col for col in df.columns if col not in column_order]
+            final_column_order = column_order + other_columns
+            final_column_order = [col for col in final_column_order if col in df.columns]
+            
+            df = df[final_column_order]
+            
+            logger.info(f"导出关键词库数据: {len(df)} 行, {len(df.columns)} 列")
+            logger.info(f"导出列: {list(df.columns)}")
+            
+            return df.to_csv(index=False).encode('utf-8')
+            
+        except Exception as e:
+            logger.error(f"导出关键词库数据时出错: {str(e)}")
+            return b"Export error occurred"
+    
+    def export_groups_data(self) -> bytes:
+        """导出关键词组汇总数据"""
+        try:
+            # 获取所有组的汇总数据
+            groups_data = []
+            groups = self.repository.get_all_groups()
+            
+            for group_name in groups:
+                group_info = self.repository.get_group_info(group_name)
+                if group_info:
+                    # 获取族信息
+                    cluster_name = self._get_cluster_for_group(group_name)
+                    
+                    # 创建组汇总记录
+                    group_record = {
+                        'group_name_map': group_name,
+                        'cluster_name': cluster_name,
+                        'Sum QPM': group_info.get('total_qpm', 0),
+                        'Avg DIFF': group_info.get('avg_diff', 0),
+                        'Avg CPC (USD)': group_info.get('avg_cpc', 0),  # 需要添加CPC计算
+                        'keyword_count': group_info.get('keyword_count', 0),
+                        'avg_qpm': group_info.get('avg_qpm', 0),
+                        'max_qpm': group_info.get('max_qpm', 0),
+                        'min_qpm': group_info.get('min_qpm', 0)
+                    }
+                    groups_data.append(group_record)
+            
+            if not groups_data:
+                return b"No groups data to export"
+            
+            # 转换为DataFrame并导出
+            df = pd.DataFrame(groups_data)
+            
+            # 重新排列列的顺序 - 按照用户要求的列顺序
+            column_order = ['group_name_map', 'cluster_name', 'Sum QPM', 'Avg DIFF', 'Avg CPC (USD)']
+            other_columns = [col for col in df.columns if col not in column_order]
+            final_column_order = column_order + other_columns
+            final_column_order = [col for col in final_column_order if col in df.columns]
+            
+            df = df[final_column_order]
+            
+            logger.info(f"导出关键词组数据: {len(df)} 行, {len(df.columns)} 列")
+            logger.info(f"导出列: {list(df.columns)}")
+            
+            return df.to_csv(index=False).encode('utf-8')
+            
+        except Exception as e:
+            logger.error(f"导出关键词组数据时出错: {str(e)}")
+            return b"Export groups error occurred"
+    
+    def _get_cluster_for_group(self, group_name: str) -> str:
+        """获取组所属的族"""
+        clusters_data = self.get_clusters_data()
+        for cluster_name, group_names in clusters_data.items():
+            if group_name in group_names:
+                return cluster_name
+        return ""
+    
+    def reset_data(self) -> Dict[str, Any]:
+        """重置所有数据"""
+        try:
+            success = self.repository.clear_all_data()
+            self._file_stats = []
+            
+            if success:
+                logger.info("关键词库数据已重置")
+                return {"success": True, "message": "数据已重置"}
+            else:
+                raise DataProcessingException("重置数据失败")
+                
+        except Exception as e:
+            logger.error(f"重置数据时出错: {str(e)}")
+            raise DataProcessingException(str(e))
+    
+    def analyze_group_overlaps_for_clusters(self) -> Dict[str, Any]:
+        """
+        分析组间重复关键词并生成族建议
+        
+        逻辑：
+        1. 找出所有组之间共享的关键词
+        2. 基于共享关键词的传递性建议族
+        3. 如果A组和B组有共同关键词，B组和C组有共同关键词，则建议将A、B、C放入同一族
+        
+        Returns:
+            Dict包含族建议列表，每个建议包含应该组合的组列表和共享的关键词数量
+        """
+        try:
+            logger.info("开始分析组间重复关键词...")
+            
+            # 获取所有组及其关键词
+            groups_set = self.repository.get_all_groups()
+            groups = list(groups_set)  # 转换为列表以支持索引操作
+            if len(groups) < 2:
+                return {
+                    "success": True,
+                    "cluster_suggestions": [],
+                    "message": "至少需要2个组才能进行重叠分析"
+                }
+            
+            # 构建组-关键词映射
+            group_keywords = {}
+            for group_name in groups:
+                keyword_uids = self.repository.get_group_keywords(group_name)
+                keywords = set()
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
+                    if keyword_data and 'Keywords' in keyword_data:
+                        keywords.add(keyword_data['Keywords'].lower().strip())
+                group_keywords[group_name] = keywords
+                logger.debug(f"组 {group_name} 有 {len(keywords)} 个关键词")
+            
+            # 分析组间重叠
+            overlaps = {}
+            for i, group1 in enumerate(groups):
+                for group2 in groups[i+1:]:
+                    common_keywords = group_keywords[group1] & group_keywords[group2]
+                    if common_keywords:
+                        key = tuple(sorted([group1, group2]))
+                        overlaps[key] = {
+                            'groups': [group1, group2],
+                            'common_keywords': list(common_keywords),
+                            'common_count': len(common_keywords)
+                        }
+                        logger.debug(f"组 {group1} 和 {group2} 有 {len(common_keywords)} 个共同关键词")
+            
+            if not overlaps:
+                return {
+                    "success": True,
+                    "cluster_suggestions": [],
+                    "message": "未找到组间共享的关键词"
+                }
+            
+            # 基于传递性构建族建议
+            cluster_suggestions = []
+            processed_groups = set()
+            
+            # 使用并查集算法找到连通组件
+            def find_connected_groups(start_group, connections):
+                """使用广度优先搜索找到所有连接的组"""
+                connected = set()
+                queue = [start_group]
+                visited = set()
+                
+                while queue:
+                    current_group = queue.pop(0)
+                    if current_group in visited:
+                        continue
+                    
+                    visited.add(current_group)
+                    connected.add(current_group)
+                    
+                    # 查找与当前组连接的其他组
+                    for overlap_key, overlap_data in connections.items():
+                        groups_in_overlap = overlap_data['groups']
+                        if current_group in groups_in_overlap:
+                            # 找到另一个组
+                            other_group = groups_in_overlap[1] if groups_in_overlap[0] == current_group else groups_in_overlap[0]
+                            if other_group not in visited:
+                                queue.append(other_group)
+                
+                return connected
+            
+            for group in groups:
+                if group not in processed_groups:
+                    connected_groups = find_connected_groups(group, overlaps)
+                    
+                    if len(connected_groups) > 1:
+                        # 计算这个族建议的统计信息
+                        total_shared_keywords = set()
+                        overlap_details = []
+                        
+                        # 收集所有相关的重叠信息
+                        for overlap_key, overlap_data in overlaps.items():
+                            if all(g in connected_groups for g in overlap_data['groups']):
+                                total_shared_keywords.update(overlap_data['common_keywords'])
+                                overlap_details.append({
+                                    'groups': overlap_data['groups'],
+                                    'common_keywords': overlap_data['common_keywords'],
+                                    'common_count': overlap_data['common_count']
+                                })
+                        
+                        # 计算组的总关键词数
+                        total_keywords = 0
+                        group_stats = []
+                        for g in connected_groups:
+                            group_keyword_count = len(group_keywords[g])
+                            total_keywords += group_keyword_count
+                            group_stats.append({
+                                'group_name': g,
+                                'keyword_count': group_keyword_count
+                            })
+                        
+                        suggestion = {
+                            'suggested_cluster_name': f"cluster_{len(cluster_suggestions) + 1}",  # 默认名称，用户可修改
+                            'groups': sorted(list(connected_groups)),
+                            'group_count': len(connected_groups),
+                            'total_shared_keywords': len(total_shared_keywords),
+                            'shared_keywords_sample': list(total_shared_keywords)[:10],  # 只显示前10个作为示例
+                            'total_keywords': total_keywords,
+                            'overlap_details': overlap_details,
+                            'group_stats': group_stats,
+                            'confidence': min(100, (len(total_shared_keywords) / len(connected_groups)) * 10)  # 简单的置信度计算
+                        }
+                        
+                        cluster_suggestions.append(suggestion)
+                        processed_groups.update(connected_groups)
+            
+            # 按共享关键词数量排序建议
+            cluster_suggestions.sort(key=lambda x: x['total_shared_keywords'], reverse=True)
+            
+            logger.info(f"生成了 {len(cluster_suggestions)} 个族建议")
+            
+            return {
+                "success": True,
+                "cluster_suggestions": cluster_suggestions,
+                "total_suggestions": len(cluster_suggestions),
+                "analysis_summary": {
+                    "total_groups": len(groups),
+                    "groups_with_overlaps": len(processed_groups),
+                    "total_overlapping_pairs": len(overlaps)
+                }
+            }
+            
+        except Exception as e:
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error(f"分析组间重叠时出错: {str(e)}")
+            logger.error(f"错误堆栈:\n{error_traceback}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_traceback": error_traceback,
+                "cluster_suggestions": []
+            }
+    
+    async def preview_upload_diff(self, files: List[UploadFile]) -> Dict[str, Any]:
+        """
+        预览上传文件与现有数据的差异
+        
+        分析上传的文件，返回将要新增的族、组、关键词信息
+        用于增量上传前的确认
+        
+        Args:
+            files: 要上传的文件列表
+            
+        Returns:
+            Dict包含差异分析结果
+        """
+        try:
+            logger.info("开始预览上传文件差异...")
+            
+            # 首先获取现有数据
+            existing_groups = set(self.repository.get_all_groups())
+            existing_clusters = set(self.repository.get_all_clusters())
+            existing_keywords = set()
+            
+            # 收集现有关键词
+            for group_name in existing_groups:
+                keyword_uids = self.repository.get_group_keywords(group_name)
+                for uid in keyword_uids:
+                    keyword_data = self.repository.get_keyword_by_uid(uid)
+                    if keyword_data and 'Keywords' in keyword_data:
+                        existing_keywords.add(keyword_data['Keywords'].lower().strip())
+            
+            # 处理上传文件
+            new_dataframes = []
+            for file in files:
+                try:
+                    # 创建临时文件
+                    with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
+                        content = await file.read()
+                        temp_file.write(content)
+                        temp_file.flush()
+                        
+                        # 读取文件
+                        df = read_file(temp_file.name)
+                        
+                        # 验证必需列
+                        required_columns = ['Keywords', 'group_name_map', 'QPM', 'DIFF']
+                        missing_columns = [col for col in required_columns if col not in df.columns]
+                        
+                        if missing_columns:
+                            raise MissingRequiredColumnsException(
+                                missing_columns=missing_columns,
+                                available_columns=list(df.columns)
+                            )
+                        
+                        # 数据清理和标准化
+                        df = self._clean_dataframe(df)
+                        new_dataframes.append(df)
+                        
+                        # 清理临时文件
+                        os.unlink(temp_file.name)
+                        
+                except Exception as e:
+                    logger.error(f"处理文件 {file.filename} 时出错: {str(e)}")
+                    raise FileProcessingException(
+                        filename=file.filename,
+                        parsing_error=str(e)
+                    )
+            
+            if not new_dataframes:
+                return {
+                    "success": False,
+                    "error": "没有成功处理的文件"
+                }
+            
+            # 合并所有新数据
+            combined_df = pd.concat(new_dataframes, ignore_index=True)
+            combined_df = self._clean_merged_data(combined_df)
+            
+            # 分析新数据
+            new_groups = set(combined_df['group_name_map'].unique())
+            new_keywords_with_groups = set()
+            for _, row in combined_df.iterrows():
+                keyword = str(row['Keywords']).lower().strip()
+                group = str(row['group_name_map']).strip()
+                new_keywords_with_groups.add((keyword, group))
+            
+            # 分析差异
+            diff_result = {
+                "new_groups": [],
+                "new_keywords_in_existing_groups": [],
+                "new_keywords_in_new_groups": [],
+                "duplicate_keywords": [],
+                "existing_groups_with_new_keywords": [],
+                "summary": {}
+            }
+            
+            # 分析新组
+            truly_new_groups = new_groups - existing_groups
+            diff_result["new_groups"] = [
+                {
+                    "group_name": group,
+                    "keyword_count": len(combined_df[combined_df['group_name_map'] == group]),
+                    "sample_keywords": combined_df[combined_df['group_name_map'] == group]['Keywords'].head(5).tolist()
+                }
+                for group in truly_new_groups
+            ]
+            
+            # 分析新关键词
+            for keyword, group in new_keywords_with_groups:
+                if keyword in existing_keywords:
+                    # 重复的关键词
+                    diff_result["duplicate_keywords"].append({
+                        "keyword": keyword,
+                        "group": group,
+                        "action": "skip_or_update"
+                    })
+                else:
+                    # 新关键词
+                    if group in existing_groups:
+                        # 现有组中的新关键词
+                        diff_result["new_keywords_in_existing_groups"].append({
+                            "keyword": keyword,
+                            "group": group
+                        })
+                        
+                        # 记录有新关键词的现有组
+                        if group not in [g["group_name"] for g in diff_result["existing_groups_with_new_keywords"]]:
+                            existing_group_new_keywords = [
+                                item["keyword"] for item in diff_result["new_keywords_in_existing_groups"] 
+                                if item["group"] == group
+                            ]
+                            diff_result["existing_groups_with_new_keywords"].append({
+                                "group_name": group,
+                                "new_keyword_count": len(existing_group_new_keywords),
+                                "sample_new_keywords": existing_group_new_keywords[:5]
+                            })
+                    else:
+                        # 新组中的新关键词
+                        diff_result["new_keywords_in_new_groups"].append({
+                            "keyword": keyword,
+                            "group": group
+                        })
+            
+            # 计算摘要
+            diff_result["summary"] = {
+                "total_new_groups": len(truly_new_groups),
+                "total_new_keywords": len(new_keywords_with_groups) - len(diff_result["duplicate_keywords"]),
+                "total_duplicate_keywords": len(diff_result["duplicate_keywords"]),
+                "total_files_processed": len(new_dataframes),
+                "existing_groups_affected": len(diff_result["existing_groups_with_new_keywords"]),
+                "new_keywords_in_existing_groups": len(diff_result["new_keywords_in_existing_groups"]),
+                "new_keywords_in_new_groups": len(diff_result["new_keywords_in_new_groups"])
+            }
+            
+            logger.info(f"上传差异分析完成: 新增 {diff_result['summary']['total_new_groups']} 个组, {diff_result['summary']['total_new_keywords']} 个关键词")
+            
+            return {
+                "success": True,
+                "diff_analysis": diff_result,
+                "upload_mode_recommended": "append",
+                "can_proceed": True
+            }
+            
+        except Exception as e:
+            logger.error(f"预览上传差异时出错: {str(e)}")
+            import traceback
+            error_traceback = traceback.format_exc()
+            logger.error(f"错误堆栈:\n{error_traceback}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_traceback": error_traceback
+            }
+    
+    def health_check(self) -> Dict[str, Any]:
+        """健康检查"""
+        try:
+            redis_health = self.redis_manager.health_check()
+            return {
+                "processor_status": "healthy",
+                "redis_status": redis_health["status"],
+                "redis_response_time": redis_health.get("response_time_ms", 0)
+            }
+        except Exception as e:
+            logger.error(f"健康检查失败: {str(e)}")
+            return {
+                "processor_status": "unhealthy",
+                "error": str(e)
+            }

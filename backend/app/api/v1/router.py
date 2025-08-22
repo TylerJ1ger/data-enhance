@@ -1,7 +1,7 @@
 """
 API v1 主路由文件 - 完整增强版本
 整合所有业务模块的路由，提供统一的接口入口
-新增动态CSV模板支持和SEO批量处理功能
+新增动态CSV模板支持和SEO批量处理功能，以及关键词库功能
 """
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Path, Request
@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 import asyncio
 from pydantic import BaseModel, validator
 from datetime import datetime
+import logging
 
 # 导入重构后的处理器
 from app.core.keywords.keywords_processor import KeywordsProcessor
@@ -22,9 +23,13 @@ from app.core.backlinks.backlinks_processor import BacklinksProcessor
 from app.core.backlinks.cross_analysis_processor import CrossAnalysisProcessor
 from app.core.orders.orders_processor import OrdersProcessor
 from app.core.schema.schema_processor import SchemaProcessor
+from app.core.keystore.keystore_processor_redis import KeystoreProcessorRedis  # Redis关键词库处理器
 
 # 创建主路由器
 router = APIRouter(tags=["API v1"])
+
+# 设置日志记录器
+logger = logging.getLogger(__name__)
 
 # 设置文件大小限制为 100MB
 MAX_FILE_SIZE = 100 * 1024 * 1024  # 100MB
@@ -37,6 +42,7 @@ backlinks_processor = BacklinksProcessor()
 cross_analysis_processor = CrossAnalysisProcessor()
 orders_processor = OrdersProcessor()
 schema_processor = SchemaProcessor()
+keystore_processor = KeystoreProcessorRedis()  # Redis关键词库处理器实例
 
 # ================================
 # Pydantic 模型定义
@@ -191,6 +197,75 @@ class SEOExportRequest(BaseModel):
             raise ValueError('导出类型必须是 "summary" 或 "detailed"')
         return v
 
+# 关键词库相关模型
+class KeywordMoveRequest(BaseModel):
+    """关键词移动请求模型"""
+    keyword: str
+    source_group: str
+    target_group: str
+    
+    @validator('keyword', 'source_group', 'target_group')
+    def validate_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('字段不能为空')
+        return v.strip()
+
+class KeywordRemoveRequest(BaseModel):
+    """关键词删除请求模型"""
+    keyword: str
+    group: str
+    
+    @validator('keyword', 'group')
+    def validate_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('字段不能为空')
+        return v.strip()
+
+class GroupRenameRequest(BaseModel):
+    """组重命名请求模型"""
+    old_name: str
+    new_name: str
+    
+    @validator('old_name', 'new_name')
+    def validate_not_empty(cls, v):
+        if not v or not v.strip():
+            raise ValueError('字段不能为空')
+        return v.strip()
+
+class ClusterCreateRequest(BaseModel):
+    """族创建请求模型"""
+    cluster_name: str
+    group_names: List[str]
+    
+    @validator('cluster_name')
+    def validate_cluster_name(cls, v):
+        if not v or not v.strip():
+            raise ValueError('族名不能为空')
+        return v.strip()
+    
+    @validator('group_names')
+    def validate_group_names(cls, v):
+        if not v:
+            raise ValueError('至少需要一个组')
+        return [name.strip() for name in v if name.strip()]
+
+class ClusterUpdateRequest(BaseModel):
+    """族更新请求模型"""
+    cluster_name: str
+    group_names: List[str]
+    
+    @validator('cluster_name')
+    def validate_cluster_name(cls, v):
+        if not v or not v.strip():
+            raise ValueError('族名不能为空')
+        return v.strip()
+    
+    @validator('group_names')
+    def validate_group_names(cls, v):
+        if not v:
+            raise ValueError('至少需要一个组')
+        return [name.strip() for name in v if name.strip()]
+
 # ================================
 # 通用辅助函数
 # ================================
@@ -306,6 +381,375 @@ async def get_keywords_filter_ranges():
     获取关键词筛选器的最小值和最大值
     """
     return keywords_processor.get_filter_ranges()
+
+# ================================
+# 关键词库相关路由 (Keystore)
+# ================================
+
+@router.post("/keystore/upload", tags=["Keystore"])
+async def upload_keystore_files(
+    files: List[UploadFile] = File(...),
+    mode: str = Form("replace"),  # "replace" 或 "append" 
+    preserve_duplicates: bool = Form(False)  # 是否保留重复项
+):
+    """
+    上传关键词库CSV文件
+    
+    支持的CSV格式:
+    - Keywords: 关键词 (必需)
+    - group_name_map: 组名 (必需)
+    - QPM: 搜索量 (必需)
+    - DIFF: 难度 (必需)
+    - 其他列如Group, Force Group, Task Name等为可选
+    
+    参数:
+    - mode: "replace" (默认，覆盖现有数据) 或 "append" (增量添加)
+    - preserve_duplicates: 是否保留重复项 (默认False，会自动去重)
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="未提供文件")
+    
+    if mode not in ["replace", "append"]:
+        raise HTTPException(status_code=400, detail="mode参数必须是'replace'或'append'")
+    
+    await check_file_size(files)
+    result = await keystore_processor.process_files(files, mode=mode, preserve_duplicates=preserve_duplicates)
+    return result
+
+@router.post("/keystore/preview-upload", tags=["Keystore"])
+async def preview_keystore_upload(files: List[UploadFile] = File(...)):
+    """
+    预览上传文件的差异，显示新增的族、组、关键词
+    用于增量上传前的确认
+    """
+    if not files:
+        raise HTTPException(status_code=400, detail="未提供文件")
+    
+    await check_file_size(files)
+    result = await keystore_processor.preview_upload_diff(files)
+    return result
+
+@router.get("/keystore/summary", tags=["Keystore"])
+async def get_keystore_summary():
+    """获取关键词库摘要信息"""
+    summary = keystore_processor.get_summary()
+    groups_overview = keystore_processor.get_groups_overview()
+    
+    return {
+        "success": True,
+        "summary": summary,
+        "groups_overview": groups_overview
+    }
+
+@router.get("/keystore/groups", tags=["Keystore"])
+async def get_keystore_groups_data():
+    """获取所有关键词组数据（优化版本，减少数据传输）"""
+    groups_data = keystore_processor.get_groups_data()
+    
+    # Apply additional float validation to ensure JSON compliance
+    def validate_floats(obj):
+        import math
+        if isinstance(obj, dict):
+            return {k: validate_floats(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [validate_floats(item) for item in obj]
+        elif isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return 0.0
+            return obj
+        else:
+            return obj
+    
+    validated_groups_data = validate_floats(groups_data)
+    
+    return {
+        "success": True,
+        "groups": validated_groups_data,
+        "total_groups": len(validated_groups_data)
+    }
+
+@router.get("/keystore/groups/{group_name}", tags=["Keystore"])
+async def get_keystore_group_detail(group_name: str):
+    """获取单个关键词组的详细数据"""
+    group_detail = keystore_processor.get_group_detail(group_name)
+    
+    if not group_detail:
+        raise HTTPException(status_code=404, detail=f"组 '{group_name}' 不存在")
+    
+    # Apply float validation
+    def validate_floats(obj):
+        import math
+        if isinstance(obj, dict):
+            return {k: validate_floats(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [validate_floats(item) for item in obj]
+        elif isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return 0.0
+            return obj
+        else:
+            return obj
+    
+    validated_group_detail = validate_floats(group_detail)
+    
+    return {
+        "success": True,
+        "group": validated_group_detail
+    }
+
+@router.get("/keystore/clusters", tags=["Keystore"])
+async def get_keystore_clusters_data():
+    """获取所有关键词族数据"""
+    clusters_data = keystore_processor.get_clusters_data()
+    return {
+        "success": True,
+        "clusters": clusters_data
+    }
+
+@router.get("/keystore/files", tags=["Keystore"])
+async def get_keystore_files_data():
+    """获取所有导入文件的统计信息"""
+    files_data = keystore_processor.get_files_data()
+    return {
+        "success": True,
+        "files": files_data,
+        "total_files": len(files_data)
+    }
+
+@router.get("/keystore/visualization", tags=["Keystore"])
+async def get_keystore_groups_visualization():
+    """获取关键词组可视化数据"""
+    visualization_data = keystore_processor.get_groups_visualization_data()
+    return {
+        "success": True,
+        "visualization": visualization_data
+    }
+
+@router.get("/keystore/duplicates", tags=["Keystore"])
+async def get_keystore_duplicate_keywords():
+    """获取重复关键词分析"""
+    duplicates_analysis = keystore_processor.get_duplicate_keywords_analysis()
+    return {
+        "success": True,
+        "duplicates": duplicates_analysis
+    }
+
+@router.post("/keystore/keywords/move", tags=["Keystore"])
+async def move_keystore_keyword(request: KeywordMoveRequest):
+    """将关键词从一个组移动到另一个组"""
+    # 在异步上下文中执行，避免阻塞其他请求
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        keystore_processor.move_keyword_to_group,
+        request.keyword,
+        request.source_group,
+        request.target_group
+    )
+    return result
+
+@router.post("/keystore/keywords/remove", tags=["Keystore"])
+async def remove_keystore_keyword(request: KeywordRemoveRequest):
+    """从组中删除关键词"""
+    # 在异步上下文中执行，避免阻塞其他请求
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        None,
+        keystore_processor.remove_keyword_from_group,
+        request.keyword,
+        request.group
+    )
+    return result
+
+@router.post("/keystore/groups/rename", tags=["Keystore"])
+async def rename_keystore_group(request: GroupRenameRequest):
+    """重命名关键词组"""
+    result = keystore_processor.rename_group(
+        request.old_name,
+        request.new_name
+    )
+    return result
+
+@router.post("/keystore/clusters/create", tags=["Keystore"])
+async def create_keystore_cluster(request: ClusterCreateRequest):
+    """创建关键词族"""
+    result = keystore_processor.create_cluster(
+        request.cluster_name,
+        request.group_names
+    )
+    return result
+
+@router.put("/keystore/clusters/update", tags=["Keystore"])
+async def update_keystore_cluster(request: ClusterUpdateRequest):
+    """更新关键词族"""
+    result = keystore_processor.update_cluster(
+        request.cluster_name,
+        request.group_names
+    )
+    return result
+
+@router.delete("/keystore/clusters/{cluster_name}", tags=["Keystore"])
+async def delete_keystore_cluster(cluster_name: str):
+    """删除关键词族"""
+    result = keystore_processor.delete_cluster(cluster_name)
+    return result
+
+@router.get("/keystore/clusters/suggestions", tags=["Keystore"])
+async def get_cluster_suggestions():
+    """
+    基于组间重复关键词分析生成族建议
+    
+    分析逻辑：
+    1. 找出所有组之间共享的关键词
+    2. 基于共享关键词的传递性建议族
+    3. 如果A组和B组有共同关键词，B组和C组有共同关键词，则建议将A、B、C放入同一族
+    
+    返回族建议列表，每个建议包含：
+    - 建议的族名称（可修改）
+    - 应该组合的组列表
+    - 共享关键词数量和示例
+    - 置信度评分
+    """
+    try:
+        result = keystore_processor.analyze_group_overlaps_for_clusters()
+        return result
+    except Exception as e:
+        logger.error(f"获取族建议时发生错误: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取族建议失败: {str(e)}"
+        )
+
+@router.get("/keystore/export", tags=["Keystore"])
+async def export_keystore_data():
+    """导出关键词库数据为CSV文件，包含族信息和清理后的数据"""
+    try:
+        csv_data = keystore_processor.export_keystore_data()
+        
+        if csv_data == b"No data to export":
+            raise HTTPException(status_code=404, detail="没有可导出的关键词库数据")
+        
+        # 生成带时间戳的文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"keystore_data_with_clusters_{timestamp}.csv"
+        
+        logger.info(f"成功导出关键词库数据，文件名: {filename}")
+        
+        return StreamingResponse(
+            io.BytesIO(csv_data),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"导出关键词库数据时发生错误: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"导出关键词库数据失败: {str(e)}"
+        )
+
+@router.get("/keystore/export-groups", tags=["Keystore"])
+async def export_keystore_groups():
+    """导出关键词组汇总数据为CSV文件，包含组级别统计信息"""
+    try:
+        csv_data = keystore_processor.export_groups_data()
+        
+        if csv_data == b"No groups data to export":
+            raise HTTPException(status_code=404, detail="没有可导出的关键词组数据")
+        
+        # 生成带时间戳的文件名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"keystore_groups_summary_{timestamp}.csv"
+        
+        logger.info(f"成功导出关键词组数据，文件名: {filename}")
+        
+        return StreamingResponse(
+            io.BytesIO(csv_data),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.error(f"导出关键词组数据时发生错误: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"导出关键词组数据失败: {str(e)}"
+        )
+
+@router.post("/keystore/reset", tags=["Keystore"])
+async def reset_keystore_data():
+    """重置关键词库数据"""
+    try:
+        result = keystore_processor.reset_data()
+        logger.info("关键词库数据已重置")
+        return result
+    except Exception as e:
+        logger.error(f"重置关键词库数据时发生错误: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"重置关键词库数据失败: {str(e)}"
+        )
+
+@router.get("/keystore/health", tags=["Keystore"])
+async def get_keystore_health():
+    """检查关键词库和Redis连接健康状态"""
+    try:
+        health_result = keystore_processor.health_check()
+        return {
+            "success": True,
+            **health_result
+        }
+    except Exception as e:
+        logger.error(f"健康检查失败: {str(e)}")
+        return {
+            "success": False,
+            "processor_status": "unhealthy",
+            "error": str(e)
+        }
+
+@router.post("/keystore/load-from-indexdb", tags=["Keystore"])
+async def load_keystore_from_indexdb():
+    """从前端IndexDB加载关键词数据到后端Redis"""
+    try:
+        # 这个接口主要用于前端触发从IndexDB同步数据到Redis
+        # 实际的数据同步逻辑会在前端处理
+        return {
+            "success": True,
+            "message": "请从前端IndexDB加载数据",
+            "note": "此接口用于触发前端数据同步"
+        }
+    except Exception as e:
+        logger.error(f"从IndexDB加载数据时出错: {str(e)}")
+        return {
+            "success": False,
+            "message": f"从IndexDB加载数据失败: {str(e)}"
+        }
+
+@router.post("/keystore/load-from-redis", tags=["Keystore"])
+async def load_keystore_from_redis():
+    """从Redis重新加载关键词数据（刷新缓存）"""
+    try:
+        # 检查Redis中是否有数据
+        summary = keystore_processor.get_summary()
+        groups_overview = keystore_processor.get_groups_overview()
+        
+        if summary.get("total_keywords", 0) > 0:
+            logger.info(f"从Redis加载了 {summary['total_keywords']} 个关键词")
+            return {
+                "success": True,
+                "message": f"成功从Redis加载 {summary['total_keywords']} 个关键词",
+                "summary": summary,
+                "groups_overview": groups_overview
+            }
+        else:
+            return {
+                "success": False,
+                "message": "Redis中没有找到关键词数据，请先上传文件或从IndexDB同步数据"
+            }
+    except Exception as e:
+        logger.error(f"从Redis加载数据时出错: {str(e)}")
+        return {
+            "success": False,
+            "message": f"从Redis加载数据失败: {str(e)}"
+        }
 
 # ================================
 # 外链分析相关路由 (Backlinks)
@@ -531,7 +975,7 @@ async def get_seo_categories():
     return {"categories": categories}
 
 # ================================
-# SEO批量分析相关路由 (SEO Batch) - 新增
+# SEO批量分析相关路由 (SEO Batch)
 # ================================
 
 @router.post("/seo/batch-upload", tags=["SEO"])
@@ -1324,7 +1768,7 @@ async def health_check():
     """
     API健康检查端点
     """
-    return {"status": "healthy", "service": "CSV & Sitemap & SEO Processor API v1"}
+    return {"status": "healthy", "service": "CSV & Sitemap & SEO & Keystore Processor API v1"}
 
 @router.get("/", tags=["System"])
 async def api_info():
@@ -1333,15 +1777,16 @@ async def api_info():
     """
     return {
         "api_version": "v1",
-        "service": "CSV & Sitemap & SEO Processor API",
+        "service": "CSV & Sitemap & SEO & Keystore Processor API",
         "status": "running",
         "endpoints": {
             "keywords": "/v1/keywords/",
+            "keystore": "/v1/keystore/",  # 关键词库端点
             "backlinks": "/v1/backlinks/", 
             "cross_analysis": "/v1/backlinks/cross-analysis/",
             "orders": "/v1/orders/",
             "seo": "/v1/seo/",
-            "seo_batch": "/v1/seo/batch-*",  # 新增：SEO批量处理端点
+            "seo_batch": "/v1/seo/batch-*",
             "sitemaps": "/v1/sitemaps/",
             "schema": "/v1/schema/",
             "schema_batch": "/v1/schema/batch/",
@@ -1349,6 +1794,8 @@ async def api_info():
             "health": "/v1/health"
         },
         "new_features": {
+            "keystore_management": "支持关键词库构建、组管理、族创建和重复关键词处理",
+            "enhanced_export": "导出数据包含族信息并清理无用列",
             "seo_batch_analysis": "支持批量HTML文件SEO分析，自动调整超时时间",
             "seo_csv_export": "支持导出批量SEO分析结果为CSV格式（摘要和详细两种模式）",
             "dynamic_csv_support": "支持动态字段CSV格式，简化批量数据输入",
@@ -1357,6 +1804,13 @@ async def api_info():
             "intelligent_field_mapping": "智能字段映射，支持多种列名变体"
         },
         "supported_csv_formats": {
+            "keystore_format": {
+                "description": "关键词库专用格式，支持组管理和族创建",
+                "required_fields": ["Keywords", "group_name_map", "QPM", "DIFF"],
+                "optional_fields": ["Group", "Force Group", "group_name", "Task Name", "Date and time"],
+                "example": "Keywords,group_name_map,QPM,DIFF,Task Name",
+                "features": ["自动去重", "组关系分析", "重复关键词检测", "族管理", "导出包含族信息"]
+            },
             "dynamic_fields": {
                 "description": "动态字段格式，每个字段使用独立列",
                 "example": "url,schema_type,headline,author,datePublished,description",
@@ -1367,6 +1821,14 @@ async def api_info():
                 "example": "url,schema_type,data_json",
                 "advantages": ["向后兼容", "适合程序化生成", "支持复杂数据结构"]
             }
+        },
+        "keystore_features": {
+            "file_upload": "支持多CSV文件上传，自动合并去重",
+            "visualization": "ECharts可视化关键词组和族关系图",
+            "duplicate_management": "识别、移动和删除重复关键词",
+            "group_management": "重命名关键词组，查看组详情和统计",
+            "cluster_management": "创建、编辑、删除关键词族",
+            "export_capabilities": "导出完整关键词库数据为CSV格式，包含族信息"
         },
         "seo_batch_features": {
             "max_files": 50,
