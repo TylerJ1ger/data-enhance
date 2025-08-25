@@ -21,13 +21,22 @@ import {
   SelectValue 
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { 
   ChevronLeft, 
   ChevronRight, 
   ChevronsLeft, 
   ChevronsRight,
   Search,
-  ArrowUpDown
+  ArrowUpDown,
+  Settings
 } from 'lucide-react';
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -59,6 +68,19 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
   const [sortField, setSortField] = useState<SortField>('keyword');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [showUniqueOnly, setShowUniqueOnly] = useState(true);
+  
+  // 列可见性控制
+  const [visibleColumns, setVisibleColumns] = useState({
+    keyword: true,
+    brand: true,
+    duplicate_count: true,
+    position: true,
+    search_volume: true,
+    traffic: true,
+    keyword_difficulty: true,
+    cpc: true,
+    url: true,
+  });
 
   // 过滤和排序数据
   const filteredAndSortedKeywords = React.useMemo(() => {
@@ -154,8 +176,29 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
     setCurrentPage(1);
   };
 
+  // 切换列可见性
+  const toggleColumnVisibility = (column: keyof typeof visibleColumns) => {
+    setVisibleColumns(prev => ({
+      ...prev,
+      [column]: !prev[column]
+    }));
+  };
+
   const renderSortIcon = (field: SortField) => {
     return null;
+  };
+
+  // 列标签映射
+  const columnLabels = {
+    keyword: '关键词',
+    brand: '品牌',
+    duplicate_count: '重复次数',
+    position: '排名',
+    search_volume: '搜索量',
+    traffic: '流量',
+    keyword_difficulty: '难度',
+    cpc: 'CPC',
+    url: 'URL',
   };
 
   if (isLoading) {
@@ -194,7 +237,7 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
       <CardHeader>
         <CardTitle>关键词列表</CardTitle>
         <div className="flex flex-col gap-4 pt-4">
-          {/* 搜索和页面设置 */}
+          {/* 搜索和设置 */}
           <div className="flex justify-between items-center gap-4">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -205,38 +248,82 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                 className="pl-8"
               />
             </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center space-x-2">
-                <Checkbox 
-                  id="show-unique"
-                  checked={showUniqueOnly}
-                  onCheckedChange={(checked) => {
-                    setShowUniqueOnly(checked as boolean);
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon">
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-64">
+                {/* 基本设置部分 */}
+                <DropdownMenuLabel className="text-sm font-semibold text-gray-700">基本设置</DropdownMenuLabel>
+                <DropdownMenuItem 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowUniqueOnly(!showUniqueOnly);
                     setCurrentPage(1);
                   }}
-                />
-                <label 
-                  htmlFor="show-unique" 
-                  className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  className="flex items-center space-x-3 py-2 cursor-pointer"
+                  onSelect={(e) => e.preventDefault()}
                 >
-                  仅展示唯一关键词
-                </label>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-muted-foreground">每页显示:</span>
-                <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
-                  <SelectTrigger className="w-20">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="10">10</SelectItem>
-                    <SelectItem value="20">20</SelectItem>
-                    <SelectItem value="50">50</SelectItem>
-                    <SelectItem value="100">100</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
+                  <Checkbox 
+                    checked={showUniqueOnly}
+                    onCheckedChange={() => {}} // 防止事件冲突
+                    className="pointer-events-none data-[state=checked]:text-primary-foreground"
+                  />
+                  <span className="text-sm select-none">仅展示唯一关键词</span>
+                </DropdownMenuItem>
+                
+                <DropdownMenuSeparator className="my-2" />
+                
+                {/* 显示列部分 */}
+                <DropdownMenuLabel className="text-sm font-semibold text-gray-700">显示列</DropdownMenuLabel>
+                <div className="px-2 py-1">
+                  <div className="grid grid-cols-2 gap-1">
+                    {Object.entries(columnLabels).map(([key, label]) => (
+                      <DropdownMenuItem
+                        key={key}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          toggleColumnVisibility(key as keyof typeof visibleColumns);
+                        }}
+                        className="flex items-center space-x-2 py-1.5 px-2 text-xs cursor-pointer"
+                        onSelect={(e) => e.preventDefault()}
+                      >
+                        <Checkbox 
+                          checked={visibleColumns[key as keyof typeof visibleColumns]}
+                          onCheckedChange={() => {}} // 防止事件冲突
+                          className="pointer-events-none scale-90 data-[state=checked]:text-primary-foreground"
+                        />
+                        <span className="truncate select-none">{label}</span>
+                      </DropdownMenuItem>
+                    ))}
+                  </div>
+                </div>
+                
+                <DropdownMenuSeparator className="my-2" />
+                
+                {/* 分页设置部分 */}
+                <DropdownMenuLabel className="text-sm font-semibold text-gray-700">每页显示</DropdownMenuLabel>
+                <div className="px-2 py-1">
+                  <div className="grid grid-cols-4 gap-1">
+                    {['10', '20', '50', '100'].map((size) => (
+                      <DropdownMenuItem
+                        key={size}
+                        onClick={() => handlePageSizeChange(size)}
+                        className={`text-center py-2 px-2 text-sm ${
+                          pageSize.toString() === size 
+                            ? "bg-primary text-primary-foreground font-medium" 
+                            : "hover:bg-accent"
+                        }`}
+                      >
+                        {size}
+                      </DropdownMenuItem>
+                    ))}
+                  </div>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* 数据统计 */}
@@ -254,129 +341,165 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleSort('keyword')}
-                >
-                  <div className="flex items-center">
-                    关键词
-                    {renderSortIcon('keyword')}
-                  </div>
-                </TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleSort('brand')}
-                >
-                  <div className="flex items-center">
-                    品牌
-                    {renderSortIcon('brand')}
-                  </div>
-                </TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleSort('duplicate_count')}
-                >
-                  <div className="flex items-center">
-                    重复次数
-                    {renderSortIcon('duplicate_count')}
-                  </div>
-                </TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleSort('position')}
-                >
-                  <div className="flex items-center">
-                    排名
-                    {renderSortIcon('position')}
-                  </div>
-                </TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleSort('search_volume')}
-                >
-                  <div className="flex items-center">
-                    搜索量
-                    {renderSortIcon('search_volume')}
-                  </div>
-                </TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleSort('traffic')}
-                >
-                  <div className="flex items-center">
-                    流量
-                    {renderSortIcon('traffic')}
-                  </div>
-                </TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleSort('keyword_difficulty')}
-                >
-                  <div className="flex items-center">
-                    难度
-                    {renderSortIcon('keyword_difficulty')}
-                  </div>
-                </TableHead>
-                <TableHead 
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => handleSort('cpc')}
-                >
-                  <div className="flex items-center">
-                    CPC
-                    {renderSortIcon('cpc')}
-                  </div>
-                </TableHead>
-                <TableHead>URL</TableHead>
+                {visibleColumns.keyword && (
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort('keyword')}
+                  >
+                    <div className="flex items-center">
+                      关键词
+                      {renderSortIcon('keyword')}
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.brand && (
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort('brand')}
+                  >
+                    <div className="flex items-center">
+                      品牌
+                      {renderSortIcon('brand')}
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.duplicate_count && (
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort('duplicate_count')}
+                  >
+                    <div className="flex items-center">
+                      重复次数
+                      {renderSortIcon('duplicate_count')}
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.position && (
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort('position')}
+                  >
+                    <div className="flex items-center">
+                      排名
+                      {renderSortIcon('position')}
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.search_volume && (
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort('search_volume')}
+                  >
+                    <div className="flex items-center">
+                      搜索量
+                      {renderSortIcon('search_volume')}
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.traffic && (
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort('traffic')}
+                  >
+                    <div className="flex items-center">
+                      流量
+                      {renderSortIcon('traffic')}
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.keyword_difficulty && (
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort('keyword_difficulty')}
+                  >
+                    <div className="flex items-center">
+                      难度
+                      {renderSortIcon('keyword_difficulty')}
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.cpc && (
+                  <TableHead 
+                    className="cursor-pointer hover:bg-muted/50"
+                    onClick={() => handleSort('cpc')}
+                  >
+                    <div className="flex items-center">
+                      CPC
+                      {renderSortIcon('cpc')}
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.url && (
+                  <TableHead>URL</TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
               {paginatedKeywords.map((item, index) => (
                 <TableRow key={`${item.keyword}-${item.brand}-${startIndex + index}`}>
-                  <TableCell className="font-medium">{item.keyword}</TableCell>
-                  <TableCell>{item.brand}</TableCell>
-                  <TableCell>
-                    {item.duplicate_count || 1}
-                  </TableCell>
-                  <TableCell>
-                    {item.position !== undefined && item.position !== null ? item.position : '-'}
-                  </TableCell>
-                  <TableCell>
-                    {item.search_volume !== undefined && item.search_volume !== null
-                      ? item.search_volume.toLocaleString() 
-                      : '-'
-                    }
-                  </TableCell>
-                  <TableCell>
-                    {item.traffic !== undefined && item.traffic !== null
-                      ? item.traffic.toLocaleString() 
-                      : '-'
-                    }
-                  </TableCell>
-                  <TableCell>
-                    {item.keyword_difficulty !== undefined && item.keyword_difficulty !== null
-                      ? `${item.keyword_difficulty}%` 
-                      : '-'
-                    }
-                  </TableCell>
-                  <TableCell>
-                    {item.cpc !== undefined && item.cpc !== null
-                      ? `$${item.cpc.toFixed(2)}` 
-                      : '-'
-                    }
-                  </TableCell>
-                  <TableCell className="max-w-xs">
-                    {item.url ? (
-                      <a 
-                        href={item.url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline truncate block"
-                        title={item.url}
-                      >
-                        {item.url}
-                      </a>
-                    ) : '-'}
-                  </TableCell>
+                  {visibleColumns.keyword && (
+                    <TableCell className="font-medium">{item.keyword}</TableCell>
+                  )}
+                  {visibleColumns.brand && (
+                    <TableCell>{item.brand}</TableCell>
+                  )}
+                  {visibleColumns.duplicate_count && (
+                    <TableCell>
+                      {item.duplicate_count || 1}
+                    </TableCell>
+                  )}
+                  {visibleColumns.position && (
+                    <TableCell>
+                      {item.position !== undefined && item.position !== null ? item.position : '-'}
+                    </TableCell>
+                  )}
+                  {visibleColumns.search_volume && (
+                    <TableCell>
+                      {item.search_volume !== undefined && item.search_volume !== null
+                        ? item.search_volume.toLocaleString() 
+                        : '-'
+                      }
+                    </TableCell>
+                  )}
+                  {visibleColumns.traffic && (
+                    <TableCell>
+                      {item.traffic !== undefined && item.traffic !== null
+                        ? item.traffic.toLocaleString() 
+                        : '-'
+                      }
+                    </TableCell>
+                  )}
+                  {visibleColumns.keyword_difficulty && (
+                    <TableCell>
+                      {item.keyword_difficulty !== undefined && item.keyword_difficulty !== null
+                        ? `${item.keyword_difficulty}%` 
+                        : '-'
+                      }
+                    </TableCell>
+                  )}
+                  {visibleColumns.cpc && (
+                    <TableCell>
+                      {item.cpc !== undefined && item.cpc !== null
+                        ? `$${item.cpc.toFixed(2)}` 
+                        : '-'
+                      }
+                    </TableCell>
+                  )}
+                  {visibleColumns.url && (
+                    <TableCell className="max-w-xs">
+                      {item.url ? (
+                        <a 
+                          href={item.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline truncate block"
+                          title={item.url}
+                        >
+                          {item.url}
+                        </a>
+                      ) : '-'}
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

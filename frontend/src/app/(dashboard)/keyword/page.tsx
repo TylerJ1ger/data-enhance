@@ -9,8 +9,6 @@ import { FileUpload } from "@/components/file-upload";
 import { KeywordStats } from "@/components/keyword/keyword-stats";
 import { FilterPanel } from "@/components/keyword/filter-panel";
 import { BrandOverlap } from "@/components/keyword/brand-overlap";
-import { KeywordChart } from "@/visualizations/keyword-chart";
-import { KeywordFilter } from "@/components/keyword/keyword-filter";
 import { KeywordList } from "@/components/keyword/keyword-list";
 import { useKeywordsApi } from "@/hooks/use-keywords-api"; // 更新：使用新的hook
 import { FilterRanges } from "@/types";
@@ -26,19 +24,15 @@ export default function KeywordPage() {
     isFiltering,
     isLoadingOverlap,
     isLoadingRanges,
-    isLoadingKeywordFilter,
     isLoadingKeywordList,
     fileStats,
     mergedStats,
     filteredStats,
-    keywordCounts,
     brandOverlapData,
-    keywordFilterResults,
     keywordListData,
     filterRanges,
     uploadFiles,
     applyFilters,
-    filterByKeyword,
     getExportUrl,
     getExportUniqueUrl,
     resetData,
@@ -186,25 +180,7 @@ export default function KeywordPage() {
               isLoading={isUploading || isFiltering}
             />
 
-            <Card>
-              <CardHeader>
-                <CardTitle>关键词分布</CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0">
-                {isFiltering ? (
-                  <Skeleton className="h-[400px] w-full rounded-xl" />
-                ) : (
-                  <KeywordChart keywordCounts={keywordCounts} />
-                )}
-              </CardContent>
-            </Card>
 
-            <KeywordFilter
-              onFilter={filterByKeyword}
-              results={keywordFilterResults}
-              isLoading={isLoadingKeywordFilter}
-              disabled={isUploading || !hasData}
-            />
 
             <KeywordList
               keywords={keywordListData.keywords}

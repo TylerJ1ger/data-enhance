@@ -6,7 +6,7 @@ import type {
   FilterResponse,
   BrandOverlapResponse,
   FilterRangeValues,
-  KeywordFilterResponse,
+  KeywordFilterItem,
 } from '@/types';
 
 // API base URL - 使用环境变量或默认值，指向新的v1 keywords API
@@ -87,18 +87,9 @@ export const exportUniqueKeywordData = (): string => {
   return `${KEYWORDS_API_BASE_URL}/export-unique`;
 };
 
-/**
- * 按关键词搜索数据 - 注意：新API使用 /search 端点
- * @param keyword 要搜索的关键词
- * @returns 关键词搜索结果
- */
-export const searchByKeyword = async (keyword: string): Promise<KeywordFilterResponse> => {
-  const response = await keywordsApi.post<KeywordFilterResponse>('/search', { keyword });
-  return response.data;
-};
 
 export const getKeywordList = async (): Promise<{
-  keywords: KeywordFilterResponse['results'];
+  keywords: KeywordFilterItem[];
   total_count: number;
 }> => {
   const response = await keywordsApi.get('/list');

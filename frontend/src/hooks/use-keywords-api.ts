@@ -10,7 +10,6 @@ import {
   FilterRangeValues,
   FileStats,
   DataStats,
-  KeywordFilterResponse,
   KeywordFilterItem,
 } from '@/types';
 
@@ -20,16 +19,13 @@ export function useKeywordsApi() {
   const [isFiltering, setIsFiltering] = useState(false);
   const [isLoadingOverlap, setIsLoadingOverlap] = useState(false);
   const [isLoadingRanges, setIsLoadingRanges] = useState(false);
-  const [isLoadingKeywordFilter, setIsLoadingKeywordFilter] = useState(false);
   const [isLoadingKeywordList, setIsLoadingKeywordList] = useState(false);
 
   // 状态管理 - 响应数据
   const [fileStats, setFileStats] = useState<FileStats[]>([]);
   const [mergedStats, setMergedStats] = useState<DataStats | null>(null);
   const [filteredStats, setFilteredStats] = useState<DataStats | null>(null);
-  const [keywordCounts, setKeywordCounts] = useState<Record<string, number>>({});
   const [brandOverlapData, setBrandOverlapData] = useState<BrandOverlapResponse | null>(null);
-  const [keywordFilterResults, setKeywordFilterResults] = useState<KeywordFilterResponse | null>(null);
   const [keywordListData, setKeywordListData] = useState<{
     keywords: KeywordFilterItem[];
     total_count: number;
@@ -152,7 +148,6 @@ export function useKeywordsApi() {
     try {
       const data = await keywordsApi.applyKeywordFilters(filters);
       setFilteredStats(data.filtered_stats);
-      setKeywordCounts(data.keyword_counts);
       
       await fetchBrandOverlap();
       await fetchKeywordList();
@@ -169,27 +164,6 @@ export function useKeywordsApi() {
     }
   }, [fetchBrandOverlap, fetchKeywordList]);
 
-  const filterByKeyword = useCallback(async (keyword: string) => {
-    setIsLoadingKeywordFilter(true);
-    try {
-      const data = await keywordsApi.searchByKeyword(keyword);
-      setKeywordFilterResults(data);
-      
-      if (data.results.length === 0) {
-        toast.info(`未找到匹配关键词 "${keyword}" 的数据`);
-      } else {
-        toast.success(`找到 ${data.results.length} 条包含关键词 "${keyword}" 的数据`);
-      }
-      
-      return data;
-    } catch (error) {
-      console.error('关键词搜索错误:', error);
-      toast.error('关键词搜索失败，请重试');
-      return null;
-    } finally {
-      setIsLoadingKeywordFilter(false);
-    }
-  }, []);
 
   // 获取导出 URL
   const getExportUrl = useCallback(() => {
@@ -206,9 +180,7 @@ export function useKeywordsApi() {
     setFileStats([]);
     setMergedStats(null);
     setFilteredStats(null);
-    setKeywordCounts({});
     setBrandOverlapData(null);
-    setKeywordFilterResults(null);
     setKeywordListData({
       keywords: [],
       total_count: 0,
@@ -231,14 +203,11 @@ export function useKeywordsApi() {
     isFiltering,
     isLoadingOverlap,
     isLoadingRanges,
-    isLoadingKeywordFilter,
     isLoadingKeywordList,
     fileStats,
     mergedStats,
     filteredStats,
-    keywordCounts,
     brandOverlapData,
-    keywordFilterResults,
     keywordListData,
     filterRanges,
     
@@ -247,7 +216,6 @@ export function useKeywordsApi() {
     applyFilters,
     fetchBrandOverlap,
     fetchFilterRanges,
-    filterByKeyword,
     fetchKeywordList,
     getExportUrl,
     getExportUniqueUrl,
