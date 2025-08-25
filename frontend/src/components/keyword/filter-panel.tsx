@@ -96,6 +96,25 @@ export function FilterPanel({
     }));
   };
 
+  // 批量设置所有筛选项的启用状态
+  const toggleAllFilters = (enabled: boolean) => {
+    setFilterConfigs(prev => {
+      const newConfig = { ...prev };
+      Object.keys(newConfig).forEach(key => {
+        newConfig[key as keyof FilterConfigs] = {
+          ...newConfig[key as keyof FilterConfigs],
+          enabled,
+        };
+      });
+      return newConfig;
+    });
+  };
+
+  // 检查是否所有筛选项都启用
+  const areAllFiltersEnabled = () => {
+    return Object.values(filterConfigs).every(config => config.enabled);
+  };
+
   // 更新特定筛选项的范围值
   const updateFilterRange = (filterKey: keyof FilterConfigs, range: [number, number]) => {
     setFilterConfigs(prev => ({
@@ -256,6 +275,21 @@ export function FilterPanel({
         
         <CollapsibleContent>
           <CardContent className="pt-0 space-y-6">
+            {/* 全局开关控制 */}
+            <div className="mb-4 bg-muted/30 rounded-lg">
+              <Label className="text-sm font-medium flex items-center">
+                <Switch
+                  checked={areAllFiltersEnabled()}
+                  onCheckedChange={(checked) => toggleAllFilters(checked)}
+                  disabled={disabled || isLoading}
+                  className="mr-2"
+                />
+                全部筛选项
+              </Label>
+            </div>
+            
+            <Separator />
+            
             {filterItems.map((item, index) => {
               const config = filterConfigs[item.key];
               const isItemDisabled = disabled || isLoading || !config.enabled;
