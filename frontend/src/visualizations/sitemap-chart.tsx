@@ -55,6 +55,7 @@ export function SitemapChart({
   const defaultConfig = {
     maxNodes: 300,
     initialDepth: 3,
+    maxNodesPerLevel: 8,
     enableAnimation: true,
     labelStrategy: 'hover' as 'always' | 'hover' | 'none'
   };
@@ -66,6 +67,8 @@ export function SitemapChart({
   const [localConfig, setLocalConfig] = useState(config);
   const [showConfig, setShowConfig] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // 展开节点的状态管理
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
 
   // 在客户端侧渲染
   useEffect(() => {
@@ -102,6 +105,151 @@ export function SitemapChart({
            // 增加熵检测 - 如果有连续的字母和数字则更可能是哈希
            /[0-9]{2,}/.test(name) && 
            /[a-zA-Z]{2,}/.test(name);
+  }, []);
+
+  // 智能节点折叠函数 - 检测同一深度节点过多的情况并自动折叠
+  const processNodeDensity = useCallback((data: any, maxNodesPerLevel: number = 8): any => {
+    if (!data) return null;
+    
+    const result = { ...data };
+    
+    // 递归处理子节点
+    if (result.children && Array.isArray(result.children) && result.children.length > 0) {
+      // 如果当前层级的子节点数量超过阈值
+      if (result.children.length > maxNodesPerLevel) {
+        // 分离重要节点和普通节点
+        const importantChildren = [];
+        const regularChildren = [];
+        
+        for (const child of result.children) {
+          // 判断节点重要性：有子节点的、非哈希路径的节点更重要
+          const hasChildren = child.children && child.children.length > 0;
+          const isImportant = hasChildren || !isHashLikePath(child.name);
+          
+          if (isImportant && importantChildren.length < Math.floor(maxNodesPerLevel * 0.6)) {
+            importantChildren.push(child);
+          } else {
+            regularChildren.push(child);
+          }
+        }
+        
+        // 显示的节点数量
+        const visibleRegularCount = maxNodesPerLevel - importantChildren.length;
+        const visibleRegularChildren = regularChildren.slice(0, Math.max(0, visibleRegularCount));
+        const hiddenCount = regularChildren.length - visibleRegularChildren.length;
+        
+        // 构建新的子节点数组
+        const newChildren = [...importantChildren, ...visibleRegularChildren];
+        
+        // 如果有隐藏的节点，创建展开按钮节点
+        if (hiddenCount > 0) {
+          const expandNode = {
+            name: `展开更多 (${hiddenCount} 个节点)`,
+            path: result.path ? `${result.path}/__expand__` : '__expand__',
+            children: null,
+            isExpandButton: true,
+            expandButtonData: {
+              hiddenChildren: regularChildren.slice(visibleRegularCount),
+              parentPath: result.path || '',
+              isExpanded: false
+            },
+            itemStyle: {
+              color: '#3b82f6',
+              borderColor: '#1d4ed8',
+              borderWidth: 1,
+              borderType: 'dashed'
+            },
+            label: {
+              color: '#1d4ed8',
+              fontWeight: 'bold'
+            },
+            symbolSize: 12
+          };
+          
+          newChildren.push(expandNode);
+        }
+        
+        result.children = newChildren;
+      }
+      
+      // 递归处理每个子节点
+      result.children = result.children.map((child: TreeNode) => 
+        child.isExpandButton ? child : processNodeDensity(child, maxNodesPerLevel)
+      );
+    }
+    
+    return result;
+  }, [isHashLikePath]);
+
+  // 处理节点展开状态的函数
+  const processExpandedNodes = useCallback((data: any, expandedPaths: Set<string>): any => {
+    if (!data) return null;
+    
+    const result = { ...data };
+    
+    if (result.children && Array.isArray(result.children)) {
+      result.children = result.children.map((child: any) => {
+        if (child.isExpandButton) {
+          const expandKey = child.expandButtonData?.parentPath || '';
+          const isExpanded = expandedPaths.has(expandKey);
+          
+          if (isExpanded) {
+            // 如果已展开，返回所有隐藏的子节点，并添加折叠按钮
+            const hiddenChildren = child.expandButtonData?.hiddenChildren || [];
+            const processedHiddenChildren = hiddenChildren.map((hiddenChild: any) => 
+              processExpandedNodes(hiddenChild, expandedPaths)
+            );
+            
+            // 创建折叠按钮
+            const collapseNode = {
+              name: `收起 (${hiddenChildren.length} 个节点)`,
+              path: child.path,
+              children: null,
+              isExpandButton: true,
+              expandButtonData: {
+                ...child.expandButtonData,
+                isExpanded: true
+              },
+              itemStyle: {
+                color: '#ef4444',
+                borderColor: '#dc2626',
+                borderWidth: 1,
+                borderType: 'dashed'
+              },
+              label: {
+                color: '#dc2626',
+                fontWeight: 'bold'
+              },
+              symbolSize: 12
+            };
+            
+            return [collapseNode, ...processedHiddenChildren];
+          }
+        }
+        
+        return processExpandedNodes(child, expandedPaths);
+      }).flat(); // 使用flat()来处理展开时返回的数组
+    }
+    
+    return result;
+  }, []);
+
+  // 处理展开/折叠按钮点击
+  const handleExpandToggle = useCallback((expandButtonData: any) => {
+    const parentPath = expandButtonData.parentPath || '';
+    const isExpanded = expandButtonData.isExpanded;
+    
+    setExpandedNodes(prev => {
+      const newSet = new Set(prev);
+      if (isExpanded) {
+        // 如果当前是展开状态，则收起
+        newSet.delete(parentPath);
+      } else {
+        // 如果当前是折叠状态，则展开
+        newSet.add(parentPath);
+      }
+      return newSet;
+    });
   }, []);
 
   // 处理大量数据的函数 - 限制深度和处理哈希路径
@@ -813,9 +961,11 @@ export function SitemapChart({
           console.log(`节点总数: ${nodeCount}`);
         }
         
-        // 处理数据集
-        const processedData = processLargeDataset(
-          visualizationData, 
+        // 处理数据集 - 先进行密度检测和折叠，再处理大数据集
+        let processedData = processNodeDensity(visualizationData, localConfig.maxNodesPerLevel);
+        processedData = processExpandedNodes(processedData, expandedNodes);
+        processedData = processLargeDataset(
+          processedData, 
           0, 
           localConfig.initialDepth
         );
@@ -871,6 +1021,12 @@ export function SitemapChart({
                 chart.on('click', (params: any) => {
                   if (params.dataType === 'node' && params.data) {
                     console.log('点击节点:', params.data);
+                    
+                    // 处理展开/折叠按钮点击
+                    if (params.data.isExpandButton && params.data.expandButtonData) {
+                      handleExpandToggle(params.data.expandButtonData);
+                      return;
+                    }
                   }
                 });
                 
@@ -899,7 +1055,7 @@ export function SitemapChart({
     return () => {
       clearTimeout(renderTimer);
     };
-  }, [chart, visualizationData, visualizationType, localConfig, processLargeDataset, getTreeOption, getGraphOption, countNodes, error]);
+  }, [chart, visualizationData, visualizationType, localConfig, processLargeDataset, processNodeDensity, processExpandedNodes, expandedNodes, handleExpandToggle, getTreeOption, getGraphOption, countNodes, error]);
 
   // 全屏图表渲染
   useEffect(() => {
@@ -909,9 +1065,11 @@ export function SitemapChart({
       try {
         console.log(`准备渲染全屏图表，类型: ${visualizationType}`);
         
-        // 处理数据集
-        const processedData = processLargeDataset(
-          visualizationData, 
+        // 处理数据集 - 先进行密度检测和折叠，再处理大数据集
+        let processedData = processNodeDensity(visualizationData, localConfig.maxNodesPerLevel + 2); // 全屏模式允许更多节点
+        processedData = processExpandedNodes(processedData, expandedNodes);
+        processedData = processLargeDataset(
+          processedData, 
           0, 
           localConfig.initialDepth
         );
@@ -953,6 +1111,20 @@ export function SitemapChart({
             fullscreenChart.setOption(option, true);
             fullscreenChart.resize();
             console.log(`全屏图表${visualizationType}渲染完成`);
+            
+            // 绑定全屏图表事件处理
+            fullscreenChart.off('click');
+            fullscreenChart.on('click', (params: any) => {
+              if (params.dataType === 'node' && params.data) {
+                console.log('点击全屏节点:', params.data);
+                
+                // 处理展开/折叠按钮点击
+                if (params.data.isExpandButton && params.data.expandButtonData) {
+                  handleExpandToggle(params.data.expandButtonData);
+                  return;
+                }
+              }
+            });
           } catch (innerError: unknown) {
             console.error('渲染全屏图表时出错:', innerError);
           }
@@ -966,7 +1138,7 @@ export function SitemapChart({
     return () => {
       clearTimeout(renderFullscreenTimer);
     };
-  }, [fullscreenChart, visualizationData, visualizationType, localConfig, processLargeDataset, getTreeOption, getGraphOption, showPerformanceWarning, isFullscreen]);
+  }, [fullscreenChart, visualizationData, visualizationType, localConfig, processLargeDataset, processNodeDensity, processExpandedNodes, expandedNodes, handleExpandToggle, getTreeOption, getGraphOption, showPerformanceWarning, isFullscreen]);
 
   // 重试处理
   const handleRetry = useCallback(() => {
@@ -1144,7 +1316,7 @@ export function SitemapChart({
               </div>
               <div className="flex items-center">
                 <Badge variant="outline" className="mr-2">提示</Badge>
-                已对重复性哈希路径进行了智能合并
+                已智能折叠同层过多节点，点击"展开更多"查看
               </div>
             </div>
             <div className="mt-2 flex gap-2">
@@ -1176,6 +1348,24 @@ export function SitemapChart({
                   step={1}
                   value={[localConfig.initialDepth]}
                   onValueChange={(value) => setLocalConfig({...localConfig, initialDepth: value[0]})}
+                  className="w-full"
+                />
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>更少</span>
+                  <span>更多</span>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">每层最大节点数: {localConfig.maxNodesPerLevel}</label>
+                </div>
+                <Slider
+                  min={4}
+                  max={16}
+                  step={1}
+                  value={[localConfig.maxNodesPerLevel]}
+                  onValueChange={(value) => setLocalConfig({...localConfig, maxNodesPerLevel: value[0]})}
                   className="w-full"
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
@@ -1365,6 +1555,21 @@ export function SitemapChart({
                       step={1}
                       value={[localConfig.initialDepth]}
                       onValueChange={(value) => setLocalConfig({...localConfig, initialDepth: value[0]})}
+                      className="w-full"
+                    />
+                  </div>
+                  
+                  {/* 节点密度控制 */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">每层节点数: {localConfig.maxNodesPerLevel}</label>
+                    </div>
+                    <Slider
+                      min={4}
+                      max={16}
+                      step={1}
+                      value={[localConfig.maxNodesPerLevel]}
+                      onValueChange={(value) => setLocalConfig({...localConfig, maxNodesPerLevel: value[0]})}
                       className="w-full"
                     />
                   </div>
