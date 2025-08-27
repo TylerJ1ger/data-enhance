@@ -284,7 +284,7 @@ export function FilterPanel({
                   disabled={disabled || isLoading}
                   className="mr-2"
                 />
-                全部筛选项
+                全局筛选
               </Label>
             </div>
             
