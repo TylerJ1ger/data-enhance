@@ -79,10 +79,32 @@ export interface TreeNode {
   /** 节点样式 */
   itemStyle?: {
     color?: string;
+    borderColor?: string;
+    borderWidth?: number;
+    borderType?: string;
     [key: string]: any;
   };
+  /** 标签样式 */
+  label?: {
+    color?: string;
+    fontWeight?: string;
+    [key: string]: any;
+  };
+  /** 节点大小 */
+  symbolSize?: number;
   /** 是否折叠 */
   collapsed?: boolean;
+  /** 是否为展开按钮 */
+  isExpandButton?: boolean;
+  /** 展开按钮相关数据 */
+  expandButtonData?: {
+    /** 隐藏的子节点 */
+    hiddenChildren: TreeNode[];
+    /** 父节点路径 */
+    parentPath: string;
+    /** 是否已展开 */
+    isExpanded: boolean;
+  };
 }
 
 /**
