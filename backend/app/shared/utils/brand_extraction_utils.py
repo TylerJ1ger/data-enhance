@@ -5,7 +5,6 @@
 
 import re
 from typing import Optional
-from urllib.parse import urlparse
 
 
 def extract_brand_from_filename(filename: str) -> Optional[str]:
@@ -88,19 +87,42 @@ def extract_brand_from_domain(domain: str) -> Optional[str]:
     # 分割域名获取主要部分
     parts = domain.split('.')
     if len(parts) >= 2:
-        # 取主域名部分 (去掉顶级域名)
-        main_part = parts[0]
+        # 智能选择品牌名部分
+        brand_candidate = None
         
-        # 处理常见的品牌名提取
-        # 如果包含连字符，取第一部分
-        if '-' in main_part:
-            brand_parts = main_part.split('-')
-            # 选择最长的有意义部分
-            main_part = max(brand_parts, key=len)
+        # 处理特殊子域名情况
+        if len(parts) >= 3:
+            # 对于形如 en.wikipedia.org 的域名，优先考虑中间部分
+            main_candidates = [parts[0], parts[1]]
+            
+            # 选择更有意义的部分作为品牌名
+            for candidate in main_candidates:
+                # 跳过明显的语言代码或地区代码
+                if candidate in ['en', 'fr', 'de', 'es', 'it', 'pt', 'ru', 'zh', 'ja', 'ko', 
+                               'ca', 'us', 'uk', 'au', 'cn', 'jp', 'kr', 'mx', 'br', 'in']:
+                    continue
+                
+                # 处理连字符分隔的品牌名
+                if '-' in candidate:
+                    brand_parts = candidate.split('-')
+                    candidate = max(brand_parts, key=len)
+                
+                # 选择更长的候选作为品牌名
+                if len(candidate) >= 2:  # 降低最小长度要求到2个字符
+                    if not brand_candidate or len(candidate) > len(brand_candidate):
+                        brand_candidate = candidate
+        else:
+            # 对于标准域名，取主域名部分
+            brand_candidate = parts[0]
+            
+            # 处理连字符分隔的品牌名
+            if '-' in brand_candidate:
+                brand_parts = brand_candidate.split('-')
+                brand_candidate = max(brand_parts, key=len)
         
-        # 过滤掉太短的品牌名
-        if len(main_part) >= 3:
-            return main_part
+        # 最终验证品牌名
+        if brand_candidate and len(brand_candidate) >= 2:  # 降低最小长度要求到2个字符
+            return brand_candidate
     
     return None
 
@@ -171,7 +193,9 @@ def test_brand_extraction():
         "openart.ai_generator_word-art-organic.Positions-us-20250710-2025-07-11T03_57_02Z.csv",
         "example-site.com_data_export.csv",
         "regular_filename.csv",
-        "techcrunch.com_articles.xlsx"
+        "techcrunch.com_articles.xlsx",
+        "https___en.wikipedia.org_wiki_-organic.Positions-ca-20250910-2025-09-11T08_26_10Z.csv",
+        "https___www.td.com_ca_en_perso-organic.Positions-ca-20250910-2025-09-11T08_24_59Z.csv"
     ]
     
     print("Brand extraction test results:")
