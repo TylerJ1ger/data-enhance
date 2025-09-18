@@ -14,9 +14,11 @@ import { useKeywordsApi } from "@/hooks/use-keywords-api"; // 更新：使用新
 import { FilterRanges } from "@/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { exportKeywordsToCSV, ExportableData } from "@/lib/csv-export";
 
 export default function KeywordPage() {
   const [showUpload, setShowUpload] = useState(true);
+  const [exportTrigger, setExportTrigger] = useState(false);
   
   // 更新：使用新的关键词专用API hook
   const {
@@ -34,7 +36,6 @@ export default function KeywordPage() {
     uploadFiles,
     applyFilters,
     getExportUrl,
-    getExportUniqueUrl,
     resetData,
   } = useKeywordsApi();
 
@@ -63,6 +64,16 @@ export default function KeywordPage() {
   };
 
   const hasData = fileStats.length > 0 && mergedStats !== null;
+  
+  // 处理导出唯一数据
+  const handleExportUniqueData = () => {
+    setExportTrigger(prev => !prev); // 切换状态来触发导出
+  };
+  
+  // 处理导出数据回调
+  const handleExportData = (data: ExportableData[]) => {
+    exportKeywordsToCSV(data, 'unique_keywords');
+  };
 
   return (
     <div className="space-y-6">
@@ -103,9 +114,7 @@ export default function KeywordPage() {
 
             <Button
               variant="outline"
-              onClick={() => {
-                window.open(getExportUniqueUrl(), '_blank');
-              }}
+              onClick={handleExportUniqueData}
               disabled={isUploading || isFiltering}
               className="gap-2"
             >
@@ -186,6 +195,8 @@ export default function KeywordPage() {
               keywords={keywordListData.keywords}
               isLoading={isLoadingKeywordList}
               totalCount={keywordListData.total_count}
+              exportTrigger={exportTrigger}
+              onExportData={handleExportData}
             />
 
             <BrandOverlap

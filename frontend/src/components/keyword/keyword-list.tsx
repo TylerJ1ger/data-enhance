@@ -35,7 +35,6 @@ import {
   ChevronsLeft, 
   ChevronsRight,
   Search,
-  ArrowUpDown,
   Settings
 } from 'lucide-react';
 import { Skeleton } from "@/components/ui/skeleton";
@@ -56,19 +55,22 @@ interface KeywordListProps {
   keywords?: KeywordItem[];
   isLoading?: boolean;
   totalCount?: number;
+  exportTrigger?: boolean; // 用于触发导出的标志
+  onExportData?: (data: KeywordItem[]) => void;
 }
 
 type SortField = keyof KeywordItem;
 type SortDirection = 'asc' | 'desc';
 
-export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordListProps) {
+export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigger, onExportData }: KeywordListProps) {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<SortField>('keyword');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [showUniqueOnly, setShowUniqueOnly] = useState(true);
-  
+  const [mergeStrategy, setMergeStrategy] = useState<'first' | 'best_position' | 'best_traffic' | 'best_search_volume'>('first');
+
   // 列可见性控制
   const [visibleColumns, setVisibleColumns] = useState({
     keyword: true,
@@ -101,14 +103,54 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
       duplicate_count: keywordCounts.get(item.keyword.toLowerCase()) || 1
     }));
     
-    // 如果只显示唯一关键词，则去重
+    // 如果只显示唯一关键词，则根据策略去重
     let processedKeywords = keywordsWithCounts;
     if (showUniqueOnly) {
       const uniqueMap = new Map<string, KeywordItem & { duplicate_count: number }>();
       keywordsWithCounts.forEach(item => {
         const key = item.keyword.toLowerCase();
-        if (!uniqueMap.has(key)) {
+        const existing = uniqueMap.get(key);
+        
+        if (!existing) {
           uniqueMap.set(key, item);
+        } else {
+          // 根据合并策略选择保留哪个记录
+          let shouldReplace = false;
+          
+          switch (mergeStrategy) {
+            case 'first':
+              // 保留第一个，不替换
+              shouldReplace = false;
+              break;
+            case 'best_position':
+              // 保留排名更好的（数字更小）
+              if (item.position && existing.position) {
+                shouldReplace = item.position < existing.position;
+              } else if (item.position && !existing.position) {
+                shouldReplace = true;
+              }
+              break;
+            case 'best_traffic':
+              // 保留流量更高的
+              if (item.traffic && existing.traffic) {
+                shouldReplace = item.traffic > existing.traffic;
+              } else if (item.traffic && !existing.traffic) {
+                shouldReplace = true;
+              }
+              break;
+            case 'best_search_volume':
+              // 保留搜索量更高的
+              if (item.search_volume && existing.search_volume) {
+                shouldReplace = item.search_volume > existing.search_volume;
+              } else if (item.search_volume && !existing.search_volume) {
+                shouldReplace = true;
+              }
+              break;
+          }
+          
+          if (shouldReplace) {
+            uniqueMap.set(key, item);
+          }
         }
       });
       processedKeywords = Array.from(uniqueMap.values());
@@ -141,7 +183,7 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
     });
 
     return filtered;
-  }, [keywords, searchTerm, sortField, sortDirection, showUniqueOnly]);
+  }, [keywords, searchTerm, sortField, sortDirection, showUniqueOnly, mergeStrategy]);
 
   // 分页数据
   const totalPages = Math.ceil(filteredAndSortedKeywords.length / pageSize);
@@ -184,9 +226,84 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
     }));
   };
 
-  const renderSortIcon = (field: SortField) => {
-    return null;
-  };
+  // 导出唯一数据功能
+  const exportUniqueData = React.useCallback(() => {
+    if (onExportData && keywords.length > 0) {
+      // 如果启用了唯一关键词显示，导出处理后的数据
+      if (showUniqueOnly) {
+        // 使用与显示相同的合并逻辑
+        const uniqueMap = new Map<string, KeywordItem & { duplicate_count: number }>();
+        const keywordCounts = new Map<string, number>();
+        
+        // 计算重复次数
+        keywords.forEach(item => {
+          const key = item.keyword.toLowerCase();
+          keywordCounts.set(key, (keywordCounts.get(key) || 0) + 1);
+        });
+        
+        // 添加重复次数并应用合并策略
+        const keywordsWithCounts = keywords.map(item => ({
+          ...item,
+          duplicate_count: keywordCounts.get(item.keyword.toLowerCase()) || 1
+        }));
+        
+        keywordsWithCounts.forEach(item => {
+          const key = item.keyword.toLowerCase();
+          const existing = uniqueMap.get(key);
+          
+          if (!existing) {
+            uniqueMap.set(key, item);
+          } else {
+            let shouldReplace = false;
+            
+            switch (mergeStrategy) {
+              case 'first':
+                shouldReplace = false;
+                break;
+              case 'best_position':
+                if (item.position && existing.position) {
+                  shouldReplace = item.position < existing.position;
+                } else if (item.position && !existing.position) {
+                  shouldReplace = true;
+                }
+                break;
+              case 'best_traffic':
+                if (item.traffic && existing.traffic) {
+                  shouldReplace = item.traffic > existing.traffic;
+                } else if (item.traffic && !existing.traffic) {
+                  shouldReplace = true;
+                }
+                break;
+              case 'best_search_volume':
+                if (item.search_volume && existing.search_volume) {
+                  shouldReplace = item.search_volume > existing.search_volume;
+                } else if (item.search_volume && !existing.search_volume) {
+                  shouldReplace = true;
+                }
+                break;
+            }
+            
+            if (shouldReplace) {
+              uniqueMap.set(key, item);
+            }
+          }
+        });
+        
+        const uniqueData = Array.from(uniqueMap.values());
+        onExportData(uniqueData);
+      } else {
+        // 如果没有启用唯一关键词显示，导出所有数据
+        onExportData(keywords);
+      }
+    }
+  }, [onExportData, showUniqueOnly, mergeStrategy, keywords]);
+
+  // 监听导出触发器
+  React.useEffect(() => {
+    if (exportTrigger) {
+      exportUniqueData();
+    }
+  }, [exportTrigger, exportUniqueData]);
 
   // 列标签映射
   const columnLabels = {
@@ -274,6 +391,32 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   <span className="text-sm select-none">仅展示唯一关键词</span>
                 </DropdownMenuItem>
                 
+                {/* 合并策略选择器 */}
+                {showUniqueOnly && (
+                  <div className="px-3 py-2">
+                    <div className="text-xs text-gray-600 mb-2">合并策略:</div>
+                    <Select value={mergeStrategy} onValueChange={(value: 'first' | 'best_position' | 'best_traffic' | 'best_search_volume') => setMergeStrategy(value)}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="first" className="text-xs">
+                          保留第一个 (默认)
+                        </SelectItem>
+                        <SelectItem value="best_position" className="text-xs">
+                          保留排名最佳的
+                        </SelectItem>
+                        <SelectItem value="best_traffic" className="text-xs">
+                          保留流量最高的
+                        </SelectItem>
+                        <SelectItem value="best_search_volume" className="text-xs">
+                          保留搜索量最高的
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                
                 <DropdownMenuSeparator className="my-2" />
                 
                 {/* 显示列部分 */}
@@ -348,7 +491,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   >
                     <div className="flex items-center">
                       关键词
-                      {renderSortIcon('keyword')}
                     </div>
                   </TableHead>
                 )}
@@ -359,7 +501,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   >
                     <div className="flex items-center">
                       品牌
-                      {renderSortIcon('brand')}
                     </div>
                   </TableHead>
                 )}
@@ -370,7 +511,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   >
                     <div className="flex items-center">
                       重复次数
-                      {renderSortIcon('duplicate_count')}
                     </div>
                   </TableHead>
                 )}
@@ -381,7 +521,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   >
                     <div className="flex items-center">
                       排名
-                      {renderSortIcon('position')}
                     </div>
                   </TableHead>
                 )}
@@ -392,7 +531,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   >
                     <div className="flex items-center">
                       搜索量
-                      {renderSortIcon('search_volume')}
                     </div>
                   </TableHead>
                 )}
@@ -403,7 +541,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   >
                     <div className="flex items-center">
                       流量
-                      {renderSortIcon('traffic')}
                     </div>
                   </TableHead>
                 )}
@@ -414,7 +551,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   >
                     <div className="flex items-center">
                       难度
-                      {renderSortIcon('keyword_difficulty')}
                     </div>
                   </TableHead>
                 )}
@@ -425,7 +561,6 @@ export function KeywordList({ keywords = [], isLoading, totalCount }: KeywordLis
                   >
                     <div className="flex items-center">
                       CPC
-                      {renderSortIcon('cpc')}
                     </div>
                   </TableHead>
                 )}
