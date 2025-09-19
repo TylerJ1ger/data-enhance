@@ -112,6 +112,7 @@ export interface KeywordFilterItem {
   position?: number;
   url?: string;
   traffic?: number;
+  [key: string]: string | number | boolean | null | undefined; // 添加索引签名以兼容ExportableData
 }
 
 // 品牌关键词数据

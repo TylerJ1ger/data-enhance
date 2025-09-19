@@ -52,6 +52,7 @@ export interface KeywordItem {
   duplicate_count?: number;
   trends?: string; // 热度数据数组字符串，如 "[0,0,2,3,7,16,66,100,54,16,3,1]"
   timestamp?: string; // 时间戳，如 "2025-09-06"
+  [key: string]: string | number | boolean | null | undefined; // 添加索引签名以兼容ExportableData
 }
 
 interface KeywordListProps {
@@ -170,8 +171,8 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
 
     // 排序
     filtered.sort((a, b) => {
-      const aValue = a[sortField];
-      const bValue = b[sortField];
+      const aValue = (a as any)[sortField];
+      const bValue = (b as any)[sortField];
       
       if (aValue === undefined && bValue === undefined) return 0;
       if (aValue === undefined) return 1;

@@ -67,9 +67,10 @@ export function exportToCSV(
  * 关键词数据的CSV导出
  * @param keywords 关键词数据
  * @param filename 文件名
+ * @param useChineseHeaders 是否使用中文表头，默认false保持原始列名
  */
-export function exportKeywordsToCSV(keywords: ExportableData[], filename: string = 'unique_keywords') {
-  const columnMapping = {
+export function exportKeywordsToCSV(keywords: ExportableData[], filename: string = 'unique_keywords', useChineseHeaders: boolean = false) {
+  const columnMapping = useChineseHeaders ? {
     keyword: '关键词',
     brand: '品牌',
     position: '排名',
@@ -78,8 +79,10 @@ export function exportKeywordsToCSV(keywords: ExportableData[], filename: string
     keyword_difficulty: '关键词难度',
     cpc: 'CPC',
     url: 'URL',
-    duplicate_count: '重复次数'
-  };
-  
+    duplicate_count: '重复次数',
+    trends: '热度',
+    timestamp: '时间戳'
+  } : undefined;
+
   exportToCSV(keywords, filename, columnMapping);
 }

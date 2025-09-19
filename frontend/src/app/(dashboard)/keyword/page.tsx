@@ -72,7 +72,7 @@ export default function KeywordPage() {
   
   // 处理导出数据回调
   const handleExportData = (data: ExportableData[]) => {
-    exportKeywordsToCSV(data, 'unique_keywords');
+    exportKeywordsToCSV(data, 'unique_keywords', false); // 保持原始列名
   };
 
   return (
