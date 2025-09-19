@@ -1,7 +1,7 @@
 //frontend-new/src/components/keyword/keyword-stats.tsx
 "use client";
 
-import { FileText, BarChart2, Filter } from "lucide-react";
+import { FileText, BarChart2, Filter, TrendingUp } from "lucide-react";
 import { DataStats } from "@/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,7 +26,8 @@ export function KeywordStats({
           <Skeleton className="h-6 w-1/4 mb-4" />
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Skeleton className="h-20 w-full" />
             <Skeleton className="h-20 w-full" />
             <Skeleton className="h-20 w-full" />
             <Skeleton className="h-20 w-full" />
@@ -93,26 +94,33 @@ export function KeywordStats({
         <CardTitle>关键词统计</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <StatCard
             icon={<FileText className="h-5 w-5" />}
             title="总行数"
             originalValue={originalStats.total_rows}
             filteredValue={filteredStats?.total_rows}
           />
-          
+
           <StatCard
             icon={<BarChart2 className="h-5 w-5" />}
             title="总关键词数"
             originalValue={originalStats.keyword_count}
             filteredValue={filteredStats?.keyword_count}
           />
-          
+
           <StatCard
             icon={<Filter className="h-5 w-5" />}
             title="唯一关键词数"
             originalValue={originalStats.unique_keywords}
             filteredValue={filteredStats?.unique_keywords}
+          />
+
+          <StatCard
+            icon={<TrendingUp className="h-5 w-5" />}
+            title="唯一关键词搜索量"
+            originalValue={originalStats.unique_keywords_search_volume}
+            filteredValue={filteredStats?.unique_keywords_search_volume}
           />
         </div>
         

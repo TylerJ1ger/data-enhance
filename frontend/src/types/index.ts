@@ -21,6 +21,7 @@ export interface DataStats {
   total_rows: number;
   keyword_count: number;
   unique_keywords: number;
+  unique_keywords_search_volume: number;
   brands: string[];
   min_values: Record<string, number>;
   max_values: Record<string, number>;

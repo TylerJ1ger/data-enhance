@@ -38,6 +38,7 @@ import {
   Settings
 } from 'lucide-react';
 import { Skeleton } from "@/components/ui/skeleton";
+import { TrendChart } from "./trend-chart";
 
 export interface KeywordItem {
   keyword: string;
@@ -49,6 +50,8 @@ export interface KeywordItem {
   url?: string;
   traffic?: number;
   duplicate_count?: number;
+  trends?: string; // 热度数据数组字符串，如 "[0,0,2,3,7,16,66,100,54,16,3,1]"
+  timestamp?: string; // 时间戳，如 "2025-09-06"
 }
 
 interface KeywordListProps {
@@ -82,6 +85,8 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
     keyword_difficulty: true,
     cpc: true,
     url: true,
+    trends: true,
+    timestamp: true,
   });
 
   // 过滤和排序数据
@@ -316,6 +321,8 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
     keyword_difficulty: '难度',
     cpc: 'CPC',
     url: 'URL',
+    trends: '热度趋势',
+    timestamp: '时间戳',
   };
 
   if (isLoading) {
@@ -567,6 +574,20 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
                 {visibleColumns.url && (
                   <TableHead>URL</TableHead>
                 )}
+                {visibleColumns.trends && (
+                  <TableHead>
+                    <div className="flex items-center">
+                      热度趋势
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.timestamp && (
+                  <TableHead>
+                    <div className="flex items-center">
+                      时间戳
+                    </div>
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -623,9 +644,9 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
                   {visibleColumns.url && (
                     <TableCell className="max-w-xs">
                       {item.url ? (
-                        <a 
-                          href={item.url} 
-                          target="_blank" 
+                        <a
+                          href={item.url}
+                          target="_blank"
                           rel="noopener noreferrer"
                           className="text-blue-600 hover:underline truncate block"
                           title={item.url}
@@ -633,6 +654,22 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
                           {item.url}
                         </a>
                       ) : '-'}
+                    </TableCell>
+                  )}
+                  {visibleColumns.trends && (
+                    <TableCell>
+                      {item.trends ? (
+                        <div className="group relative">
+                          <TrendChart data={item.trends} timestamp={item.timestamp} />
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">无数据</span>
+                      )}
+                    </TableCell>
+                  )}
+                  {visibleColumns.timestamp && (
+                    <TableCell>
+                      {item.timestamp || '-'}
                     </TableCell>
                   )}
                 </TableRow>

@@ -333,6 +333,8 @@ class KeywordsProcessor:
         keyword_difficulty_column = find_column_name(self.filtered_data, 'keyword_difficulty')
         cpc_column = find_column_name(self.filtered_data, 'cpc')
         traffic_column = find_column_name(self.filtered_data, 'traffic')
+        trends_column = find_column_name(self.filtered_data, 'trends')
+        timestamp_column = find_column_name(self.filtered_data, 'timestamp')
         
         # 检查必要列是否存在
         if not keyword_column or keyword_column not in self.filtered_data.columns:
@@ -410,7 +412,19 @@ class KeywordsProcessor:
                     item["traffic"] = None
             else:
                 item["traffic"] = None
-            
+
+            # 添加热度趋势信息
+            if trends_column and trends_column in self.filtered_data.columns and pd.notna(row[trends_column]):
+                item["trends"] = str(row[trends_column])
+            else:
+                item["trends"] = None
+
+            # 添加时间戳信息
+            if timestamp_column and timestamp_column in self.filtered_data.columns and pd.notna(row[timestamp_column]):
+                item["timestamp"] = str(row[timestamp_column])
+            else:
+                item["timestamp"] = None
+
             keywords.append(item)
         
         return {
