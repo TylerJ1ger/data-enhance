@@ -76,7 +76,9 @@ export function TrendChart({ data, timestamp, width = 80, height = 24, className
   const chartHeight = height - padding * 2;
 
   const points = trendData.map((value, index) => {
-    const x = padding + (index / (trendData.length - 1)) * chartWidth;
+    const x = trendData.length === 1
+      ? padding + chartWidth / 2
+      : padding + (index / (trendData.length - 1)) * chartWidth;
     const y = padding + chartHeight - (value / maxValue) * chartHeight;
     return `${x},${y}`;
   });
@@ -111,7 +113,9 @@ export function TrendChart({ data, timestamp, width = 80, height = 24, className
         {/* 最高点标记 */}
         {trendData.map((value, index) => {
           if (value === Math.max(...trendData) && Math.max(...trendData) > 0) {
-            const x = padding + (index / (trendData.length - 1)) * chartWidth;
+            const x = trendData.length === 1
+              ? padding + chartWidth / 2
+              : padding + (index / (trendData.length - 1)) * chartWidth;
             const y = padding + chartHeight - (value / maxValue) * chartHeight;
             return (
               <circle
