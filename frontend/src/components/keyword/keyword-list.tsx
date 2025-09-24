@@ -52,6 +52,9 @@ export interface KeywordItem {
   duplicate_count?: number;
   trends?: string; // 热度数据数组字符串，如 "[0,0,2,3,7,16,66,100,54,16,3,1]"
   timestamp?: string; // 时间戳，如 "2025-09-06"
+  number_of_results?: number; // 结果数量
+  keyword_intents?: string; // 关键词意图
+  position_type?: string; // 位置类型
   [key: string]: string | number | boolean | null | undefined; // 添加索引签名以兼容ExportableData
 }
 
@@ -88,6 +91,9 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
     url: true,
     trends: true,
     timestamp: true,
+    number_of_results: false, // 默认隐藏，用户可以选择显示
+    keyword_intents: false, // 默认隐藏
+    position_type: false, // 默认隐藏
   });
 
   // 过滤和排序数据
@@ -324,6 +330,9 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
     url: 'URL',
     trends: '热度趋势',
     timestamp: '时间戳',
+    number_of_results: '结果数量',
+    keyword_intents: '关键词意图',
+    position_type: '位置类型',
   };
 
   if (isLoading) {
@@ -589,6 +598,27 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
                     </div>
                   </TableHead>
                 )}
+                {visibleColumns.number_of_results && (
+                  <TableHead>
+                    <div className="flex items-center">
+                      结果数量
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.keyword_intents && (
+                  <TableHead>
+                    <div className="flex items-center">
+                      关键词意图
+                    </div>
+                  </TableHead>
+                )}
+                {visibleColumns.position_type && (
+                  <TableHead>
+                    <div className="flex items-center">
+                      位置类型
+                    </div>
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -671,6 +701,24 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
                   {visibleColumns.timestamp && (
                     <TableCell>
                       {item.timestamp || '-'}
+                    </TableCell>
+                  )}
+                  {visibleColumns.number_of_results && (
+                    <TableCell>
+                      {item.number_of_results !== undefined && item.number_of_results !== null
+                        ? item.number_of_results.toLocaleString()
+                        : '-'
+                      }
+                    </TableCell>
+                  )}
+                  {visibleColumns.keyword_intents && (
+                    <TableCell>
+                      {item.keyword_intents || '-'}
+                    </TableCell>
+                  )}
+                  {visibleColumns.position_type && (
+                    <TableCell>
+                      {item.position_type || '-'}
                     </TableCell>
                   )}
                 </TableRow>

@@ -335,6 +335,10 @@ class KeywordsProcessor:
         traffic_column = find_column_name(self.filtered_data, 'traffic')
         trends_column = find_column_name(self.filtered_data, 'trends')
         timestamp_column = find_column_name(self.filtered_data, 'timestamp')
+        # 添加新的三个字段
+        number_of_results_column = find_column_name(self.filtered_data, 'results_count') or 'Number of Results'
+        keyword_intents_column = find_column_name(self.filtered_data, 'intent') or 'Keyword Intents'
+        position_type_column = find_column_name(self.filtered_data, 'position_type') or 'Position Type'
         
         # 检查必要列是否存在
         if not keyword_column or keyword_column not in self.filtered_data.columns:
@@ -424,6 +428,27 @@ class KeywordsProcessor:
                 item["timestamp"] = str(row[timestamp_column])
             else:
                 item["timestamp"] = None
+
+            # 添加结果数量信息
+            if number_of_results_column and number_of_results_column in self.filtered_data.columns and pd.notna(row[number_of_results_column]):
+                try:
+                    item["number_of_results"] = int(float(row[number_of_results_column]))
+                except (ValueError, TypeError):
+                    item["number_of_results"] = None
+            else:
+                item["number_of_results"] = None
+
+            # 添加关键词意图信息
+            if keyword_intents_column and keyword_intents_column in self.filtered_data.columns and pd.notna(row[keyword_intents_column]):
+                item["keyword_intents"] = str(row[keyword_intents_column])
+            else:
+                item["keyword_intents"] = None
+
+            # 添加位置类型信息
+            if position_type_column and position_type_column in self.filtered_data.columns and pd.notna(row[position_type_column]):
+                item["position_type"] = str(row[position_type_column])
+            else:
+                item["position_type"] = None
 
             keywords.append(item)
         

@@ -341,7 +341,10 @@ class KeystoreProcessorRedis:
         optional_columns = [
             'CPC (USD)',         # 点击成本
             'CPC',               # 点击成本（另一种格式）
-            'cpc'                # 点击成本（标准化后）
+            'cpc',               # 点击成本（标准化后）
+            'Number of Results', # 结果数量
+            'Keyword Intents',   # 关键词意图
+            'Position Type',     # 位置类型
         ]
         
         # 查找实际存在的列
@@ -352,13 +355,10 @@ class KeystoreProcessorRedis:
             if col in df.columns:
                 existing_columns.append(col)
         
-        # 添加可选列（优先级：CPC (USD) > CPC > cpc）
-        cpc_added = False
+        # 添加所有存在的可选列
         for col in optional_columns:
-            if col in df.columns and not cpc_added:
+            if col in df.columns:
                 existing_columns.append(col)
-                cpc_added = True
-                break
         
         # 过滤数据框，只保留选定的列
         if existing_columns:
@@ -511,7 +511,11 @@ class KeystoreProcessorRedis:
                             "qpm": keyword_data.get("QPM", 0),
                             "diff": keyword_data.get("DIFF", 0),
                             "group": keyword_data.get("group_name_map"),
-                            "force_group": keyword_data.get("Force Group", False)
+                            "force_group": keyword_data.get("Force Group", False),
+                            # 添加新的三个字段
+                            "number_of_results": keyword_data.get("Number of Results"),
+                            "keyword_intents": keyword_data.get("Keyword Intents"),
+                            "position_type": keyword_data.get("Position Type")
                         })
                 
                 groups_data[group_name] = {
@@ -546,7 +550,11 @@ class KeystoreProcessorRedis:
                         "force_group": keyword_data.get("Force Group", False),
                         "task_name": keyword_data.get("Task Name"),
                         "created_at": keyword_data.get("created_at"),
-                        "source_file": keyword_data.get("source_file")
+                        "source_file": keyword_data.get("source_file"),
+                        # 添加新的三个字段
+                        "number_of_results": keyword_data.get("Number of Results"),
+                        "keyword_intents": keyword_data.get("Keyword Intents"),
+                        "position_type": keyword_data.get("Position Type")
                     }
                     keywords_detail.append(clean_keyword)
             

@@ -110,8 +110,17 @@ export interface KeywordFilterItem {
   keyword: string;
   brand: string;
   position?: number;
+  search_volume?: number;
+  keyword_difficulty?: number;
+  cpc?: number;
   url?: string;
   traffic?: number;
+  duplicate_count?: number;
+  trends?: string;
+  timestamp?: string;
+  number_of_results?: number;
+  keyword_intents?: string;
+  position_type?: string;
   [key: string]: string | number | boolean | null | undefined; // 添加索引签名以兼容ExportableData
 }
 

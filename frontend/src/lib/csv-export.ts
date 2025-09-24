@@ -81,7 +81,10 @@ export function exportKeywordsToCSV(keywords: ExportableData[], filename: string
     url: 'URL',
     duplicate_count: '重复次数',
     trends: '热度',
-    timestamp: '时间戳'
+    timestamp: '时间戳',
+    number_of_results: '结果数量',
+    keyword_intents: '关键词意图',
+    position_type: '位置类型'
   } : undefined;
 
   exportToCSV(keywords, filename, columnMapping);

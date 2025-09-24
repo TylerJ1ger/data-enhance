@@ -73,7 +73,7 @@ export function KeywordStats({
           <div className="mr-2 text-primary">{icon}</div>
           <h4 className="text-sm font-medium">{title}</h4>
         </div>
-        <div className="flex justify-between items-end">
+        <div className="space-y-1">
           <div className="text-2xl font-bold">
             {formatter(filteredValue !== undefined ? filteredValue : originalValue)}
           </div>
