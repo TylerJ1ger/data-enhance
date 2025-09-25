@@ -1,4 +1,6 @@
 //frontend-new/src/lib/api/backlink-api.ts
+// 外链分析API - v1版本
+// 已迁移至 /v1/backlinks/* 端点
 import axios, { AxiosError } from 'axios';
 import {
   BacklinkUploadResponse,
@@ -24,8 +26,10 @@ export interface CrossAnalysisExportParams {
   cellDisplayType?: string;
 }
 
-// API基础URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+// API基础URL - 使用v1端点
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL
+  ? `${process.env.NEXT_PUBLIC_API_URL}/v1/backlinks`
+  : 'http://localhost:8000/api/v1/backlinks';
 
 // 创建axios实例
 const api = axios.create({
@@ -62,7 +66,7 @@ export const uploadBacklinkFiles = async (files: File[]): Promise<BacklinkUpload
       formData.append('files', file);
     });
     
-    const response = await api.post<BacklinkUploadResponse>('/backlink/upload', formData, {
+    const response = await api.post<BacklinkUploadResponse>('/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -81,7 +85,7 @@ export const uploadBacklinkFiles = async (files: File[]): Promise<BacklinkUpload
  */
 export const applyBacklinkFilters = async (filterRanges: BacklinkFilterRanges): Promise<BacklinkFilterResponse> => {
   try {
-    const response = await api.post<BacklinkFilterResponse>('/backlink/filter', filterRanges);
+    const response = await api.post<BacklinkFilterResponse>('/filter', filterRanges);
     return response.data;
   } catch (error) {
     return handleApiError(error as Error);
@@ -94,7 +98,7 @@ export const applyBacklinkFilters = async (filterRanges: BacklinkFilterRanges): 
  */
 export const getBacklinkBrandOverlap = async (): Promise<BrandDomainOverlapResponse> => {
   try {
-    const response = await api.get<BrandDomainOverlapResponse>('/backlink/brand-overlap');
+    const response = await api.get<BrandDomainOverlapResponse>('/brand-overlap');
     return response.data;
   } catch (error) {
     return handleApiError(error as Error);
@@ -107,7 +111,7 @@ export const getBacklinkBrandOverlap = async (): Promise<BrandDomainOverlapRespo
  */
 export const getBacklinkFilterRanges = async (): Promise<BacklinkFilterRangeValues> => {
   try {
-    const response = await api.get<BacklinkFilterRangeValues>('/backlink/filter-ranges');
+    const response = await api.get<BacklinkFilterRangeValues>('/filter-ranges');
     return response.data;
   } catch (error) {
     return handleApiError(error as Error);
@@ -119,7 +123,7 @@ export const getBacklinkFilterRanges = async (): Promise<BacklinkFilterRangeValu
  * @returns 导出数据的URL
  */
 export const exportBacklinkData = (): string => {
-  return `${API_BASE_URL}/backlink/export`;
+  return `${API_BASE_URL}/export`;
 };
 
 /**
@@ -127,7 +131,7 @@ export const exportBacklinkData = (): string => {
  * @returns 导出唯一域名数据的URL
  */
 export const exportUniqueBacklinkData = (): string => {
-  return `${API_BASE_URL}/backlink/export-unique`;
+  return `${API_BASE_URL}/export-unique`;
 };
 
 /**
@@ -137,7 +141,7 @@ export const exportUniqueBacklinkData = (): string => {
  */
 export const filterByDomain = async (domain: string): Promise<DomainFilterResponse> => {
   try {
-    const response = await api.post<DomainFilterResponse>('/backlink/domain-filter', { domain });
+    const response = await api.post<DomainFilterResponse>('/search', { domain });
     return response.data;
   } catch (error) {
     return handleApiError(error as Error);
@@ -150,7 +154,8 @@ export const filterByDomain = async (domain: string): Promise<DomainFilterRespon
  */
 export const checkBacklinkHealth = async (): Promise<{ status: string; service: string }> => {
   try {
-    const response = await api.get<{ status: string; service: string }>('/health');
+    // v1 API的健康检查端点位于主路由下
+    const response = await axios.get<{ status: string; service: string }>('/api/v1/health');
     return response.data;
   } catch (error) {
     return handleApiError(error as Error);
@@ -170,7 +175,7 @@ export const uploadCrossAnalysisFirstRound = async (files: File[]) => {
       formData.append('files', file);
     });
     
-    const response = await api.post<any>('/backlink/cross-analysis/upload-first', formData, {
+    const response = await api.post<any>('/cross-analysis/upload-first', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -195,7 +200,7 @@ export const uploadCrossAnalysisSecondRound = async (files: File[]) => {
       formData.append('files', file);
     });
     
-    const response = await api.post<any>('/backlink/cross-analysis/upload-second', formData, {
+    const response = await api.post<any>('/cross-analysis/upload-second', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -215,12 +220,12 @@ export const uploadCrossAnalysisSecondRound = async (files: File[]) => {
 export const exportCrossAnalysisResults = async (params?: CrossAnalysisExportParams): Promise<string> => {
   // 如果没有提供参数,使用原始导出URL
   if (!params) {
-    return `${API_BASE_URL}/backlink/cross-analysis/export`;
+    return `${API_BASE_URL}/cross-analysis/export`;
   }
   
   try {
     // 发送POST请求获取带有筛选条件的导出数据
-    const response = await api.post('/backlink/cross-analysis/export', params, {
+    const response = await api.post('/cross-analysis/export-filtered', params, {
       responseType: 'blob', // 指定响应类型为blob
     });
     
@@ -252,7 +257,7 @@ export const exportCrossAnalysisResults = async (params?: CrossAnalysisExportPar
     console.error('导出交叉分析结果失败:', error);
     
     // 出错时回退到基本导出URL
-    return `${API_BASE_URL}/backlink/cross-analysis/export`;
+    return `${API_BASE_URL}/cross-analysis/export`;
   }
 };
 
