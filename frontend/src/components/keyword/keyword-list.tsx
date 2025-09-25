@@ -312,10 +312,75 @@ export function KeywordList({ keywords = [], isLoading, totalCount, exportTrigge
 
   // 监听导出触发器
   React.useEffect(() => {
-    if (exportTrigger) {
-      exportUniqueData();
+    if (exportTrigger === true && onExportData && keywords.length > 0) {
+      // 直接在这里执行导出逻辑，避免依赖可能变化的函数
+      if (showUniqueOnly) {
+        // 使用与显示相同的合并逻辑
+        const uniqueMap = new Map<string, KeywordItem & { duplicate_count: number }>();
+        const keywordCounts = new Map<string, number>();
+
+        // 计算重复次数
+        keywords.forEach(item => {
+          const key = item.keyword.toLowerCase();
+          keywordCounts.set(key, (keywordCounts.get(key) || 0) + 1);
+        });
+
+        // 添加重复次数并应用合并策略
+        const keywordsWithCounts = keywords.map(item => ({
+          ...item,
+          duplicate_count: keywordCounts.get(item.keyword.toLowerCase()) || 1
+        }));
+
+        keywordsWithCounts.forEach(item => {
+          const key = item.keyword.toLowerCase();
+          const existing = uniqueMap.get(key);
+
+          if (!existing) {
+            uniqueMap.set(key, item);
+          } else {
+            let shouldReplace = false;
+
+            switch (mergeStrategy) {
+              case 'first':
+                shouldReplace = false;
+                break;
+              case 'best_position':
+                if (item.position && existing.position) {
+                  shouldReplace = item.position < existing.position;
+                } else if (item.position && !existing.position) {
+                  shouldReplace = true;
+                }
+                break;
+              case 'best_traffic':
+                if (item.traffic && existing.traffic) {
+                  shouldReplace = item.traffic > existing.traffic;
+                } else if (item.traffic && !existing.traffic) {
+                  shouldReplace = true;
+                }
+                break;
+              case 'best_search_volume':
+                if (item.search_volume && existing.search_volume) {
+                  shouldReplace = item.search_volume > existing.search_volume;
+                } else if (item.search_volume && !existing.search_volume) {
+                  shouldReplace = true;
+                }
+                break;
+            }
+
+            if (shouldReplace) {
+              uniqueMap.set(key, item);
+            }
+          }
+        });
+
+        const uniqueData = Array.from(uniqueMap.values());
+        onExportData(uniqueData);
+      } else {
+        // 如果没有启用唯一关键词显示，导出所有数据
+        onExportData(keywords);
+      }
     }
-  }, [exportTrigger, exportUniqueData]);
+  }, [exportTrigger, onExportData, keywords, showUniqueOnly, mergeStrategy]);
 
   // 列标签映射
   const columnLabels = {

@@ -67,7 +67,9 @@ export default function KeywordPage() {
   
   // 处理导出唯一数据
   const handleExportUniqueData = () => {
-    setExportTrigger(prev => !prev); // 切换状态来触发导出
+    setExportTrigger(true); // 设置为true来触发导出
+    // 立即重置，确保下次点击时能再次触发
+    setTimeout(() => setExportTrigger(false), 0);
   };
   
   // 处理导出数据回调
