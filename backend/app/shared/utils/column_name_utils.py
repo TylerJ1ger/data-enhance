@@ -41,7 +41,13 @@ KEYWORD_COLUMN_MAPPINGS = {
     'ctr': ['CTR', 'Click Through Rate', '点击率', 'Click Rate'],
     
     # 流量估算列名
-    'traffic_estimate': ['Traffic Estimate', 'Estimated Traffic', '流量估算', 'Est. Traffic']
+    'traffic_estimate': ['Traffic Estimate', 'Estimated Traffic', '流量估算', 'Est. Traffic'],
+
+    # 热度趋势列名
+    'trends': ['Trends', 'Trend', '趋势', '热度'],
+
+    # 时间戳列名
+    'timestamp': ['Timestamp', 'Date', 'Time', '时间戳', '日期']
 }
 
 # 必需列名定义（按业务逻辑重要性排序）

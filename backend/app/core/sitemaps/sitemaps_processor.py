@@ -90,7 +90,7 @@ class SitemapsProcessor:
                         
                         # 检查是否包含URL列
                         url_column = None
-                        possible_url_columns = ["Address", "URL", "Loc", "Location", "Link", "Page URL"]
+                        possible_url_columns = ["Address", "URL", "Loc", "Location", "Link", "Page URL", "Top pages"]
                         for col in possible_url_columns:
                             if col in df.columns:
                                 url_column = col

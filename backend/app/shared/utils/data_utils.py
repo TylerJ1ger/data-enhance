@@ -526,6 +526,7 @@ def get_dataframe_stats(df: pd.DataFrame, column_mappings: Optional[Dict[str, st
             "total_rows": 0,
             "keyword_count": 0,
             "unique_keywords": 0,
+            "unique_keywords_search_volume": 0,
             "domain_count": 0,
             "unique_domains": 0,
             "brands": [],
@@ -572,9 +573,19 @@ def get_dataframe_stats(df: pd.DataFrame, column_mappings: Optional[Dict[str, st
     if keyword_column and keyword_column in df.columns:
         stats["keyword_count"] = int(df[keyword_column].count())
         stats["unique_keywords"] = int(df[keyword_column].nunique())
+
+        # 计算唯一关键词搜索量
+        search_volume_column = get_actual_column('search_volume')
+        if search_volume_column and search_volume_column in df.columns:
+            # 对每个唯一关键词，取其最大搜索量（处理重复关键词的情况）
+            unique_keyword_search_volume = df.groupby(keyword_column)[search_volume_column].max().sum()
+            stats["unique_keywords_search_volume"] = int(unique_keyword_search_volume) if pd.notna(unique_keyword_search_volume) else 0
+        else:
+            stats["unique_keywords_search_volume"] = 0
     else:
         stats["keyword_count"] = 0
         stats["unique_keywords"] = 0
+        stats["unique_keywords_search_volume"] = 0
     
     # 域名统计（用于外链分析）
     if 'Domain' in df.columns:
