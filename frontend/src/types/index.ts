@@ -169,6 +169,19 @@ export interface BacklinkFilterRangeValues {
   domain_frequency: [number, number];
 }
 
+// 外链筛选项配置
+export interface BacklinkFilterConfig {
+  enabled: boolean;
+  range: [number, number];
+}
+
+// 外链筛选配置对象
+export interface BacklinkFilterConfigs {
+  domain_ascore: BacklinkFilterConfig;
+  backlinks: BacklinkFilterConfig;
+  domain_frequency: BacklinkFilterConfig;
+}
+
 // 外链上传响应
 export interface BacklinkUploadResponse {
   file_stats: FileStats[];
