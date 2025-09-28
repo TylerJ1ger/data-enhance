@@ -50,6 +50,13 @@ export function useBacklinkApi() {
     domain_frequency: [1, 100],
   });
 
+  // 外链列表状态
+  const [isLoadingBacklinkList, setIsLoadingBacklinkList] = useState(false);
+  const [backlinkListData, setBacklinkListData] = useState<{backlinks: any[], total_count: number}>({
+    backlinks: [],
+    total_count: 0
+  });
+
   // 交叉分析状态
   const [isCrossAnalysisFirstRound, setIsCrossAnalysisFirstRound] = useState(false);
   const [isCrossAnalysisSecondRound, setIsCrossAnalysisSecondRound] = useState(false);
@@ -85,7 +92,10 @@ export function useBacklinkApi() {
       
       // 加载初始品牌重叠数据
       await fetchBrandOverlap();
-      
+
+      // 加载外链列表数据
+      await fetchBacklinksList();
+
       toast.success(`成功处理 ${files.length} 个文件`);
       
       return data;
@@ -108,9 +118,12 @@ export function useBacklinkApi() {
       
       // 筛选后更新品牌重叠数据
       await fetchBrandOverlap();
-      
+
+      // 筛选后更新外链列表
+      await fetchBacklinksList();
+
       toast.success('筛选条件应用成功');
-      
+
       return data;
     } catch (error) {
       console.error('应用筛选条件时出错:', error);
@@ -150,6 +163,22 @@ export function useBacklinkApi() {
       return null;
     } finally {
       setIsLoadingRanges(false);
+    }
+  }, []);
+
+  // 获取外链列表
+  const fetchBacklinksList = useCallback(async () => {
+    setIsLoadingBacklinkList(true);
+    try {
+      const data = await api.getBacklinksList();
+      setBacklinkListData(data);
+      return data;
+    } catch (error) {
+      console.error('获取外链列表时出错:', error);
+      // 这是后台操作，不显示toast提示
+      return null;
+    } finally {
+      setIsLoadingBacklinkList(false);
     }
   }, []);
 
@@ -208,6 +237,7 @@ export function useBacklinkApi() {
     setDomainCounts({});
     setBrandOverlapData(null);
     setDomainFilterResults(null);
+    setBacklinkListData({ backlinks: [], total_count: 0 });
     setFilterRanges({
       domain_ascore: [0, 100],
       backlinks: [0, 1000],
@@ -343,12 +373,14 @@ export function useBacklinkApi() {
     isLoadingOverlap,
     isLoadingRanges,
     isLoadingDomainFilter,
+    isLoadingBacklinkList,
     fileStats,
     mergedStats,
     filteredStats,
     domainCounts,
     brandOverlapData,
     domainFilterResults,
+    backlinkListData,
     filterRanges,
     
     // 操作

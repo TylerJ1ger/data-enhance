@@ -111,6 +111,11 @@ async def export_unique_backlink_data():
 async def get_backlink_filter_ranges():
     return backlinks_processor.get_filter_ranges()
 
+@router.get("/list")
+async def get_backlinks_list():
+    """获取所有外链列表数据"""
+    return backlinks_processor.get_backlinks_list()
+
 # 交叉分析相关端点
 @router.post("/cross-analysis/upload-first")
 async def upload_cross_analysis_first_round(files: List[UploadFile] = File(...)):

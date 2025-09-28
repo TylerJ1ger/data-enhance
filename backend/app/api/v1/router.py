@@ -850,6 +850,20 @@ async def get_backlinks_filter_ranges():
     """
     return backlinks_processor.get_filter_ranges()
 
+@router.get("/backlinks/list", tags=["Backlinks"])
+async def get_backlinks_list():
+    """
+    获取所有外链列表数据
+    """
+    try:
+        result = backlinks_processor.get_backlinks_list()
+        return result
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"获取外链列表时发生错误: {str(e)}"
+        )
+
 # ================================
 # 交叉分析相关路由 (Cross Analysis)
 # ================================

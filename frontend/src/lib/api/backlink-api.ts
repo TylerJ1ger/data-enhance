@@ -119,6 +119,19 @@ export const getBacklinkFilterRanges = async (): Promise<BacklinkFilterRangeValu
 };
 
 /**
+ * 获取外链列表数据
+ * @returns 外链列表数据
+ */
+export const getBacklinksList = async (): Promise<{backlinks: any[], total_count: number}> => {
+  try {
+    const response = await api.get<{backlinks: any[], total_count: number}>('/list');
+    return response.data;
+  } catch (error) {
+    return handleApiError(error as Error);
+  }
+};
+
+/**
  * 获取导出数据的URL
  * @returns 导出数据的URL
  */
@@ -279,6 +292,7 @@ export default {
   applyBacklinkFilters,
   getBacklinkBrandOverlap,
   getBacklinkFilterRanges,
+  getBacklinksList,
   exportBacklinkData,
   exportUniqueBacklinkData,
   filterByDomain,
