@@ -15,8 +15,7 @@ import { FileUpload } from "@/components/file-upload";
 import { BacklinkStats } from "@/components/backlink/backlink-stats";
 import { BacklinkFilterPanel } from "@/components/backlink/backlink-filter-panel";
 import { BrandDomainOverlap } from "@/components/backlink/brand-domain-overlap";
-import { DomainChart } from "@/visualizations/domain-chart";
-import { DomainFilter } from "@/components/backlink/domain-filter";
+import { BacklinkList } from "@/components/backlink/backlink-list";
 import { useBacklinkApi } from "@/hooks/use-backlink-api";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { CrossAnalysisForm } from "@/components/backlink/cross-analysis-form";
@@ -40,21 +39,20 @@ export default function BacklinkPage() {
     isFiltering,
     isLoadingOverlap,
     isLoadingRanges,
-    isLoadingDomainFilter,
+    isLoadingBacklinkList,
     fileStats,
     mergedStats,
     filteredStats,
     domainCounts,
     brandOverlapData,
-    domainFilterResults,
+    backlinkListData,
     filterRanges,
     uploadFiles,
     applyFilters,
-    filterByDomain,
     getExportUrl,
     getExportUniqueUrl,
     resetData,
-    
+
     // 交叉分析相关
     isCrossAnalysisFirstRound,
     isCrossAnalysisSecondRound,
@@ -91,6 +89,7 @@ export default function BacklinkPage() {
     resetData();
     setShowUpload(true);
   };
+
 
   // 处理交叉分析导出 - 修正版本
   const handleCrossAnalysisExport = async (params: ExportParams) => {
@@ -180,6 +179,7 @@ export default function BacklinkPage() {
                   <Download className="mr-2 h-4 w-4" />
                   导出唯一域名
                 </Button>
+
               </div>
 
               <Button
@@ -232,20 +232,10 @@ export default function BacklinkPage() {
                   isLoading={isUploading || isFiltering}
                 />
 
-                <Card>
-                  <CardHeader>
-                    <CardTitle>域名分布</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <DomainChart domainCounts={domainCounts} />
-                  </CardContent>
-                </Card>
-
-                <DomainFilter
-                  onFilter={filterByDomain}
-                  results={domainFilterResults}
-                  isLoading={isLoadingDomainFilter}
-                  disabled={isUploading || !hasData}
+                <BacklinkList
+                  backlinks={backlinkListData.backlinks}
+                  isLoading={isLoadingBacklinkList}
+                  totalCount={backlinkListData.total_count}
                 />
 
                 <BrandDomainOverlap

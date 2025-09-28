@@ -6,13 +6,14 @@ from fastapi import UploadFile
 from urllib.parse import urlparse
 
 from app.shared.utils.data_utils import (
-    read_file, 
-    merge_dataframes, 
-    count_domains, 
+    read_file,
+    merge_dataframes,
+    count_domains,
     filter_backlink_dataframe,
     calculate_brand_domain_overlap,
     get_dataframe_stats
 )
+from app.shared.utils.brand_extraction_utils import enhance_brand_identification
 
 
 class BacklinksProcessor:
@@ -26,7 +27,7 @@ class BacklinksProcessor:
     async def process_files(self, files: List[UploadFile]) -> Dict[str, Any]:
         dataframes = []
         file_stats = []
-        
+
         for file in files:
             # 创建临时文件存储上传内容
             with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.filename)[1]) as temp_file:
@@ -34,18 +35,30 @@ class BacklinksProcessor:
                 content = await file.read()
                 temp_file.write(content)
                 temp_file.flush()
-                
+
                 # 读取文件到DataFrame
                 df = read_file(temp_file.name)
-                
+
+                # 检查现有的Brand列
+                existing_brand_column = None
+                if 'Brand' in df.columns:
+                    existing_brand_column = 'Brand'
+
+                # 增强品牌识别：优先使用现有Brand列，然后从文件名提取，最后使用"Other"兜底
+                brand_column_used = enhance_brand_identification(
+                    df,
+                    file.filename,
+                    existing_brand_column
+                )
+
                 # 存储原始文件统计信息
                 file_stats.append({
                     "filename": file.filename,
                     "stats": get_dataframe_stats(df)
                 })
-                
+
                 dataframes.append(df)
-                
+
                 # 关闭并删除临时文件
                 temp_file.close()
                 os.unlink(temp_file.name)
@@ -221,5 +234,67 @@ class BacklinksProcessor:
         
         # 按照品牌名称排序结果
         results.sort(key=lambda x: x.get("brand", ""))
-        
+
         return {"results": results}
+
+    def get_backlinks_list(self) -> Dict[str, Any]:
+        """获取所有外链列表数据"""
+        if self.filtered_data.empty:
+            return {
+                "backlinks": [],
+                "total_count": 0
+            }
+
+        # 检查必要列是否存在 - 只有Domain是必需的，Brand是可选的
+        required_columns = ['Domain']
+        missing_columns = [col for col in required_columns if col not in self.filtered_data.columns]
+
+        if missing_columns:
+            return {
+                "backlinks": [],
+                "total_count": 0,
+                "error": f"Missing required columns: {', '.join(missing_columns)}"
+            }
+
+        # 准备所有数据项
+        backlinks = []
+        for _, row in self.filtered_data.iterrows():
+            # 处理Brand列 - 如果不存在则使用默认值
+            if 'Brand' in self.filtered_data.columns:
+                brand = row['Brand'] if pd.notna(row['Brand']) else "未知品牌"
+                if brand == '':
+                    brand = "未知品牌"
+            else:
+                brand = "未知品牌"
+
+            item = {
+                "domain": row['Domain'],
+                "brand": brand
+            }
+
+            # 添加可用的列
+            if 'Domain ascore' in self.filtered_data.columns:
+                item["domain_ascore"] = float(row['Domain ascore']) if pd.notna(row['Domain ascore']) else None
+
+            if 'Backlinks' in self.filtered_data.columns:
+                item["backlinks"] = float(row['Backlinks']) if pd.notna(row['Backlinks']) else None
+
+            # 添加其他可能存在的列
+            if 'IP Address' in self.filtered_data.columns:
+                item["ip_address"] = row['IP Address'] if pd.notna(row['IP Address']) else None
+
+            if 'Country' in self.filtered_data.columns:
+                item["country"] = row['Country'] if pd.notna(row['Country']) else None
+
+            if 'First seen' in self.filtered_data.columns:
+                item["first_seen"] = row['First seen'] if pd.notna(row['First seen']) else None
+
+            if 'Last seen' in self.filtered_data.columns:
+                item["last_seen"] = row['Last seen'] if pd.notna(row['Last seen']) else None
+
+            backlinks.append(item)
+
+        return {
+            "backlinks": backlinks,
+            "total_count": len(backlinks)
+        }
